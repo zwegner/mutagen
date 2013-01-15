@@ -7,6 +7,8 @@ class Context:
     def load(self, name):
         if name in self.syms:
             return self.syms[name]
+        if not self.parent:
+            raise Exception('%s not found' % name)
         return self.parent.load(name)
     def assert_true(self, expr):
         if not expr:
@@ -34,6 +36,14 @@ class String(Node):
         return self.name
     def __str__(self):
         return self.name
+
+class Integer(Node):
+    def __init__(self, value):
+        self.value = value
+    def eval(self, ctx):
+        return self.value
+    def __str__(self):
+        return '%s' % self.value
 
 class Assignment(Node):
     def __init__(self, name, rhs):

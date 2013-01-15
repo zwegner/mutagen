@@ -33,7 +33,7 @@ class Lexer:
                 identifier = c
                 while True:
                     c = self.get_char()
-                    if not c.isalpha():
+                    if not c.isalpha() and not c == '_':
                         self.saved_char = c
                         break
                     identifier += c
