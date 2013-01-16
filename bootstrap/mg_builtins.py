@@ -35,7 +35,7 @@ def mgb_map(ctx, args):
     fn, iter = args
     l = []
     for i in iter:
-        l += [fn.eval_call(ctx, [i])]
+        l += [fn.eval_call(ctx, [i.eval(ctx)])]
     return l
 
 __all__ = builtins

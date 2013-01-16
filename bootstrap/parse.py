@@ -26,14 +26,12 @@ class Parser:
     def parse_block(self):
         exprs = []
         while True:
+            while self.accept('newline') or self.accept('semicolon'):
+                pass
             expr = self.parse_expr()
             if not expr:
-                if self.accept('newline'):
-                    continue
                 break
             exprs.append(expr)
-            if not self.accept('newline'):
-                break
         return exprs
 
     def parse_list(self):

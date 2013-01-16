@@ -93,7 +93,7 @@ class Function(Node):
             ret = expr.eval(child_ctx)
         return ret
     def __str__(self):
-        return '[%s](%s)' % (', '.join(str(s) for s in self.params), '\n'.join(str(s) for s in self.args))
+        return '[%s]{%s}' % (', '.join(str(s) for s in self.params), '\n'.join(str(s) for s in self.block))
 
 class BuiltinFunction(Node):
     def __init__(self, name, fn):
