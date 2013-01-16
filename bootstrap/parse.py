@@ -50,14 +50,16 @@ class Parser:
     def parse_expr(self, level=0):
         if level == -2:
             # Identifiers
-            if self.accept('lparen'):
+            if self.accept('ident'):
+                return syntax.Identifier(self.token_v)
+            # String literals
+            elif self.accept('string'):
+                return syntax.String(self.token_v)
+            # Parenthesitized exprs
+            elif self.accept('lparen'):
                 expr = self.parse_expr()
                 self.expect('rparen')
                 return expr
-            # Parenthesitized exprs
-            elif self.accept('ident'):
-                ident = syntax.Identifier(self.token_v)
-                return ident
             elif self.accept('lbracket'):
                 params = self.parse_list()
                 self.expect('rbracket')

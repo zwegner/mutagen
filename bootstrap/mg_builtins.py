@@ -21,6 +21,11 @@ def mgb_putchar(ctx, args):
     sys.stdout.write(args[0].name)
     return syntax.Nil()
 
+@mg_builtin('print')
+def mgb_print(ctx, args):
+    sys.stdout.write(args[0].name)
+    return syntax.Nil()
+
 @mg_builtin('len')
 def mgb_len(ctx, args):
     return syntax.Integer(len(args[0].name))

@@ -33,7 +33,7 @@ class String(Node):
     def __init__(self, name):
         self.name = name
     def eval(self, ctx):
-        return self.name
+        return self
     def __str__(self):
         return self.name
 

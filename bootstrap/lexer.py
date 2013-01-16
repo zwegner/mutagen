@@ -27,13 +27,25 @@ class Lexer:
     def get_token_inner(self):
         while True:
             c = self.get_char()
+            # EOF
             if c == '':
                 return None
+            # Strings
+            elif c == '\'':
+                string = ''
+                while True:
+                    c = self.get_char()
+                    # TODO: escapes
+                    if c == '\'':
+                        break
+                    string += c
+                return ('string', string)
+            # Identifiers
             elif c.isalpha():
                 identifier = c
                 while True:
                     c = self.get_char()
-                    if not c.isalpha() and not c == '_':
+                    if not c.isalpha() and not c.isdigit() and not c == '_':
                         self.saved_char = c
                         break
                     identifier += c
