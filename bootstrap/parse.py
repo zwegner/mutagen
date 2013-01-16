@@ -70,6 +70,7 @@ class Parser:
                     block = self.parse_block()
                     self.expect('rbrace')
                     return syntax.Function(params, block)
+                return syntax.List(params)
             return None
         elif level == -1:
             expr = self.parse_expr(level - 1)

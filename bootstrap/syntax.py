@@ -45,6 +45,17 @@ class Integer(Node):
     def __str__(self):
         return '%s' % self.value
 
+class List(Node):
+    def __init__(self, items):
+        self.items = items
+    def eval(self, ctx):
+        return self
+    def __str__(self):
+        return '[%s]' % ', '.join(str(s) for s in self.items)
+    def __iter__(self):
+        for i in self.items:
+            yield i
+
 class Assignment(Node):
     def __init__(self, name, rhs):
         self.name = name.name
