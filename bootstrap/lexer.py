@@ -33,6 +33,13 @@ class Lexer:
             # EOF
             if c == '':
                 return None
+            # Comments
+            elif c == '#':
+                while True:
+                    c = self.get_char()
+                    if not c or c == '\n':
+                        break
+                return ('newline', '\n')
             # Strings
             elif c == '\'':
                 string = ''
