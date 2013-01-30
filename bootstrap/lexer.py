@@ -14,6 +14,14 @@ tokens = {
 keywords = {
     'import',
 }
+str_escapes = {
+    'n': '\n',
+    't': '\t',
+    'b': '\b',
+}
+
+class LexError(Exception):
+    pass
 
 class Lexer:
     def __init__(self, input_file):
@@ -45,10 +53,15 @@ class Lexer:
                 string = ''
                 while True:
                     c = self.get_char()
-                    # TODO: escapes
-                    if c == '\'':
+                    if c == '\\':
+                        c = self.get_char()
+                        if c not in str_escapes:
+                            raise LexError()
+                        string += str_escapes[c]
+                    elif c == '\'':
                         break
-                    string += c
+                    else:
+                        string += c
                 return ('string', string)
             # Identifiers
             elif c.isalpha():
