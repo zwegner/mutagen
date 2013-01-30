@@ -1,3 +1,4 @@
+import os
 import sys
 
 import lexer
@@ -83,6 +84,9 @@ class Parser:
         elif level == 0:
             expr = self.parse_expr(level - 1)
             if not expr:
+                if self.accept('import'):
+                    self.expect('ident')
+                    return syntax.Import(self.token_v)
                 return None
             # Assignment
             if self.accept('equals'):
@@ -95,11 +99,29 @@ class Parser:
     def next_token(self):
         self.token = self.lexer.get_token()
 
-def interpret(path):
+def parse(path):
+    dirname = os.path.dirname(path)
+    if not dirname:
+        dirname = '.'
     with open(path) as f:
         p = Parser(f)
         block = p.parse_block()
         p.expect('EOF')
+    # Recursively parse imports
+    # XXX Currently doesn't check for infinite recursion, and 
+    # imports everything into the same namespace
+    new_block = []
+    for expr in block:
+        if isinstance(expr, syntax.Import):
+            module = parse('%s/%s.mg' % (dirname, expr.name))
+            new_block.extend(module)
+        else:
+            new_block.append(expr)
+
+    return new_block
+
+def interpret(path):
+    block = parse(path)
 
     ctx = syntax.Context(None)
     for k, v in mg_builtins.builtins.items():

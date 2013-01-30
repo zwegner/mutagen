@@ -36,6 +36,9 @@ class String(Node):
         return self
     def __str__(self):
         return self.name
+    def __iter__(self):
+        for i in self.items:
+            yield i
 
 class Integer(Node):
     def __init__(self, value):
@@ -103,3 +106,11 @@ class BuiltinFunction(Node):
         return self.fn(ctx, args)
     def __str__(self):
         return '<builtin %s>' % self.name
+
+class Import(Node):
+    def __init__(self, name):
+        self.name = name
+    def eval(self, ctx):
+        raise Exception()
+    def __str__(self):
+        return 'import %s' % self.name

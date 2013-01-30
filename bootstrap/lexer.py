@@ -11,6 +11,9 @@ tokens = {
     ';': 'semicolon',
     '\n': 'newline',
 }
+keywords = {
+    'import',
+}
 
 class Lexer:
     def __init__(self, input_file):
@@ -49,6 +52,8 @@ class Lexer:
                         self.saved_char = c
                         break
                     identifier += c
+                if identifier in keywords:
+                    return (identifier, identifier)
                 return ('ident', identifier)
             elif c in tokens:
                 return (tokens[c], c)
