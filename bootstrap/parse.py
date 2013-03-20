@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import os
 import sys
 
@@ -10,7 +11,7 @@ class ParseError(Exception):
 
 class Parser:
     def __init__(self, input_file):
-        self.lexer = lexer.Lexer(input_file)
+        self.lexer = lexer.get_lexer(input_file)
         self.next_token()
 
     def accept(self, token):
@@ -27,7 +28,7 @@ class Parser:
     def parse_block(self):
         exprs = []
         while True:
-            while self.accept('newline') or self.accept('semicolon'):
+            while self.accept('NEWLINE') or self.accept('SEMICOLON'):
                 pass
             expr = self.parse_expr()
             if not expr:
@@ -42,32 +43,32 @@ class Parser:
             if not expr:
                 break
             exprs.append(expr)
-            if not self.accept('comma'):
+            if not self.accept('COMMA'):
                 break
         return exprs
 
     def parse_expr(self, level=0):
         if level == -2:
             # Identifiers
-            if self.accept('ident'):
+            if self.accept('IDENTIFIER'):
                 return syntax.Identifier(self.token_v)
             # String literals
-            elif self.accept('string'):
+            elif self.accept('STRING'):
                 return syntax.String(self.token_v)
             # Parenthesitized exprs
-            elif self.accept('lparen'):
+            elif self.accept('LPAREN'):
                 expr = self.parse_expr()
-                self.expect('rparen')
+                self.expect('RPAREN')
                 return expr
-            elif self.accept('lbracket'):
+            elif self.accept('LBRACKET'):
                 params = self.parse_list()
-                self.expect('rbracket')
+                self.expect('RBRACKET')
                 # Function def
-                if self.accept('lbrace'):
+                if self.accept('LBRACE'):
                     if any(not isinstance(p, syntax.Identifier) for p in params):
                         raise ParseError()
                     block = self.parse_block()
-                    self.expect('rbrace')
+                    self.expect('RBRACE')
                     return syntax.Function(params, block)
                 return syntax.List(params)
             return None
@@ -76,20 +77,20 @@ class Parser:
             if not expr:
                 return None
             # Function call
-            while self.accept('lparen'):
+            while self.accept('LPAREN'):
                 args = self.parse_list()
-                self.expect('rparen')
+                self.expect('RPAREN')
                 expr = syntax.Call(expr, args)
             return expr
         elif level == 0:
             expr = self.parse_expr(level - 1)
             if not expr:
-                if self.accept('import'):
-                    self.expect('ident')
+                if self.accept('IMPORT'):
+                    self.expect('IDENTIFIER')
                     return syntax.Import(self.token_v)
                 return None
             # Assignment
-            if self.accept('equals'):
+            if self.accept('EQUALS'):
                 if not isinstance(expr, syntax.Identifier):
                     raise ParseError()
                 rhs = self.parse_expr()
@@ -97,7 +98,12 @@ class Parser:
             return expr
 
     def next_token(self):
-        self.token = self.lexer.get_token()
+        token = self.lexer.token()
+        print(token)
+        if token:
+            self.token = (token.type, token.value)
+        else:
+            self.token = ('EOF', None)
 
 def parse(path):
     dirname = os.path.dirname(path)
@@ -106,6 +112,7 @@ def parse(path):
     with open(path) as f:
         p = Parser(f)
         block = p.parse_block()
+        print(block)
         p.expect('EOF')
     # Recursively parse imports
     # XXX Currently doesn't check for infinite recursion, and 

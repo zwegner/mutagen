@@ -1,85 +1,87 @@
-tokens = {
-    '=': 'equals',
-    '(': 'lparen',
-    ')': 'rparen',
-    '[': 'lbracket',
-    ']': 'rbracket',
-    '{': 'lbrace',
-    '}': 'rbrace',
-    ',': 'comma',
-    '.': 'period',
-    ';': 'semicolon',
-    '\n': 'newline',
-}
-keywords = {
-    'import',
-}
+import ply.lex as lex
+
+class LexError(Exception):
+    pass
+
+tokens = (
+    'EQUALS',
+    'LPAREN',
+    'RPAREN',
+    'LBRACKET',
+    'RBRACKET',
+    'LBRACE',
+    'RBRACE',
+    'COMMA',
+    'PERIOD',
+    'SEMICOLON',
+    'NEWLINE',
+    'IDENTIFIER',
+    'IMPORT',
+    'STRING',
+)
+
+t_EQUALS       = r'='
+t_LPAREN       = r'\('
+t_RPAREN       = r'\)'
+t_LBRACKET     = r'\['
+t_RBRACKET     = r']'
+t_LBRACE       = r'{'
+t_RBRACE       = r'}'
+t_COMMA        = r','
+t_PERIOD       = r'\.'
+t_SEMICOLON    = r';'
+
+keywords = (
+'import',
+)
+
 str_escapes = {
     'n': '\n',
     't': '\t',
     'b': '\b',
 }
 
-class LexError(Exception):
+def t_IDENTIFIER(t):
+    r'[a-zA-Z_][a-zA-Z0-9_]*'
+    if t.value in keywords:
+        t.type = t.value.upper()
+    return t
+
+def t_STRING(t):
+    r'\'[^\']*\''
+    string = ''
+    i = iter(t.value[1:-1])
+    while True:
+        try:
+            c = next(i)
+        except StopIteration:
+            break
+        if c == '\\':
+            c = next(i)
+            if c not in str_escapes:
+                raise LexError()
+            string += str_escapes[c]
+        else:
+            string += c
+    t.value = string
+    return t
+
+# Ignored characters
+t_ignore = " \t"
+
+def t_NEWLINE(t):
+    r'\n+'
+    t.lexer.lineno += t.value.count("\n")
+    return t
+
+def t_COMMENT(t):
+    r'\#.*'
     pass
 
-class Lexer:
-    def __init__(self, input_file):
-        self.input = input_file
-        self.saved_char = None
+def t_error(t):
+    raise LexError()
 
-    def get_char(self):
-        if self.saved_char:
-            c = self.saved_char
-            self.saved_char = None
-            return c
-        return self.input.read(1)
-
-    def get_token_inner(self):
-        while True:
-            c = self.get_char()
-            # EOF
-            if c == '':
-                return None
-            # Comments
-            elif c == '#':
-                while True:
-                    c = self.get_char()
-                    if not c or c == '\n':
-                        break
-                return ('newline', '\n')
-            # Strings
-            elif c == '\'':
-                string = ''
-                while True:
-                    c = self.get_char()
-                    if c == '\\':
-                        c = self.get_char()
-                        if c not in str_escapes:
-                            raise LexError()
-                        string += str_escapes[c]
-                    elif c == '\'':
-                        break
-                    else:
-                        string += c
-                return ('string', string)
-            # Identifiers
-            elif c.isalpha():
-                identifier = c
-                while True:
-                    c = self.get_char()
-                    if not c.isalpha() and not c.isdigit() and not c == '_':
-                        self.saved_char = c
-                        break
-                    identifier += c
-                if identifier in keywords:
-                    return (identifier, identifier)
-                return ('ident', identifier)
-            elif c in tokens:
-                return (tokens[c], c)
-
-    def get_token(self):
-        t = self.get_token_inner()
-        if not t:
-            return ('EOF', '')
-        return t
+def get_lexer(input):
+    l = lex.lex()
+    lex.input(input.read())
+    return lex
