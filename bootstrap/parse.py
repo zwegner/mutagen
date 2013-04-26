@@ -24,60 +24,68 @@ def p_newline(p):
     """
     pass
 
-def p_block(p):
-    """ block : NEWLINE
-              | expr
-              | block newline expr
-    """
-    print(len(p))
-    if len(p) == 2:
-        return [p[1]]
-    else:
-        return p[1] + [p[3]]
+def p_block_nl(p):
+    """ block : NEWLINE """
+    p[0] = []
+
+def p_block_1(p):
+    """ block : expr """
+    p[0] = [p[1]]
+
+def p_block_2(p):
+    """ block : block newline """
+    p[0] = p[1]
+
+def p_block_3(p):
+    """ block : block expr """
+    p[0] = p[1] + [p[2]]
 
 def p_import(p):
     """ expr : IMPORT IDENTIFIER """
-    return syntax.Import(p[2].value)
+    p[0] = syntax.Import(p[2])
 
 def p_expr_list(p):
     """ expr_list : expr
                   | expr_list COMMA expr
     """
     if len(p) == 2:
-        return [p[1]]
+        p[0] = [p[1]]
     else:
-        return p[1] + [p[3]]
+        p[0] = p[1] + [p[3]]
 
 def p_expr(p):
     """ expr : LPAREN expr RPAREN
              | list
              | def
     """
-    return p
+    if len(p) == 4:
+        p[0] = p[2]
+    else:
+        p[0] = p[1]
 
 def p_ident(p):
     """ expr : IDENTIFIER """
-    return syntax.Identifier(p[1].value)
+    p[0] = syntax.Identifier(p[1])
 
 def p_string(p):
     """ expr : STRING """
-    return syntax.String(p[1].value)
+    p[0] = syntax.String(p[1])
 
 def p_list(p):
     """ list : LBRACKET expr_list RBRACKET """
-    return syntax.List(p[2])
+    p[0] = syntax.List(p[2])
 
 def p_def(p):
     """ def : list LBRACE block RBRACE """
-    return syntax.Function(p[1], p[3])
+    p[0] = syntax.Function(p[1], p[3])
 
 def p_call(p):
     """ expr : expr LPAREN expr_list RPAREN """
-    return syntax.Call(p[1], p[3])
+    p[0] = syntax.Call(p[1], p[3])
 
 def p_assignment(p):
     """ expr : IDENTIFIER EQUALS expr """
-    return syntax.Assignment(p[1].value, p[3])
+    p[0] = syntax.Assignment(p[1], p[3])
 
 def parse(path):
     dirname = os.path.dirname(path)
@@ -85,9 +93,7 @@ def parse(path):
         dirname = '.'
     with open(path) as f:
         p = yacc.yacc()
-        block = p.parse(input=f.read(), lexer=lexer.get_lexer(), debug=1)
-        print(block)
-        p.expect('EOF')
+        block = p.parse(input=f.read(), lexer=lexer.get_lexer())
     # Recursively parse imports
     # XXX Currently doesn't check for infinite recursion, and 
     # imports everything into the same namespace
