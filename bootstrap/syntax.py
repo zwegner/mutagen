@@ -35,7 +35,7 @@ class String(Node):
     def eval(self, ctx):
         return self
     def __str__(self):
-        return self.name
+        return '"%s"' % self.name
     def __iter__(self):
         for i in self.items:
             yield i
@@ -52,7 +52,7 @@ class List(Node):
     def __init__(self, items):
         self.items = items
     def eval(self, ctx):
-        return self
+        return List([i.eval(ctx) for i in self.items])
     def __str__(self):
         return '[%s]' % ', '.join(str(s) for s in self.items)
     def __iter__(self):

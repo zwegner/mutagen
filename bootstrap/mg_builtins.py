@@ -30,12 +30,26 @@ def mgb_print(ctx, args):
 def mgb_len(ctx, args):
     return syntax.Integer(len(args[0].name))
 
+@mg_builtin('str')
+def mgb_str(ctx, args):
+    arg, = args
+    return syntax.String(str(arg.eval(ctx)))
+
 @mg_builtin('map')
 def mgb_map(ctx, args):
     fn, iter = args
+    fn = fn.eval(ctx)
     l = []
     for i in iter:
         l += [fn.eval_call(ctx, [i.eval(ctx)])]
-    return l
+    return syntax.List(l)
+
+@mg_builtin('reduce')
+def mgb_reduce(ctx, args):
+    fn, start, iter = args
+    fn = fn.eval(ctx)
+    for i in iter:
+        start = fn.eval_call(ctx, [start, i.eval(ctx)])
+    return start
 
 __all__ = builtins
