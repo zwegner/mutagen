@@ -2,116 +2,90 @@
 import os
 import sys
 
+import ply.yacc as yacc
+
 import lexer
 import syntax
 import mg_builtins
 
+from lexer import tokens
+
+start = 'block'
+
+def p_error(p):
+    raise ParseError()
+
 class ParseError(Exception):
     pass
 
-class Parser:
-    def __init__(self, input_file):
-        self.lexer = lexer.get_lexer(input_file)
-        self.next_token()
+def p_newline(p):
+    """ newline : NEWLINE
+                | newline NEWLINE
+    """
+    pass
 
-    def accept(self, token):
-        if self.token[0] == token:
-            self.token_v = self.token[1]
-            self.next_token()
-            return True
-        return False
+def p_block(p):
+    """ block : NEWLINE
+              | expr
+              | block newline expr
+    """
+    print(len(p))
+    if len(p) == 2:
+        return [p[1]]
+    else:
+        return p[1] + [p[3]]
 
-    def expect(self, token):
-        if not self.accept(token):
-            raise ParseError()
+def p_import(p):
+    """ expr : IMPORT IDENTIFIER """
+    return syntax.Import(p[2].value)
 
-    def parse_block(self):
-        exprs = []
-        while True:
-            while self.accept('NEWLINE') or self.accept('SEMICOLON'):
-                pass
-            expr = self.parse_expr()
-            if not expr:
-                break
-            exprs.append(expr)
-        return exprs
+def p_expr_list(p):
+    """ expr_list : expr
+                  | expr_list COMMA expr
+    """
+    if len(p) == 2:
+        return [p[1]]
+    else:
+        return p[1] + [p[3]]
 
-    def parse_list(self):
-        exprs = []
-        while True:
-            expr = self.parse_expr()
-            if not expr:
-                break
-            exprs.append(expr)
-            if not self.accept('COMMA'):
-                break
-        return exprs
+def p_expr(p):
+    """ expr : LPAREN expr RPAREN
+             | list
+             | def
+    """
+    return p
 
-    def parse_expr(self, level=0):
-        if level == -2:
-            # Identifiers
-            if self.accept('IDENTIFIER'):
-                return syntax.Identifier(self.token_v)
-            # String literals
-            elif self.accept('STRING'):
-                return syntax.String(self.token_v)
-            # Parenthesitized exprs
-            elif self.accept('LPAREN'):
-                expr = self.parse_expr()
-                self.expect('RPAREN')
-                return expr
-            elif self.accept('LBRACKET'):
-                params = self.parse_list()
-                self.expect('RBRACKET')
-                # Function def
-                if self.accept('LBRACE'):
-                    if any(not isinstance(p, syntax.Identifier) for p in params):
-                        raise ParseError()
-                    block = self.parse_block()
-                    self.expect('RBRACE')
-                    return syntax.Function(params, block)
-                return syntax.List(params)
-            return None
-        elif level == -1:
-            expr = self.parse_expr(level - 1)
-            if not expr:
-                return None
-            # Function call
-            while self.accept('LPAREN'):
-                args = self.parse_list()
-                self.expect('RPAREN')
-                expr = syntax.Call(expr, args)
-            return expr
-        elif level == 0:
-            expr = self.parse_expr(level - 1)
-            if not expr:
-                if self.accept('IMPORT'):
-                    self.expect('IDENTIFIER')
-                    return syntax.Import(self.token_v)
-                return None
-            # Assignment
-            if self.accept('EQUALS'):
-                if not isinstance(expr, syntax.Identifier):
-                    raise ParseError()
-                rhs = self.parse_expr()
-                return syntax.Assignment(expr, rhs)
-            return expr
+def p_ident(p):
+    """ expr : IDENTIFIER """
+    return syntax.Identifier(p[1].value)
 
-    def next_token(self):
-        token = self.lexer.token()
-        print(token)
-        if token:
-            self.token = (token.type, token.value)
-        else:
-            self.token = ('EOF', None)
+def p_string(p):
+    """ expr : STRING """
+    return syntax.String(p[1].value)
+
+def p_list(p):
+    """ list : LBRACKET expr_list RBRACKET """
+    return syntax.List(p[2])
+
+def p_def(p):
+    """ def : list LBRACE block RBRACE """
+    return syntax.Function(p[1], p[3])
+
+def p_call(p):
+    """ expr : expr LPAREN expr_list RPAREN """
+    return syntax.Call(p[1], p[3])
+
+def p_assignment(p):
+    """ expr : IDENTIFIER EQUALS expr """
+    return syntax.Assignment(p[1].value, p[3])
 
 def parse(path):
     dirname = os.path.dirname(path)
     if not dirname:
         dirname = '.'
     with open(path) as f:
-        p = Parser(f)
-        block = p.parse_block()
+        p = yacc.yacc()
+        block = p.parse(input=f.read(), lexer=lexer.get_lexer(), debug=1)
         print(block)
         p.expect('EOF')
     # Recursively parse imports

@@ -61,7 +61,7 @@ class List(Node):
 
 class Assignment(Node):
     def __init__(self, name, rhs):
-        self.name = name.name
+        self.name = name
         self.rhs = rhs
     def eval(self, ctx):
         value = self.rhs.eval(ctx)

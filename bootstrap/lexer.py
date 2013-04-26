@@ -3,37 +3,36 @@ import ply.lex as lex
 class LexError(Exception):
     pass
 
-tokens = (
-    'EQUALS',
-    'LPAREN',
-    'RPAREN',
-    'LBRACKET',
-    'RBRACKET',
-    'LBRACE',
-    'RBRACE',
-    'COMMA',
-    'PERIOD',
-    'SEMICOLON',
+tokens = [
     'NEWLINE',
     'IDENTIFIER',
-    'IMPORT',
     'STRING',
-)
+]
 
-t_EQUALS       = r'='
-t_LPAREN       = r'\('
-t_RPAREN       = r'\)'
-t_LBRACKET     = r'\['
-t_RBRACKET     = r']'
-t_LBRACE       = r'{'
-t_RBRACE       = r'}'
-t_COMMA        = r','
-t_PERIOD       = r'\.'
-t_SEMICOLON    = r';'
+token_map = {
+    'EQUALS':       r'=',
+    'LPAREN':       r'\(',
+    'RPAREN':       r'\)',
+    'LBRACKET':     r'\[',
+    'RBRACKET':     r']',
+    'LBRACE':       r'{',
+    'RBRACE':       r'}',
+    'COMMA':        r',',
+    'PERIOD':       r'\.',
+    'SEMICOLON':    r';',
+}
 
-keywords = (
-'import',
-)
+keywords = [
+    'import',
+]
+
+for keyword in keywords:
+    tokens += [keyword.upper()]
+    globals()['t_%s' % keyword.upper()] = keyword
+
+for token, regex in token_map.items():
+    tokens += [token]
+    globals()['t_%s' % token] = regex
 
 str_escapes = {
     'n': '\n',
@@ -43,7 +42,7 @@ str_escapes = {
 
 def t_IDENTIFIER(t):
     r'[a-zA-Z_][a-zA-Z0-9_]*'
-    if t.value in keywords:
+    if t.value.upper() in tokens:
         t.type = t.value.upper()
     return t
 
@@ -66,12 +65,11 @@ def t_STRING(t):
     t.value = string
     return t
 
-# Ignored characters
-t_ignore = " \t"
+t_ignore = " \t\r"
 
 def t_NEWLINE(t):
-    r'\n+'
-    t.lexer.lineno += t.value.count("\n")
+    r'\n'
+    t.lexer.lineno += 1
     return t
 
 def t_COMMENT(t):
@@ -79,9 +77,9 @@ def t_COMMENT(t):
     pass
 
 def t_error(t):
+    print('%s(%i): %s' % ('', t.lineno, t))
     raise LexError()
 
-def get_lexer(input):
+def get_lexer():
     l = lex.lex()
-    lex.input(input.read())
     return lex
