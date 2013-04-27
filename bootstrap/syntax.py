@@ -71,6 +71,18 @@ class Object(Node):
         return '{%s}' % ', '.join('%s:%s' % (k, v) for k, v
                 in self.items.items())
 
+class GetAttr(Node):
+    def __init__(self, obj, attr):
+        self.obj = obj
+        self.attr = attr
+    def eval(self, ctx):
+        # HACK: no real dictionaries
+        items = self.obj.eval(ctx).items
+        item, = [v for k, v in items.items() if k.name == self.attr.name]
+        return item
+    def __str__(self):
+        return '%s.%s' % (self.obj, self.attr)
+
 class Assignment(Node):
     def __init__(self, name, rhs):
         self.name = name

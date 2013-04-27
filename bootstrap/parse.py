@@ -80,6 +80,10 @@ def p_list(p):
     """ list : LBRACKET expr_list RBRACKET """
     p[0] = syntax.List(p[2])
 
+def p_getattr(p):
+    """ expr : expr PERIOD IDENTIFIER """
+    p[0] = syntax.GetAttr(p[1], syntax.String(p[3]))
+
 def p_def(p):
     """ def : list LBRACE block RBRACE """
     p[0] = syntax.Function(p[1], p[3])
