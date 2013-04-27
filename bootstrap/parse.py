@@ -12,6 +12,11 @@ from lexer import tokens
 
 start = 'block'
 
+precedence = [
+    ['right', 'EQUALS'],
+    ['left', 'LBRACKET', 'LPAREN', 'PERIOD'],
+]
+
 def p_error(p):
     print('%s(%i): %s' % (syntax.filename, p.lexer.lexer.lineno, p))
     raise ParseError()
@@ -19,27 +24,29 @@ def p_error(p):
 class ParseError(Exception):
     pass
 
-def p_newline(p):
-    """ newline : NEWLINE
-                | newline NEWLINE
-    """
-    pass
-
-def p_block_nl(p):
-    """ block : NEWLINE """
-    p[0] = []
-
 def p_block_1(p):
-    """ block : expr """
-    p[0] = [p[1]]
-
-def p_block_2(p):
-    """ block : block newline """
-    p[0] = p[1]
+    """ block : stmt """
+    p[0] = []
+    if p[1] is not None:
+        p[0] += [p[1]]
 
 def p_block_3(p):
-    """ block : block expr """
-    p[0] = p[1] + [p[2]]
+    """ block : block stmt """
+    p[0] = p[1]
+    if p[2] is not None:
+        p[0] += [p[2]]
+
+def p_statement(p):
+    """ stmt : expr NEWLINE
+             | expr SEMICOLON
+    """
+    p[0] = p[1]
+
+def p_statement_2(p):
+    """ stmt : NEWLINE
+             | SEMICOLON
+    """
+    p[0] = None
 
 def p_import(p):
     """ expr : IMPORT IDENTIFIER """
@@ -96,12 +103,13 @@ def p_assignment(p):
     """ expr : IDENTIFIER EQUALS expr """
     p[0] = syntax.Assignment(p[1], p[3])
 
+p = yacc.yacc()
+
 def parse(path):
     dirname = os.path.dirname(path)
     if not dirname:
         dirname = '.'
     with open(path) as f:
-        p = yacc.yacc()
         block = p.parse(input=f.read(), lexer=lexer.get_lexer())
     # Recursively parse imports
     # XXX Currently doesn't check for infinite recursion, and 
