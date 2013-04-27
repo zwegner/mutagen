@@ -35,6 +35,11 @@ def mgb_str(ctx, args):
     arg, = args
     return syntax.String(str(arg.eval(ctx)))
 
+@mg_builtin('make')
+def mgb_make(ctx, args):
+    items = dict(args)
+    return syntax.Object(items)
+
 @mg_builtin('map')
 def mgb_map(ctx, args):
     fn, iter = args

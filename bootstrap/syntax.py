@@ -1,3 +1,5 @@
+filename = 'filename'
+
 class Context:
     def __init__(self, parent):
         self.parent = parent
@@ -44,7 +46,7 @@ class Integer(Node):
     def __init__(self, value):
         self.value = value
     def eval(self, ctx):
-        return self.value
+        return self
     def __str__(self):
         return '%s' % self.value
 
@@ -58,6 +60,16 @@ class List(Node):
     def __iter__(self):
         for i in self.items:
             yield i
+
+class Object(Node):
+    def __init__(self, items):
+        self.items = items
+    def eval(self, ctx):
+        return Object({k.eval(ctx): v.eval(ctx) for k, v
+            in self.items.items()})
+    def __str__(self):
+        return '{%s}' % ', '.join('%s:%s' % (k, v) for k, v
+                in self.items.items())
 
 class Assignment(Node):
     def __init__(self, name, rhs):

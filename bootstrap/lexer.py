@@ -7,6 +7,7 @@ tokens = [
     'NEWLINE',
     'IDENTIFIER',
     'STRING',
+    'INTEGER',
 ]
 
 token_map = {
@@ -65,6 +66,11 @@ def t_STRING(t):
     t.value = string
     return t
 
+def t_INTEGER(t):
+    r'(0x[0-9a-fA-F]*)|([0-9]+)'
+    t.value = int(t.value, 0)
+    return t
+
 t_ignore = " \t\r"
 
 def t_NEWLINE(t):
@@ -77,7 +83,7 @@ def t_COMMENT(t):
     pass
 
 def t_error(t):
-    print('%s(%i): %s' % ('', t.lineno, t))
+    print('%s(%i): %s' % (syntax.filename, t.lineno, t))
     raise LexError()
 
 def get_lexer():

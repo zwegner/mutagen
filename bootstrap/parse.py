@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 import os
 import sys
 
@@ -13,6 +13,7 @@ from lexer import tokens
 start = 'block'
 
 def p_error(p):
+    print('%s(%i): %s' % (syntax.filename, p.lexer.lexer.lineno, p))
     raise ParseError()
 
 class ParseError(Exception):
@@ -70,6 +71,10 @@ def p_ident(p):
 def p_string(p):
     """ expr : STRING """
     p[0] = syntax.String(p[1])
+
+def p_integer(p):
+    """ expr : INTEGER """
+    p[0] = syntax.Integer(p[1])
 
 def p_list(p):
     """ list : LBRACKET expr_list RBRACKET """
