@@ -86,6 +86,43 @@ def t_error(t):
     print('%s(%i): %s' % (syntax.filename, t.lineno, t))
     raise LexError()
 
+def gen_tokens(l):
+    while True:
+        t = l.token()
+        if t is None:
+            break
+        yield t
+
+def process_newlines(tokens):
+    braces = brackets = parens = 0
+    for t in tokens:
+        if 0: pass
+        #elif t.type == 'LBRACE': braces += 1
+        #elif t.type == 'RBRACE': braces -= 1
+        elif t.type == 'LBRACKET': brackets += 1
+        elif t.type == 'RBRACKET': brackets -= 1
+        elif t.type == 'LPAREN': parens += 1
+        elif t.type == 'RPAREN': parens -= 1
+
+        if t.type == 'NEWLINE':
+            if braces == brackets == parens == 0:
+                yield t
+        else:
+            yield t
+
+class Lexer:
+    def __init__(self):
+        self.lexer = lex.lex()
+
+    def input(self, input):
+        self.lexer.input(input)
+        self.stream = process_newlines(gen_tokens(self.lexer))
+
+    def token(self):
+        try:
+            return next(self.stream)
+        except StopIteration:
+            return None
+
 def get_lexer():
-    l = lex.lex()
-    return lex
+    return Lexer()
