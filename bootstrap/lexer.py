@@ -28,6 +28,7 @@ token_map = {
 keywords = [
     'import',
     'def',
+    'lambda',
     'if',
     'elif',
     'else',

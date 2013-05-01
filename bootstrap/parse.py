@@ -125,6 +125,10 @@ def p_def(p):
     """ def : DEF IDENTIFIER list LBRACE block RBRACE """
     p[0] = syntax.Assignment(p[2], syntax.Function(p[2], p[3], p[5]))
 
+def p_lambda(p):
+    """ def : LAMBDA list LBRACE block RBRACE """
+    p[0] = syntax.Function('lambda', p[2], p[4])
+
 p = yacc.yacc()
 
 def parse(path):
