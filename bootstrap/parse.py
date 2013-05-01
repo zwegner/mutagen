@@ -14,11 +14,13 @@ start = 'block'
 
 precedence = [
     ['right', 'EQUALS'],
+    ['left', 'EQUALS_EQUALS'],
     ['left', 'LBRACKET', 'LPAREN', 'PERIOD'],
+    ['left', 'LBRACE'],
 ]
 
 def p_error(p):
-    print('%s(%i): %s' % (syntax.filename, p.lexer.lineno, p))
+    print('%s(%i): %s' % (syntax.filename, p.lexer.lexer.lineno, p))
     raise ParseError()
 
 class ParseError(Exception):
@@ -87,17 +89,17 @@ def p_list(p):
     """ list : LBRACKET expr_list RBRACKET """
     p[0] = syntax.List(p[2])
 
+def p_binop(p):
+    """ expr : expr EQUALS_EQUALS expr """
+    p[0] = syntax.BinOp(p[2], p[1], p[3])
+
 def p_getattr(p):
     """ expr : expr PERIOD IDENTIFIER """
-    p[0] = syntax.GetAttr(p[1], syntax.String(p[3]))
+    p[0] = syntax.GetAttr(p[1], p[3])
 
 def p_getitem(p):
     """ expr : expr LBRACKET expr RBRACKET """
     p[0] = syntax.GetItem(p[1], p[3])
-
-def p_def(p):
-    """ def : list LBRACE block RBRACE """
-    p[0] = syntax.Function(p[1], p[3])
 
 def p_call(p):
     """ expr : expr LPAREN expr_list RPAREN """
@@ -106,6 +108,19 @@ def p_call(p):
 def p_assignment(p):
     """ expr : IDENTIFIER EQUALS expr """
     p[0] = syntax.Assignment(p[1], p[3])
+
+def p_ifelse(p):
+    """ expr : IF expr LBRACE block RBRACE ELSE LBRACE block RBRACE
+             | IF expr LBRACE block RBRACE
+    """
+    if len(p) == 6:
+        p[0] = syntax.IfElse(p[2], p[4], [])
+    else:
+        p[0] = syntax.IfElse(p[2], p[4], p[8])
+
+def p_def(p):
+    """ def : list LBRACE block RBRACE """
+    p[0] = syntax.Function(p[1], p[3])
 
 p = yacc.yacc()
 
@@ -131,7 +146,7 @@ def parse(path):
 def interpret(path):
     block = parse(path)
 
-    ctx = syntax.Context(None)
+    ctx = syntax.Context('<global>', None)
     for k, v in mg_builtins.builtins.items():
         ctx.store(k, v)
 

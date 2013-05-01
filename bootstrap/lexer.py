@@ -11,20 +11,24 @@ tokens = [
 ]
 
 token_map = {
-    'EQUALS':       r'=',
-    'LPAREN':       r'\(',
-    'RPAREN':       r'\)',
-    'LBRACKET':     r'\[',
-    'RBRACKET':     r']',
-    'LBRACE':       r'{',
-    'RBRACE':       r'}',
-    'COMMA':        r',',
-    'PERIOD':       r'\.',
-    'SEMICOLON':    r';',
+    'EQUALS':          r'=',
+    'EQUALS_EQUALS':   r'==',
+    'LPAREN':          r'\(',
+    'RPAREN':          r'\)',
+    'LBRACKET':        r'\[',
+    'RBRACKET':        r']',
+    'LBRACE':          r'{',
+    'RBRACE':          r'}',
+    'COMMA':           r',',
+    'PERIOD':          r'\.',
+    'SEMICOLON':       r';',
 }
 
 keywords = [
     'import',
+    'if',
+    'elif',
+    'else',
 ]
 
 for keyword in keywords:

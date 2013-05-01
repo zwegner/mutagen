@@ -1,20 +1,27 @@
 filename = 'filename'
 
 class Context:
-    def __init__(self, parent):
+    def __init__(self, name, parent):
+        self.name = name
         self.parent = parent
         self.syms = {}
     def store(self, name, value):
         self.syms[name] = value
     def load(self, name):
-        if name in self.syms:
-            return self.syms[name]
-        if not self.parent:
-            raise Exception('%s not found' % name)
-        return self.parent.load(name)
+        ctx = self
+        while ctx:
+            if name in ctx.syms:
+                return ctx.syms[name]
+            ctx = ctx.parent
+        self.print_stack()
+        raise Exception('%s not found' % name)
     def assert_true(self, expr):
         if not expr:
             raise Exception()
+    def print_stack(self):
+        if self.parent:
+            self.parent.print_stack()
+        print(self.name)
 
 class Node:
     def eval(self, ctx):
@@ -124,7 +131,7 @@ class Identifier(Node):
     def eval(self, ctx):
         return ctx.load(self.name)
     def __str__(self):
-        return '<%s>' % self.name
+        return '%s' % self.name
 
 @node('name')
 class String(Node):
@@ -134,6 +141,8 @@ class String(Node):
         if isinstance(item, Integer):
             return String(self.name[item.value])
         raise Exception()
+    def __eq__(self, other):
+        return isinstance(other, String) and self.name == other.name
 
 @node('value')
 class Integer(Node):
@@ -159,18 +168,31 @@ class List(Node):
 @node('items')
 class Object(Node):
     def eval(self, ctx):
-        return Object({k.eval(ctx): v.eval(ctx) for k, v
-            in self.items.items()})
+        return Object([[k.eval(ctx), v.eval(ctx)] for k, v
+            in self.items])
     def __str__(self):
         return '{%s}' % ', '.join('%s:%s' % (k, v) for k, v
-                in self.items.items())
+                in self.items)
+
+@node('type, &lhs, &rhs')
+class BinOp(Node):
+    def eval(self, ctx):
+        lhs = self.lhs.eval(ctx)
+        rhs = self.rhs.eval(ctx)
+        if self.type == '==':
+            return Integer(lhs == rhs)
+        raise Exception()
+    def __str__(self):
+        return '(%s %s %s)' % (self.lhs, self.type, self.rhs)
 
 @node('&obj, attr')
 class GetAttr(Node):
     def eval(self, ctx):
         # HACK: no real dictionaries
         items = self.obj.eval(ctx).items
-        item, = [v for k, v in items.items() if k.name == self.attr.name]
+        print(self.attr)
+        print([str(s) for s in items])
+        item, = [v for k, v in items if k.name == self.attr]
         return item
     def __str__(self):
         return '%s.%s' % (self.obj, self.attr)
@@ -194,6 +216,22 @@ class Assignment(Node):
     def __str__(self):
         return '%s = %s' % (self.name, self.rhs)
 
+@node('&expr, *if_stmts, *else_stmts')
+class IfElse(Node):
+    def eval(self, ctx):
+        expr = self.expr.eval(ctx)
+        block = self.if_stmts if expr else self.else_stmts
+        value = Nil()
+        for stmt in block:
+            value = stmt.eval(ctx)
+        return value
+    def __str__(self):
+        else_block = ''
+        if self.else_stmts:
+            else_block = ' else {%s}' % '\n'.join(str(s) for s in self.else_stmts)
+        if_block = '{%s}' % '\n'.join(str(s) for s in self.if_stmts)
+        return 'if %s %s%s' % (self.expr, if_block, else_block)
+
 @node('&fn, *args')
 class Call(Node):
     def eval(self, ctx):
@@ -209,7 +247,7 @@ class Function(Node):
         return self
     def eval_call(self, ctx, args):
         ret = Nil()
-        child_ctx = Context(ctx)
+        child_ctx = Context(str(self), ctx)
         for p, a in zip(self.params, args):
             child_ctx.store(p.name, a)
         for expr in self.block:
