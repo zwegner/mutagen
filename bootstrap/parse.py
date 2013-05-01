@@ -119,8 +119,8 @@ def p_ifelse(p):
         p[0] = syntax.IfElse(p[2], p[4], p[8])
 
 def p_def(p):
-    """ def : list LBRACE block RBRACE """
-    p[0] = syntax.Function(p[1], p[3])
+    """ def : DEF IDENTIFIER list LBRACE block RBRACE """
+    p[0] = syntax.Assignment(p[2], syntax.Function(p[2], p[3], p[5]))
 
 p = yacc.yacc()
 

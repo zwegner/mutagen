@@ -241,20 +241,21 @@ class Call(Node):
     def __str__(self):
         return '%s(%s)' % (self.fn, ', '.join(str(s) for s in self.args))
 
-@node('params, *block')
+@node('name, params, *block')
 class Function(Node):
     def eval(self, ctx):
         return self
     def eval_call(self, ctx, args):
         ret = Nil()
-        child_ctx = Context(str(self), ctx)
+        child_ctx = Context(self.name, ctx)
         for p, a in zip(self.params, args):
             child_ctx.store(p.name, a)
         for expr in self.block:
             ret = expr.eval(child_ctx)
         return ret
     def __str__(self):
-        return '[%s]{%s}' % (', '.join(str(s) for s in self.params), '\n'.join(str(s) for s in self.block))
+        return 'def %s[%s]{%s}' % (self.name, ', '.join(str(s)
+            for s in self.params), '\n'.join(str(s) for s in self.block))
 
 @node('name, &fn')
 class BuiltinFunction(Node):
