@@ -145,6 +145,9 @@ class String(Node):
         raise Exception()
     def __eq__(self, other):
         return Integer(isinstance(other, String) and self.name == other.name)
+    def __add__(self, other):
+        assert isinstance(other, String)
+        return String(self.name + other.name)
 
 @node('value')
 class Integer(Node):
@@ -185,6 +188,17 @@ class Object(Node):
         return '{%s}' % ', '.join('%s:%s' % (k, v) for k, v
                 in self.items)
 
+@node('&method, &self')
+class BoundMethod(Node):
+    def eval(self, ctx):
+        return self
+    def eval_call(self, ctx, args):
+        method = self.method.eval(ctx)
+        args = [self.self] + args
+        return method.eval_call(ctx, args)
+    def __str__(self):
+        return '%s.%s' % (self.self, self.method)
+
 @node('type, &lhs, &rhs')
 class BinOp(Node):
     def eval(self, ctx):
@@ -202,8 +216,14 @@ class BinOp(Node):
 class GetAttr(Node):
     def eval(self, ctx):
         # HACK: no real dictionaries
-        items = self.obj.eval(ctx).items
-        item, = [v for k, v in items if k.name == self.attr]
+        def get(obj, attr):
+            items = obj.items
+            results = [v for k, v in items if k.name == attr]
+            return results[0] if results else None
+        obj = self.obj.eval(ctx)
+        item = get(obj, self.attr)
+        if item is None:
+            item = BoundMethod(GetAttr(get(obj, '__class__'), self.attr), obj)
         return item
     def __str__(self):
         return '%s.%s' % (self.obj, self.attr)

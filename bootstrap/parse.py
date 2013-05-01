@@ -16,8 +16,8 @@ precedence = [
     ['right', 'EQUALS'],
     ['left', 'EQUALS_EQUALS'],
     ['left', 'PLUS'],
-    ['left', 'LBRACKET', 'LPAREN', 'PERIOD'],
-    ['left', 'LBRACE'],
+    ['left', 'LBRACKET', 'LPAREN', 'LBRACE'],
+    ['left', 'PERIOD'],
 ]
 
 def p_error(p):
