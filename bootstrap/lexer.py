@@ -20,6 +20,7 @@ token_map = {
     'LBRACE':          r'{',
     'RBRACE':          r'}',
     'COMMA':           r',',
+    'PLUS':            r'\+',
     'PERIOD':          r'\.',
     'SEMICOLON':       r';',
 }

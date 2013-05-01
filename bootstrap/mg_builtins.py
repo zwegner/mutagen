@@ -56,4 +56,11 @@ def mgb_reduce(ctx, args):
         start = fn.eval_call(ctx, [start, i.eval(ctx)])
     return start
 
+@mg_builtin('slice')
+def mgb_slice(ctx, args):
+    seq, start, end = args
+    if isinstance(seq, syntax.String):
+        return syntax.String(seq.name[start.value:end.value])
+    return syntax.Nil()
+
 __all__ = builtins

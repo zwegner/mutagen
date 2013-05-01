@@ -101,6 +101,8 @@ def node(argstr=''):
                 #    setattr(self, arg_name, v)
                 setattr(self, arg_name, v)
 
+            if hasattr(self, 'setup'):
+                self.setup()
             self.uses = []
 
         def iterate_subtree(self):
@@ -142,14 +144,23 @@ class String(Node):
             return String(self.name[item.value])
         raise Exception()
     def __eq__(self, other):
-        return isinstance(other, String) and self.name == other.name
+        return Integer(isinstance(other, String) and self.name == other.name)
 
 @node('value')
 class Integer(Node):
+    def setup(self):
+        self.value = int(self.value)
     def eval(self, ctx):
         return self
     def __str__(self):
         return '%s' % self.value
+    def test_truth(self):
+        return self.value != 0
+    def __eq__(self, other):
+        return Integer(isinstance(other, Integer) and self.value == other.value)
+    def __add__(self, other):
+        assert isinstance(other, Integer)
+        return Integer(self.value + other.value)
 
 @node('*items')
 class List(Node):
@@ -180,7 +191,9 @@ class BinOp(Node):
         lhs = self.lhs.eval(ctx)
         rhs = self.rhs.eval(ctx)
         if self.type == '==':
-            return Integer(lhs == rhs)
+            return lhs == rhs
+        if self.type == '+':
+            return lhs + rhs
         raise Exception()
     def __str__(self):
         return '(%s %s %s)' % (self.lhs, self.type, self.rhs)
@@ -190,8 +203,6 @@ class GetAttr(Node):
     def eval(self, ctx):
         # HACK: no real dictionaries
         items = self.obj.eval(ctx).items
-        print(self.attr)
-        print([str(s) for s in items])
         item, = [v for k, v in items if k.name == self.attr]
         return item
     def __str__(self):
@@ -219,7 +230,7 @@ class Assignment(Node):
 @node('&expr, *if_stmts, *else_stmts')
 class IfElse(Node):
     def eval(self, ctx):
-        expr = self.expr.eval(ctx)
+        expr = self.expr.eval(ctx).test_truth()
         block = self.if_stmts if expr else self.else_stmts
         value = Nil()
         for stmt in block:
@@ -260,7 +271,8 @@ class Function(Node):
 @node('name, &fn')
 class BuiltinFunction(Node):
     def eval_call(self, ctx, args):
-        return self.fn(ctx, args)
+        child_ctx = Context(self.name, ctx)
+        return self.fn(child_ctx, args)
     def __str__(self):
         return '<builtin %s>' % self.name
 
