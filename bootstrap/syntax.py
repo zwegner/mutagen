@@ -130,6 +130,10 @@ class Identifier(Node):
 class String(Node):
     def __str__(self):
         return '"%s"' % self.name
+    def __getitem__(self, item):
+        if isinstance(item, Integer):
+            return String(self.name[item.value])
+        raise Exception()
 
 @node('value')
 class Integer(Node):
@@ -146,6 +150,10 @@ class List(Node):
         return '[%s]' % ', '.join(str(s) for s in self.items)
     def __iter__(self):
         yield from self.items
+    def __getitem__(self, item):
+        if isinstance(item, Integer):
+            return self.items[item.value]
+        raise Exception()
 
 # HACK: need a dict type
 @node('items')
@@ -166,6 +174,16 @@ class GetAttr(Node):
         return item
     def __str__(self):
         return '%s.%s' % (self.obj, self.attr)
+
+@node('&obj, &item')
+class GetItem(Node):
+    def eval(self, ctx):
+        # HACK: no real dictionaries
+        obj = self.obj.eval(ctx)
+        item = self.item.eval(ctx)
+        return obj[item]
+    def __str__(self):
+        return '%s[%s]' % (self.obj, self.item)
 
 @node('name, &rhs')
 class Assignment(Node):

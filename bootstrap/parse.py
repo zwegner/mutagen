@@ -18,7 +18,7 @@ precedence = [
 ]
 
 def p_error(p):
-    print('%s(%i): %s' % (syntax.filename, p.lexer.lexer.lineno, p))
+    print('%s(%i): %s' % (syntax.filename, p.lexer.lineno, p))
     raise ParseError()
 
 class ParseError(Exception):
@@ -90,6 +90,10 @@ def p_list(p):
 def p_getattr(p):
     """ expr : expr PERIOD IDENTIFIER """
     p[0] = syntax.GetAttr(p[1], syntax.String(p[3]))
+
+def p_getitem(p):
+    """ expr : expr LBRACKET expr RBRACKET """
+    p[0] = syntax.GetItem(p[1], p[3])
 
 def p_def(p):
     """ def : list LBRACE block RBRACE """
