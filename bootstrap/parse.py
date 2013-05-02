@@ -14,6 +14,7 @@ start = 'stmt_list'
 
 precedence = [
     ['right', 'EQUALS'],
+    ['left', 'NOT'],
     ['left', 'EQUALS_EQUALS'],
     ['left', 'PLUS'],
     ['left', 'LBRACKET', 'LPAREN', 'LBRACE'],
@@ -101,11 +102,19 @@ def p_list(p):
     else:
         p[0] = syntax.List(p[2])
 
-def p_binop(p):
+def p_nil(p):
+    """ expr : NIL """
+    p[0] = syntax.Nil()
+
+def p_unary_op(p):
+    """ expr : NOT expr """
+    p[0] = syntax.UnaryOp(p[1], p[2])
+
+def p_binary_op(p):
     """ expr : expr EQUALS_EQUALS expr
              | expr PLUS expr
     """
-    p[0] = syntax.BinOp(p[2], p[1], p[3])
+    p[0] = syntax.BinaryOp(p[2], p[1], p[3])
 
 def p_getattr(p):
     """ expr : expr PERIOD IDENTIFIER """

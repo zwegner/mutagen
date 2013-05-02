@@ -32,13 +32,15 @@ token_map = {
 }
 
 keywords = [
-    'pass',
-    'import',
     'def',
-    'lambda',
-    'if',
     'elif',
     'else',
+    'if',
+    'import',
+    'lambda',
+    'Nil',
+    'not',
+    'pass',
 ]
 
 for keyword in keywords:

@@ -127,6 +127,8 @@ def node(argstr=''):
 class Nil(Node):
     def __str__(self):
         return 'Nil'
+    def test_truth(self):
+        return False
 
 @node('name')
 class Identifier(Node):
@@ -160,7 +162,10 @@ class Integer(Node):
     def test_truth(self):
         return self.value != 0
     def __eq__(self, other):
-        return Integer(isinstance(other, Integer) and self.value == other.value)
+        return Integer(isinstance(other, Integer) and
+                self.value == other.value)
+    def __not__(self):
+        return Integer(self.value == 0)
     def __add__(self, other):
         assert isinstance(other, Integer)
         return Integer(self.value + other.value)
@@ -202,8 +207,18 @@ class BoundMethod(Node):
     def __str__(self):
         return '%s.%s' % (self.self, self.method)
 
+@node('type, &rhs')
+class UnaryOp(Node):
+    def eval(self, ctx):
+        rhs = self.rhs.eval(ctx)
+        if self.type == 'not':
+            return rhs.__not__()
+        raise Exception()
+    def __str__(self):
+        return '(%s %s)' % (self.type, self.rhs)
+
 @node('type, &lhs, &rhs')
-class BinOp(Node):
+class BinaryOp(Node):
     def eval(self, ctx):
         lhs = self.lhs.eval(ctx)
         rhs = self.rhs.eval(ctx)
