@@ -27,6 +27,7 @@ token_map = {
     'COMMA':           r',',
     'PLUS':            r'\+',
     'PERIOD':          r'\.',
+    'COLON':           r':',
     'SEMICOLON':       r';',
 }
 

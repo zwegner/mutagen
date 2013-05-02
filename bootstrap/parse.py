@@ -48,8 +48,8 @@ def p_pass(p):
     p[0] = []
 
 def p_block(p):
-    """ block : delim INDENT stmt_list DEDENT """
-    p[0] = p[3]
+    """ block : COLON delim INDENT stmt_list DEDENT """
+    p[0] = p[4]
 
 def p_delim(p):
     """ delim : NEWLINE
