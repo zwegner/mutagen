@@ -21,7 +21,7 @@ precedence = [
 ]
 
 def p_error(p):
-    print('%s(%i): %s' % (syntax.filename, p.lexer.lexer.lineno, p))
+    print('%s(%i): %s' % (syntax.filename, p.lexer.lineno, p))
     raise ParseError()
 
 class ParseError(Exception):
@@ -112,14 +112,29 @@ def p_assignment(p):
     """ expr : IDENTIFIER EQUALS expr """
     p[0] = syntax.Assignment(p[1], p[3])
 
+def p_if(p):
+    """ expr : IF expr LBRACE block RBRACE """
+    p[0] = syntax.IfElse(p[2], p[4], [])
+
 def p_ifelse(p):
-    """ expr : IF expr LBRACE block RBRACE ELSE LBRACE block RBRACE
-             | IF expr LBRACE block RBRACE
+    """ expr : IF expr LBRACE block RBRACE elif_stmt
+             | IF expr LBRACE block RBRACE else_stmt
     """
-    if len(p) == 6:
-        p[0] = syntax.IfElse(p[2], p[4], [])
-    else:
-        p[0] = syntax.IfElse(p[2], p[4], p[8])
+    p[0] = syntax.IfElse(p[2], p[4], p[6])
+
+def p_elif(p):
+    """ elif_stmt : ELIF expr LBRACE block RBRACE """
+    p[0] = [syntax.IfElse(p[2], p[4], [])]
+
+def p_elif_2(p):
+    """ elif_stmt : ELIF expr LBRACE block RBRACE elif_stmt
+                  | ELIF expr LBRACE block RBRACE else_stmt
+    """
+    p[0] = [syntax.IfElse(p[2], p[4], p[6])]
+
+def p_else(p):
+    """ else_stmt : ELSE LBRACE block RBRACE """
+    p[0] = p[3]
 
 def p_def(p):
     """ def : DEF IDENTIFIER list LBRACE block RBRACE """
@@ -129,14 +144,14 @@ def p_lambda(p):
     """ def : LAMBDA list LBRACE block RBRACE """
     p[0] = syntax.Function('lambda', p[2], p[4])
 
-p = yacc.yacc()
+parser = yacc.yacc()
 
 def parse(path):
     dirname = os.path.dirname(path)
     if not dirname:
         dirname = '.'
     with open(path) as f:
-        block = p.parse(input=f.read(), lexer=lexer.get_lexer())
+        block = parser.parse(input=f.read(), lexer=lexer.get_lexer())
     # Recursively parse imports
     # XXX Currently doesn't check for infinite recursion, and 
     # imports everything into the same namespace
