@@ -10,7 +10,7 @@ import mg_builtins
 
 from lexer import tokens
 
-start = 'block'
+start = 'stmt_list'
 
 precedence = [
     ['right', 'EQUALS'],
@@ -21,33 +21,39 @@ precedence = [
 ]
 
 def p_error(p):
-    print('%s(%i): %s' % (syntax.filename, p.lexer.lexer.lineno, p))
+    # WHY IS THIS HAPPENING
+    l = p.lexer
+    if hasattr(l, 'lexer'):
+        l = l.lexer
+    print('%s(%i): %s' % (syntax.filename, l.lineno, p))
     raise ParseError()
 
 class ParseError(Exception):
     pass
 
-def p_block_1(p):
-    """ block : stmt """
+def p_stmt_list(p):
+    """ stmt_list : expr """
+    p[0] = [p[1]]
+
+def p_stmt_list_2(p):
+    """ stmt_list : stmt_list expr """
+    p[0] = p[1] + [p[2]]
+
+def p_stmt_list_3(p):
+    """ stmt_list : stmt_list delim """
+    p[0] = p[1]
+
+def p_pass(p):
+    """ stmt_list : PASS """
     p[0] = []
-    if p[1] is not None:
-        p[0] += [p[1]]
 
-def p_block_3(p):
-    """ block : block stmt """
-    p[0] = p[1]
-    if p[2] is not None:
-        p[0] += [p[2]]
+def p_block(p):
+    """ block : delim INDENT stmt_list DEDENT """
+    p[0] = p[3]
 
-def p_statement(p):
-    """ stmt : expr NEWLINE
-             | expr SEMICOLON
-    """
-    p[0] = p[1]
-
-def p_statement_2(p):
-    """ stmt : NEWLINE
-             | SEMICOLON
+def p_delim(p):
+    """ delim : NEWLINE
+              | SEMICOLON
     """
     p[0] = None
 
@@ -118,28 +124,28 @@ def p_assignment(p):
     p[0] = syntax.Assignment(p[1], p[3])
 
 def p_if(p):
-    """ expr : IF expr LBRACE block RBRACE """
-    p[0] = syntax.IfElse(p[2], p[4], [])
+    """ expr : IF expr block """
+    p[0] = syntax.IfElse(p[2], p[3], [])
 
 def p_ifelse(p):
-    """ expr : IF expr LBRACE block RBRACE elif_stmt
-             | IF expr LBRACE block RBRACE else_stmt
+    """ expr : IF expr block elif_stmt
+             | IF expr block else_stmt
     """
-    p[0] = syntax.IfElse(p[2], p[4], p[6])
+    p[0] = syntax.IfElse(p[2], p[3], p[4])
 
 def p_elif(p):
-    """ elif_stmt : ELIF expr LBRACE block RBRACE """
-    p[0] = [syntax.IfElse(p[2], p[4], [])]
+    """ elif_stmt : ELIF expr block """
+    p[0] = [syntax.IfElse(p[2], p[3], [])]
 
 def p_elif_2(p):
-    """ elif_stmt : ELIF expr LBRACE block RBRACE elif_stmt
-                  | ELIF expr LBRACE block RBRACE else_stmt
+    """ elif_stmt : ELIF expr block elif_stmt
+                  | ELIF expr block else_stmt
     """
-    p[0] = [syntax.IfElse(p[2], p[4], p[6])]
+    p[0] = [syntax.IfElse(p[2], p[3], p[4])]
 
 def p_else(p):
-    """ else_stmt : ELSE LBRACE block RBRACE """
-    p[0] = p[3]
+    """ else_stmt : ELSE block """
+    p[0] = p[2]
 
 def p_arg_list(p):
     """ arg_list : IDENTIFIER
@@ -158,12 +164,12 @@ def p_args(p):
         p[0] = p[2]
 
 def p_def(p):
-    """ def : DEF IDENTIFIER args LBRACE block RBRACE """
-    p[0] = syntax.Assignment(p[2], syntax.Function(p[2], p[3], p[5]))
+    """ def : DEF IDENTIFIER args block """
+    p[0] = syntax.Assignment(p[2], syntax.Function(p[2], p[3], p[4]))
 
 def p_lambda(p):
-    """ def : LAMBDA args LBRACE block RBRACE """
-    p[0] = syntax.Function('lambda', p[2], p[4])
+    """ def : LAMBDA args block """
+    p[0] = syntax.Function('lambda', p[2], p[3])
 
 parser = yacc.yacc()
 

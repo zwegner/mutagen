@@ -4,6 +4,9 @@ class LexError(Exception):
     pass
 
 tokens = [
+    'WHITESPACE',
+    'INDENT',
+    'DEDENT',
     'NEWLINE',
     'IDENTIFIER',
     'STRING',
@@ -26,6 +29,7 @@ token_map = {
 }
 
 keywords = [
+    'pass',
     'import',
     'def',
     'lambda',
@@ -78,7 +82,11 @@ def t_INTEGER(t):
     t.value = int(t.value, 0)
     return t
 
-t_ignore = " \t\r"
+t_ignore = "\r"
+
+def t_WHITESPACE(t):
+    r'[ \t]+'
+    return t
 
 def t_NEWLINE(t):
     r'\n'
@@ -90,15 +98,69 @@ def t_COMMENT(t):
     pass
 
 def t_error(t):
-    print('%s(%i): %s' % (syntax.filename, t.lineno, t))
-    raise LexError()
+    raise LexError('%s(%i): %s' % (syntax.filename, t.lineno, t))
 
-def gen_tokens(l):
+class Token:
+    def __init__(self, type, value):
+        self.type = type
+        self.value = value
+    def __str__(self):
+        return 'Token(%s, \'%s\')' % (self.type, self.value)
+
+def process_whitespace(tokens):
+    after_newline = True
+    ws_stack = [0]
+    tokens = iter(tokens)
     while True:
-        t = l.token()
-        if t is None:
+        try:
+            t = next(tokens)
+        except StopIteration:
             break
-        yield t
+
+        # Check whitespace only at the beginning of lines
+        if after_newline:
+            if t.type == 'WHITESPACE':
+                spaces = len(t.value.replace('\t', ' '*4))
+
+                # HACKISH: don't generate indent/dedent on empty lines
+                try:
+                    next_token = next(tokens)
+
+                    if next_token.type == 'NEWLINE':
+                        yield next_token
+                        continue
+                    assert next_token.type != 'WHITESPACE'
+                except StopIteration:
+                    yield t
+                    break
+
+            # Got a token at the beginning of the line
+            elif t.type != 'NEWLINE':
+                spaces = 0
+                next_token = t
+            else:
+                yield t
+                continue
+
+            # Check the indent level against the stack
+            if spaces > ws_stack[-1]:
+                ws_stack.append(spaces)
+                yield Token('INDENT', '')
+            else:
+                while spaces < ws_stack[-1]:
+                    ws_stack.pop()
+                    yield Token('DEDENT', '')
+                if spaces != ws_stack[-1]:
+                    raise LexError('%s(%i): unindent level does not match any previous indent' % (syntax.filename, t.lineno))
+
+            # After generating indent/dedent, yield the lookahead token
+            yield next_token
+
+        # Not after a newline--ignore whitespace
+        elif t.type != 'WHITESPACE':
+            yield t
+
+        after_newline = t.type == 'NEWLINE'
 
 def process_newlines(tokens):
     braces = brackets = parens = 0
@@ -123,11 +185,20 @@ class Lexer:
 
     def input(self, input):
         self.lexer.input(input)
-        self.stream = process_newlines(gen_tokens(self.lexer))
+        self.stream = process_whitespace(process_newlines(
+            self.gen_tokens()))
+
+    def gen_tokens(self):
+        while True:
+            t = self.lexer.token()
+            if t is None:
+                break
+            yield t
 
     def token(self):
         try:
-            return next(self.stream)
+            t = next(self.stream)
+            return t
         except StopIteration:
             return None
 
