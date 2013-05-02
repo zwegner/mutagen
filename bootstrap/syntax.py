@@ -281,6 +281,19 @@ class IfElse(Node):
         if_block = '{%s}' % '\n'.join(str(s) for s in self.if_stmts)
         return 'if %s %s%s' % (self.expr, if_block, else_block)
 
+@node('iter, &expr, *body')
+class For(Node):
+    def eval(self, ctx):
+        expr = self.expr.eval(ctx)
+        for i in expr:
+            ctx.store(self.iter, i)
+            for stmt in self.body:
+                stmt.eval(ctx)
+        return Nil()
+    def __str__(self):
+        body = '{%s}' % '\n'.join(str(s) for s in self.body)
+        return 'for %s in %s:\n %s' % (self.iter, self.expr, body)
+
 @node('&fn, *args')
 class Call(Node):
     def eval(self, ctx):

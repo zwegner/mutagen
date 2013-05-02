@@ -156,6 +156,10 @@ def p_else(p):
     """ else_stmt : ELSE block """
     p[0] = p[2]
 
+def p_for(p):
+    """ expr : FOR IDENTIFIER IN expr block """
+    p[0] = syntax.For(p[2], p[4], p[5])
+
 def p_arg_list(p):
     """ arg_list : IDENTIFIER
                  | arg_list COMMA IDENTIFIER
