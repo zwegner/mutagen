@@ -177,6 +177,9 @@ class List(Node):
         if isinstance(item, Integer):
             return self.items[item.value]
         raise Exception()
+    def __add__(self, other):
+        assert isinstance(other, List)
+        return List(self.items + other.items)
 
 # HACK: need a dict type
 @node('items')
@@ -280,7 +283,7 @@ class Function(Node):
         ret = Nil()
         child_ctx = Context(self.name, ctx)
         for p, a in zip(self.params, args):
-            child_ctx.store(p.name, a)
+            child_ctx.store(p, a)
         for expr in self.block:
             ret = expr.eval(child_ctx)
         return ret

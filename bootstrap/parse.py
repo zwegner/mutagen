@@ -21,7 +21,7 @@ precedence = [
 ]
 
 def p_error(p):
-    print('%s(%i): %s' % (syntax.filename, p.lexer.lineno, p))
+    print('%s(%i): %s' % (syntax.filename, p.lexer.lexer.lineno, p))
     raise ParseError()
 
 class ParseError(Exception):
@@ -87,8 +87,13 @@ def p_integer(p):
     p[0] = syntax.Integer(p[1])
 
 def p_list(p):
-    """ list : LBRACKET expr_list RBRACKET """
-    p[0] = syntax.List(p[2])
+    """ list : LBRACKET expr_list RBRACKET
+             | LBRACKET RBRACKET
+    """
+    if len(p) == 3:
+        p[0] = syntax.List([])
+    else:
+        p[0] = syntax.List(p[2])
 
 def p_binop(p):
     """ expr : expr EQUALS_EQUALS expr
@@ -136,12 +141,28 @@ def p_else(p):
     """ else_stmt : ELSE LBRACE block RBRACE """
     p[0] = p[3]
 
+def p_arg_list(p):
+    """ arg_list : IDENTIFIER
+                 | arg_list COMMA IDENTIFIER
+    """
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1] + [p[3]]
+
+def p_args(p):
+    """ args : LPAREN arg_list RPAREN """
+    if len(p) == 3:
+        p[0] = []
+    else:
+        p[0] = p[2]
+
 def p_def(p):
-    """ def : DEF IDENTIFIER list LBRACE block RBRACE """
+    """ def : DEF IDENTIFIER args LBRACE block RBRACE """
     p[0] = syntax.Assignment(p[2], syntax.Function(p[2], p[3], p[5]))
 
 def p_lambda(p):
-    """ def : LAMBDA list LBRACE block RBRACE """
+    """ def : LAMBDA args LBRACE block RBRACE """
     p[0] = syntax.Function('lambda', p[2], p[4])
 
 parser = yacc.yacc()
