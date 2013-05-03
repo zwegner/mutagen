@@ -21,32 +21,26 @@ def mgb_putchar(ctx, args):
     sys.stdout.write(args[0].value)
     return syntax.Nil()
 
-@mg_builtin('print')
-def mgb_print(ctx, args):
-    sys.stdout.write(args[0].value + '\n')
-    return syntax.Nil()
-
 @mg_builtin('len')
 def mgb_len(ctx, args):
     return syntax.Integer(len(args[0]))
 
+@mg_builtin('repr')
+def mgb_repr(ctx, args):
+    arg, = args
+    return syntax.String(str(arg.eval(ctx)))
+
 @mg_builtin('str')
 def mgb_str(ctx, args):
     arg, = args
-    return syntax.String(str(arg.eval(ctx)))
+    arg = arg.eval(ctx)
+    if isinstance(arg, syntax.String):
+        return arg
+    return syntax.String(str(arg))
 
 @mg_builtin('make')
 def mgb_make(ctx, args):
     return syntax.Object(args)
-
-@mg_builtin('map')
-def mgb_map(ctx, args):
-    fn, iter = args
-    fn = fn.eval(ctx)
-    l = []
-    for i in iter:
-        l += [fn.eval_call(ctx, [i.eval(ctx)])]
-    return syntax.List(l)
 
 @mg_builtin('reduce')
 def mgb_reduce(ctx, args):
