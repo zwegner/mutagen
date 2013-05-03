@@ -15,7 +15,7 @@ start = 'stmt_list'
 precedence = [
     ['right', 'EQUALS'],
     ['left', 'NOT'],
-    ['left', 'EQUALS_EQUALS', 'GREATER', 'GREATER_EQUALS', 'LESS', 'LESS_EQUALS'],
+    ['left', 'EQUALS_EQUALS', 'NOT_EQUALS', 'GREATER', 'GREATER_EQUALS', 'LESS', 'LESS_EQUALS'],
     ['left', 'PLUS'],
     ['left', 'LBRACKET', 'LPAREN', 'LBRACE'],
     ['left', 'PERIOD'],
@@ -112,6 +112,7 @@ def p_unary_op(p):
 
 def p_binary_op(p):
     """ expr : expr EQUALS_EQUALS expr
+             | expr NOT_EQUALS expr
              | expr GREATER expr
              | expr GREATER_EQUALS expr
              | expr LESS expr

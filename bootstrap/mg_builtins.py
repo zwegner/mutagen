@@ -18,12 +18,12 @@ def mgb_getchar(ctx, args):
 
 @mg_builtin('putchar')
 def mgb_putchar(ctx, args):
-    sys.stdout.write(args[0].name)
+    sys.stdout.write(args[0].value)
     return syntax.Nil()
 
 @mg_builtin('print')
 def mgb_print(ctx, args):
-    sys.stdout.write(args[0].name + '\n')
+    sys.stdout.write(args[0].value + '\n')
     return syntax.Nil()
 
 @mg_builtin('len')
@@ -60,7 +60,7 @@ def mgb_reduce(ctx, args):
 def mgb_slice(ctx, args):
     seq, start, end = args
     if isinstance(seq, syntax.String):
-        return syntax.String(seq.name[start.value:end.value])
+        return syntax.String(seq.value[start.value:end.value])
     return syntax.Nil()
 
 __all__ = builtins

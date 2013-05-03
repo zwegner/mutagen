@@ -74,7 +74,7 @@ arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
 # op -> normal attribute
 # &expr -> edge attribute, will create an Edge object (used for linking to other Nodes)
 # *explist -> python list of edges
-def node(argstr=''):
+def node(argstr='', compare=False):
     args = [a.strip() for a in argstr.split(',') if a.strip()]
     new_args = []
     for a in args:
@@ -115,6 +115,34 @@ def node(argstr=''):
                     for edge in getattr(self, arg_name):
                         yield from edge().iterate_subtree()
 
+        # If the compare flag is set, we defer the comparison to the
+        # Python object in the value attribute
+        if compare:
+            def __eq__(self, other):
+                return Integer(isinstance(other, type(self)) and
+                        self.value == other.value)
+            def __ne__(self, other):
+                return Integer(not isinstance(other, type(self)) or
+                        self.value != other.value)
+            def __ge__(self, other):
+                assert isinstance(other, Integer)
+                return Integer(self.value >= other.value)
+            def __gt__(self, other):
+                assert isinstance(other, Integer)
+                return Integer(self.value > other.value)
+            def __le__(self, other):
+                assert isinstance(other, Integer)
+                return Integer(self.value <= other.value)
+            def __lt__(self, other):
+                assert isinstance(other, Integer)
+                return Integer(self.value < other.value)
+            node.__eq__ = __eq__
+            node.__ne__ = __ne__
+            node.__ge__ = __ge__
+            node.__gt__ = __gt__
+            node.__le__ = __le__
+            node.__lt__ = __lt__
+
         node.__init__ = __init__
         node.iterate_subtree = iterate_subtree
         node.is_atom = atom
@@ -137,39 +165,21 @@ class Identifier(Node):
     def __str__(self):
         return '%s' % self.name
 
-@node('name')
+@node('value', compare=True)
 class String(Node):
     def __str__(self):
-        return '"%s"' % self.name
+        return '"%s"' % self.value
     def __getitem__(self, item):
         if isinstance(item, Integer):
-            return String(self.name[item.value])
+            return String(self.value[item.value])
         raise Exception()
-
-    def __eq__(self, other):
-        return Integer(isinstance(other, String) and self.name == other.name)
-    def __ne__(self, other):
-        return Integer(not isinstance(other, String) or self.name != other.name)
-    def __ge__(self, other):
-        assert isinstance(other, String)
-        return Integer(self.name.__ge__(other.name))
-    def __gt__(self, other):
-        assert isinstance(other, String)
-        return Integer(self.name.__gt__(other.name))
-    def __le__(self, other):
-        assert isinstance(other, String)
-        return Integer(self.name.__le__(other.name))
-    def __lt__(self, other):
-        assert isinstance(other, String)
-        return Integer(self.name.__lt__(other.name))
-
     def __add__(self, other):
         assert isinstance(other, String)
-        return String(self.name + other.name)
+        return String(self.value + other.value)
     def __len__(self):
-        return len(self.name)
+        return len(self.value)
 
-@node('value')
+@node('value', compare=True)
 class Integer(Node):
     def setup(self):
         self.value = int(self.value)
@@ -179,26 +189,6 @@ class Integer(Node):
         return '%s' % self.value
     def test_truth(self):
         return self.value != 0
-
-    def __eq__(self, other):
-        return Integer(isinstance(other, Integer) and
-                self.value == other.value)
-    def __ne__(self, other):
-        return Integer(not isinstance(other, Integer) or
-                self.value != other.value)
-    def __ge__(self, other):
-        assert isinstance(other, Integer)
-        return Integer(self.value.__ge__(other.value))
-    def __gt__(self, other):
-        assert isinstance(other, Integer)
-        return Integer(self.value.__gt__(other.value))
-    def __le__(self, other):
-        assert isinstance(other, Integer)
-        return Integer(self.value.__le__(other.value))
-    def __lt__(self, other):
-        assert isinstance(other, Integer)
-        return Integer(self.value.__lt__(other.value))
-
     def __not__(self):
         return Integer(self.value == 0)
     def __add__(self, other):
@@ -262,6 +252,7 @@ class BinaryOp(Node):
         # This is a bit of an abuse of Python operator overloading! Oh well...
         operator = {
             '==': 'eq',
+            '!=': 'ne',
             '>':  'gt',
             '>=': 'ge',
             '<':  'lt',
@@ -278,7 +269,7 @@ class GetAttr(Node):
         # HACK: no real dictionaries
         def get(obj, attr):
             items = obj.items
-            results = [v for k, v in items if k.name == attr]
+            results = [v for k, v in items if k.value == attr]
             return results[0] if results else None
         obj = self.obj.eval(ctx)
         item = get(obj, self.attr)
