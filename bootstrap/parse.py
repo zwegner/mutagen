@@ -49,8 +49,13 @@ def p_pass(p):
     p[0] = []
 
 def p_block(p):
-    """ block : COLON delim INDENT stmt_list DEDENT """
-    p[0] = p[4]
+    """ block : COLON delim INDENT stmt_list DEDENT
+              | LBRACE stmt_list RBRACE
+    """
+    if len(p) == 4:
+        p[0] = p[2]
+    else:
+        p[0] = p[4]
 
 def p_delim(p):
     """ delim : NEWLINE
