@@ -10,6 +10,8 @@ import mg_builtins
 
 from lexer import tokens
 
+root_dir = os.path.dirname(sys.path[0])
+
 start = 'stmt_list'
 
 precedence = [
@@ -197,7 +199,7 @@ def p_lambda(p):
 
 parser = yacc.yacc()
 
-def parse(path):
+def parse(path, import_builtins=True):
     dirname = os.path.dirname(path)
     if not dirname:
         dirname = '.'
@@ -207,6 +209,9 @@ def parse(path):
     # XXX Currently doesn't check for infinite recursion, and 
     # imports everything into the same namespace
     new_block = []
+    if import_builtins:
+        module = parse('%s/builtins.mg' % root_dir, import_builtins=False)
+        new_block.extend(module)
     for expr in block:
         if isinstance(expr, syntax.Import):
             module = parse('%s/%s.mg' % (dirname, expr.name))
