@@ -27,10 +27,7 @@ def p_error(p):
     if hasattr(l, 'lexer'):
         l = l.lexer
     print('%s(%i): %s' % (syntax.filename, l.lineno, p))
-    raise ParseError()
-
-class ParseError(Exception):
-    pass
+    sys.exit(1)
 
 def p_stmt_list(p):
     """ stmt_list : expr """

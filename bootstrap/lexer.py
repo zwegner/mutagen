@@ -4,9 +4,6 @@ import ply.lex as lex
 
 import syntax
 
-class LexError(Exception):
-    pass
-
 tokens = [
     'WHITESPACE',
     'INDENT',
@@ -113,7 +110,8 @@ def t_COMMENT(t):
     pass
 
 def t_error(t):
-    raise LexError('%s(%i): %s' % (syntax.filename, t.lineno, t))
+    print('s(%i): %s' % (syntax.filename, t.lineno, t))
+    sys.exit(1)
 
 class Token:
     def __init__(self, type, value):
