@@ -155,14 +155,12 @@ def process_whitespace(tokens):
 
         after_newline = token.type == 'NEWLINE'
 
-    yield None
-
 def process_indentation(tokens):
     ws_stack = [0]
     for t in tokens:
         # Whitespace has been processed, so this token is at the beginning
         # of a non-empty line
-        if t and t.type == 'WHITESPACE':
+        if t.type == 'WHITESPACE':
             spaces = len(t.value.replace('\t', ' '*4))
 
             # Check the indent level against the stack
@@ -179,6 +177,13 @@ def process_indentation(tokens):
                         'any previous indent' % (syntax.filename, t.lineno))
         else:
             yield t
+
+    # Make sure we have enough indents at EOF
+    while len(ws_stack) > 1:
+        ws_stack.pop()
+        yield Token('DEDENT', '')
+
+    yield None
 
 class Lexer:
     def __init__(self):
