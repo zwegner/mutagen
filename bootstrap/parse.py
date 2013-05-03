@@ -160,6 +160,10 @@ def p_for(p):
     """ expr : FOR IDENTIFIER IN expr block """
     p[0] = syntax.For(p[2], p[4], p[5])
 
+def p_while(p):
+    """ expr : WHILE expr block """
+    p[0] = syntax.While(p[2], p[3])
+
 def p_arg_list(p):
     """ arg_list : IDENTIFIER
                  | arg_list COMMA IDENTIFIER

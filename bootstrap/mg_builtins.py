@@ -28,7 +28,7 @@ def mgb_print(ctx, args):
 
 @mg_builtin('len')
 def mgb_len(ctx, args):
-    return syntax.Integer(len(args[0].name))
+    return syntax.Integer(len(args[0]))
 
 @mg_builtin('str')
 def mgb_str(ctx, args):

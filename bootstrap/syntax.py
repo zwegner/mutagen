@@ -150,6 +150,8 @@ class String(Node):
     def __add__(self, other):
         assert isinstance(other, String)
         return String(self.name + other.name)
+    def __len__(self):
+        return len(self.name)
 
 @node('value')
 class Integer(Node):
@@ -185,6 +187,8 @@ class List(Node):
     def __add__(self, other):
         assert isinstance(other, List)
         return List(self.items + other.items)
+    def __len__(self):
+        return len(self.items)
 
 # HACK: need a dict type
 @node('items')
@@ -293,6 +297,17 @@ class For(Node):
     def __str__(self):
         body = '{%s}' % '\n'.join(str(s) for s in self.body)
         return 'for %s in %s:\n %s' % (self.iter, self.expr, body)
+
+@node('&expr, *body')
+class While(Node):
+    def eval(self, ctx):
+        while self.expr.eval(ctx).test_truth():
+            for stmt in self.body:
+                stmt.eval(ctx)
+        return Nil()
+    def __str__(self):
+        body = '{%s}' % '\n'.join(str(s) for s in self.body)
+        return 'while %s:\n %s' % (self.expr, body)
 
 @node('&fn, *args')
 class Call(Node):

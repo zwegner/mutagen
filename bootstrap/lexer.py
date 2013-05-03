@@ -2,6 +2,8 @@ import itertools
 
 import ply.lex as lex
 
+import syntax
+
 class LexError(Exception):
     pass
 
@@ -43,6 +45,7 @@ keywords = [
     'Nil',
     'not',
     'pass',
+    'while',
 ]
 
 for keyword in keywords:
