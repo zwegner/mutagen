@@ -18,18 +18,23 @@ tokens = [
 ]
 
 token_map = {
+    'COLON':           r':',
+    'COMMA':           r',',
     'EQUALS':          r'=',
     'EQUALS_EQUALS':   r'==',
-    'LPAREN':          r'\(',
-    'RPAREN':          r'\)',
-    'LBRACKET':        r'\[',
-    'RBRACKET':        r']',
+    'GREATER':         r'>',
+    'GREATER_EQUALS':  r'>=',
     'LBRACE':          r'{',
-    'RBRACE':          r'}',
-    'COMMA':           r',',
-    'PLUS':            r'\+',
+    'LBRACKET':        r'\[',
+    'LESS':            r'<',
+    'LESS_EQUALS':     r'<=',
+    'LPAREN':          r'\(',
+    'NOT_EQUALS':      r'!=',
     'PERIOD':          r'\.',
-    'COLON':           r':',
+    'PLUS':            r'\+',
+    'RBRACE':          r'}',
+    'RBRACKET':        r']',
+    'RPAREN':          r'\)',
     'SEMICOLON':       r';',
 }
 

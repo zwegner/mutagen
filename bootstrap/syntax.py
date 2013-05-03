@@ -145,8 +145,24 @@ class String(Node):
         if isinstance(item, Integer):
             return String(self.name[item.value])
         raise Exception()
+
     def __eq__(self, other):
         return Integer(isinstance(other, String) and self.name == other.name)
+    def __ne__(self, other):
+        return Integer(not isinstance(other, String) or self.name != other.name)
+    def __ge__(self, other):
+        assert isinstance(other, String)
+        return Integer(self.name.__ge__(other.name))
+    def __gt__(self, other):
+        assert isinstance(other, String)
+        return Integer(self.name.__gt__(other.name))
+    def __le__(self, other):
+        assert isinstance(other, String)
+        return Integer(self.name.__le__(other.name))
+    def __lt__(self, other):
+        assert isinstance(other, String)
+        return Integer(self.name.__lt__(other.name))
+
     def __add__(self, other):
         assert isinstance(other, String)
         return String(self.name + other.name)
@@ -163,9 +179,26 @@ class Integer(Node):
         return '%s' % self.value
     def test_truth(self):
         return self.value != 0
+
     def __eq__(self, other):
         return Integer(isinstance(other, Integer) and
                 self.value == other.value)
+    def __ne__(self, other):
+        return Integer(not isinstance(other, Integer) or
+                self.value != other.value)
+    def __ge__(self, other):
+        assert isinstance(other, Integer)
+        return Integer(self.value.__ge__(other.value))
+    def __gt__(self, other):
+        assert isinstance(other, Integer)
+        return Integer(self.value.__gt__(other.value))
+    def __le__(self, other):
+        assert isinstance(other, Integer)
+        return Integer(self.value.__le__(other.value))
+    def __lt__(self, other):
+        assert isinstance(other, Integer)
+        return Integer(self.value.__lt__(other.value))
+
     def __not__(self):
         return Integer(self.value == 0)
     def __add__(self, other):
@@ -226,11 +259,16 @@ class BinaryOp(Node):
     def eval(self, ctx):
         lhs = self.lhs.eval(ctx)
         rhs = self.rhs.eval(ctx)
-        if self.type == '==':
-            return lhs == rhs
-        if self.type == '+':
-            return lhs + rhs
-        raise Exception()
+        # This is a bit of an abuse of Python operator overloading! Oh well...
+        operator = {
+            '==': 'eq',
+            '>':  'gt',
+            '>=': 'ge',
+            '<':  'lt',
+            '<=': 'le',
+            '+':  'add',
+        }[self.type]
+        return getattr(lhs, '__%s__' % operator)(rhs)
     def __str__(self):
         return '(%s %s %s)' % (self.lhs, self.type, self.rhs)
 
