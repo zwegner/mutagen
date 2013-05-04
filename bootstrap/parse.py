@@ -200,6 +200,7 @@ def p_lambda(p):
 parser = yacc.yacc()
 
 def parse(path, import_builtins=True):
+    syntax.filename = path
     dirname = os.path.dirname(path)
     if not dirname:
         dirname = '.'

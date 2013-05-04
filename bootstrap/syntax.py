@@ -99,6 +99,13 @@ def node(argstr='', compare=False):
                 #    setattr(self, arg_name, [Edge(item) for item in v])
                 #else:
                 #    setattr(self, arg_name, v)
+                #if arg_type == ARG_EDGE:
+                #    assert isinstance(v, Node)
+                #elif arg_type == ARG_EDGE_LIST:
+                #    for i in v:
+                #        assert isinstance(i, Node)
+                #else:
+                #    assert not isinstance(v, Node)
                 setattr(self, arg_name, v)
 
             if hasattr(self, 'setup'):
@@ -110,10 +117,10 @@ def node(argstr='', compare=False):
             for (arg_type, arg_name) in args:
                 if arg_type == ARG_EDGE:
                     edge = getattr(self, arg_name)
-                    yield from edge().iterate_subtree()
-                elif arg_type in {ARG_EDGE_LIST, ARG_BLOCK}:
+                    yield from edge.iterate_subtree()
+                elif arg_type == ARG_EDGE_LIST:
                     for edge in getattr(self, arg_name):
-                        yield from edge().iterate_subtree()
+                        yield from edge.iterate_subtree()
 
         # If the compare flag is set, we defer the comparison to the
         # Python object in the value attribute
@@ -214,10 +221,10 @@ class List(Node):
         return len(self.items)
 
 # HACK: need a dict type
-@node('items')
+@node('*items')
 class Object(Node):
     def eval(self, ctx):
-        return Object([[k.eval(ctx), v.eval(ctx)] for k, v
+        return Object([List([k.eval(ctx), v.eval(ctx)]) for k, v
             in self.items])
     def __str__(self):
         return '{%s}' % ', '.join('%s:%s' % (k, v) for k, v
@@ -363,7 +370,7 @@ class Function(Node):
         return 'def %s[%s]{%s}' % (self.name, ', '.join(str(s)
             for s in self.params), '\n'.join(str(s) for s in self.block))
 
-@node('name, &fn')
+@node('name, fn')
 class BuiltinFunction(Node):
     def eval_call(self, ctx, args):
         child_ctx = Context(self.name, ctx)
