@@ -135,16 +135,16 @@ def node(argstr='', compare=False):
                 return Integer(not isinstance(other, type(self)) or
                         self.value != other.value)
             def __ge__(self, other):
-                assert isinstance(other, Integer)
+                assert isinstance(other, type(self))
                 return Integer(self.value >= other.value)
             def __gt__(self, other):
-                assert isinstance(other, Integer)
+                assert isinstance(other, type(self))
                 return Integer(self.value > other.value)
             def __le__(self, other):
-                assert isinstance(other, Integer)
+                assert isinstance(other, type(self))
                 return Integer(self.value <= other.value)
             def __lt__(self, other):
-                assert isinstance(other, Integer)
+                assert isinstance(other, type(self))
                 return Integer(self.value < other.value)
             node.__eq__ = __eq__
             node.__ne__ = __ne__
@@ -261,6 +261,17 @@ class UnaryOp(Node):
 class BinaryOp(Node):
     def eval(self, ctx):
         lhs = self.lhs.eval(ctx)
+        # Check for short-circuiting bool ops. Ideally since we're purely
+        # functional this doesn't matter, but builtins and other things
+        # have side effects at the moment.
+        if self.type in {'and', 'or'}:
+            test = lhs.test_truth()
+            if self.type == 'or':
+                test = not test
+            if test:
+                return self.rhs.eval(ctx)
+            return lhs
+
         rhs = self.rhs.eval(ctx)
         # This is a bit of an abuse of Python operator overloading! Oh well...
         operator = {

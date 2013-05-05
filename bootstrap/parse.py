@@ -16,6 +16,8 @@ start = 'stmt_list'
 
 precedence = [
     ['right', 'EQUALS'],
+    ['left', 'OR'],
+    ['left', 'AND'],
     ['left', 'NOT'],
     ['left', 'EQUALS_EQUALS', 'NOT_EQUALS', 'GREATER', 'GREATER_EQUALS', 'LESS', 'LESS_EQUALS'],
     ['left', 'PLUS'],
@@ -127,6 +129,8 @@ def p_binary_op(p):
              | expr LESS expr
              | expr LESS_EQUALS expr
              | expr PLUS expr
+             | expr AND expr
+             | expr OR expr
     """
     p[0] = syntax.BinaryOp(p[2], p[1], p[3])
 

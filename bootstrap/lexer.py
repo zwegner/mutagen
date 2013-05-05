@@ -38,6 +38,7 @@ token_map = {
 
 keywords = [
     'Nil',
+    'and',
     'def',
     'elif',
     'else',
@@ -48,6 +49,7 @@ keywords = [
     'in',
     'lambda',
     'not',
+    'or',
     'pass',
     'while',
 ]
