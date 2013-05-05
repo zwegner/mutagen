@@ -143,8 +143,13 @@ def p_getitem(p):
     p[0] = syntax.GetItem(p[1], p[3])
 
 def p_call(p):
-    """ expr : expr LPAREN expr_list RPAREN """
-    p[0] = syntax.Call(p[1], p[3])
+    """ expr : expr LPAREN expr_list RPAREN
+             | expr LPAREN RPAREN
+    """
+    if len(p) == 4:
+        p[0] = syntax.Call(p[1], [])
+    else:
+        p[0] = syntax.Call(p[1], p[3])
 
 def p_assignment(p):
     """ expr : IDENTIFIER EQUALS expr """
@@ -192,7 +197,9 @@ def p_arg_list(p):
         p[0] = p[1] + [p[3]]
 
 def p_args(p):
-    """ args : LPAREN arg_list RPAREN """
+    """ args : LPAREN arg_list RPAREN
+             | LPAREN RPAREN
+    """
     if len(p) == 3:
         p[0] = []
     else:
