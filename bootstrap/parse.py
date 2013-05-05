@@ -204,7 +204,17 @@ def p_lambda(p):
 
 parser = yacc.yacc()
 
+module_cache = {}
+
 def parse(path, import_builtins=True):
+    # Check if we've parsed this before. We do a check for recursive imports here too.
+    if path in module_cache:
+        if module_cache[path] is None:
+            assert False
+        # Be sure and return a duplicate of the list...
+        return module_cache[path][:]
+    module_cache[path] = None
+
     syntax.filename = path
     dirname = os.path.dirname(path)
     if not dirname:
@@ -220,14 +230,13 @@ def parse(path, import_builtins=True):
         new_block.append(syntax.Assignment(k, v))
 
     # Recursively parse imports
-    # XXX Currently doesn't check for infinite recursion, and 
-    # imports everything into the same namespace
     for expr in block:
         if isinstance(expr, syntax.Import):
             stmts = parse('%s/%s.mg' % (dirname, expr.module))
             expr.stmts = stmts
     new_block.extend(block)
 
+    module_cache[path] = new_block
     return new_block
 
 def interpret(path):
