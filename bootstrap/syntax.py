@@ -23,6 +23,9 @@ class Context:
             self.parent.print_stack()
         print(self.name)
 
+class ModuleContext(Context):
+    pass
+
 class Node:
     def eval(self, ctx):
         return self
@@ -229,6 +232,9 @@ class Object(Node):
     def __str__(self):
         return '{%s}' % ', '.join('%s:%s' % (k, v) for k, v
                 in self.items)
+    def get_attr(self, attr):
+        results = [v for k, v in self.items if k.value == attr]
+        return results[0] if results else None
 
 @node('&method, &self')
 class BoundMethod(Node):
@@ -273,15 +279,10 @@ class BinaryOp(Node):
 @node('&obj, attr')
 class GetAttr(Node):
     def eval(self, ctx):
-        # HACK: no real dictionaries
-        def get(obj, attr):
-            items = obj.items
-            results = [v for k, v in items if k.value == attr]
-            return results[0] if results else None
         obj = self.obj.eval(ctx)
-        item = get(obj, self.attr)
+        item = obj.get_attr(self.attr)
         if item is None:
-            item = BoundMethod(GetAttr(get(obj, '__class__'), self.attr), obj)
+            item = BoundMethod(GetAttr(obj.get_attr('__class__'), self.attr), obj)
         return item
     def __str__(self):
         return '%s.%s' % (self.obj, self.attr)
@@ -381,6 +382,14 @@ class BuiltinFunction(Node):
 @node('name')
 class Import(Node):
     def eval(self, ctx):
-        raise Exception()
+        # Preload Python-defined builtins
+        child_ctx = ModuleContext(self.name, ctx)
+        for expr in self.module:
+            expr.eval(child_ctx)
+        obj = Object([List([String(k), v.eval(ctx)]) for k, v
+            in child_ctx.syms.items()])
+        ctx.store(self.name, obj)
+        return Nil()
+
     def __str__(self):
         return 'import %s' % self.name

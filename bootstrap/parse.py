@@ -206,19 +206,22 @@ def parse(path, import_builtins=True):
         dirname = '.'
     with open(path) as f:
         block = parser.parse(input=f.read(), lexer=lexer.get_lexer())
+    new_block = []
+
+    if import_builtins:
+        new_block = parse('%s/builtins.mg' % root_dir, import_builtins=False)
+
+    for k, v in mg_builtins.builtins.items():
+        new_block.append(syntax.Assignment(k, v))
+
     # Recursively parse imports
     # XXX Currently doesn't check for infinite recursion, and 
     # imports everything into the same namespace
-    new_block = []
-    if import_builtins:
-        module = parse('%s/builtins.mg' % root_dir, import_builtins=False)
-        new_block.extend(module)
     for expr in block:
         if isinstance(expr, syntax.Import):
             module = parse('%s/%s.mg' % (dirname, expr.name))
-            new_block.extend(module)
-        else:
-            new_block.append(expr)
+            expr.module = module
+    new_block.extend(block)
 
     return new_block
 
