@@ -179,6 +179,9 @@ class Identifier(Node):
 class String(Node):
     def __str__(self):
         return '"%s"' % self.value
+    def __iter__(self):
+        for v in self.value:
+            yield String(v)
     def __getitem__(self, item):
         if isinstance(item, Integer):
             return String(self.value[item.value])
