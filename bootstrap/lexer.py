@@ -70,7 +70,7 @@ str_escapes = {
 
 def t_IDENTIFIER(t):
     r'[a-zA-Z_][a-zA-Z0-9_]*'
-    if t.value.upper() in tokens:
+    if t.value in keywords:
         t.type = t.value.upper()
     return t
 
@@ -114,7 +114,7 @@ def t_COMMENT(t):
     pass
 
 def t_error(t):
-    print('s(%i): %s' % (syntax.filename, t.lineno, t))
+    print('%s(%s): %s' % (syntax.filename, t.lineno, t))
     sys.exit(1)
 
 class Token:
