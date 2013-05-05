@@ -379,16 +379,21 @@ class BuiltinFunction(Node):
     def __str__(self):
         return '<builtin %s>' % self.name
 
-@node('name')
+@node('module, names')
 class Import(Node):
     def eval(self, ctx):
         # Preload Python-defined builtins
-        child_ctx = ModuleContext(self.name, ctx)
-        for expr in self.module:
+        child_ctx = ModuleContext(self.module, ctx)
+        for expr in self.stmts:
             expr.eval(child_ctx)
-        obj = Object([List([String(k), v.eval(ctx)]) for k, v
-            in child_ctx.syms.items()])
-        ctx.store(self.name, obj)
+        if self.names is None:
+            obj = Object([List([String(k), v.eval(ctx)]) for k, v
+                in child_ctx.syms.items()])
+            ctx.store(self.module, obj)
+        else:
+            for k, v in child_ctx.syms.items():
+                if self.names == [] or k in self.names:
+                    ctx.store(k, v.eval(ctx))
         return Nil()
 
     def __str__(self):

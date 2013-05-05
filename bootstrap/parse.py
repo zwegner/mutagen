@@ -63,8 +63,13 @@ def p_delim(p):
     p[0] = None
 
 def p_import(p):
-    """ expr : IMPORT IDENTIFIER """
-    p[0] = syntax.Import(p[2])
+    """ expr : IMPORT IDENTIFIER
+             | FROM IDENTIFIER IMPORT STAR
+    """
+    if len(p) == 3:
+        p[0] = syntax.Import(p[2], None)
+    else:
+        p[0] = syntax.Import(p[2], [])
 
 def p_expr_list(p):
     """ expr_list : expr
@@ -219,8 +224,8 @@ def parse(path, import_builtins=True):
     # imports everything into the same namespace
     for expr in block:
         if isinstance(expr, syntax.Import):
-            module = parse('%s/%s.mg' % (dirname, expr.name))
-            expr.module = module
+            stmts = parse('%s/%s.mg' % (dirname, expr.module))
+            expr.stmts = stmts
     new_block.extend(block)
 
     return new_block

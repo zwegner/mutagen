@@ -33,18 +33,20 @@ token_map = {
     'RBRACKET':        r']',
     'RPAREN':          r'\)',
     'SEMICOLON':       r';',
+    'STAR':            r'\*',
 }
 
 keywords = [
+    'Nil',
     'def',
     'elif',
     'else',
     'for',
+    'from',
     'if',
-    'in',
     'import',
+    'in',
     'lambda',
-    'Nil',
     'not',
     'pass',
     'while',
