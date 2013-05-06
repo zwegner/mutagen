@@ -393,6 +393,32 @@ class BuiltinFunction(Node):
     def __str__(self):
         return '<builtin %s>' % self.name
 
+@node('name, *block')
+class Class(Node):
+    def eval(self, ctx):
+        child_ctx = Context(self.name, ctx)
+        for expr in self.block:
+            ret = expr.eval(child_ctx)
+        cls = Object([List([String(k), v.eval(ctx)]) for k, v
+            in child_ctx.syms.items()])
+        self.cls = cls
+        ctx.store(self.name, cls)
+        return self
+    def eval_call(self, ctx, args):
+        init = self.cls.get_attr('__init__')
+        if init is None:
+            attrs = []
+        else:
+            obj = init.eval_call(ctx, args)
+            attrs = obj.items
+        # Add __class__ attribute
+        attrs += [List([String('__class__'), self])]
+        return Object(attrs)
+    def __str__(self):
+        return '<class %s>' % self.name
+    def get_attr(self, attr):
+        return self.cls.get_attr(attr)
+
 @node('module, names')
 class Import(Node):
     def eval(self, ctx):

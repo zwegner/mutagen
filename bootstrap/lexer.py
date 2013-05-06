@@ -39,6 +39,7 @@ token_map = {
 keywords = [
     'Nil',
     'and',
+    'class',
     'def',
     'elif',
     'else',

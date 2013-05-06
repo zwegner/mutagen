@@ -83,9 +83,10 @@ def p_stmt(p):
              | import
              | if_stmt
              | assn
-             | def_stmt
              | for_stmt
              | while_stmt
+             | def_stmt
+             | class_stmt
     """
     p[0] = p[1]
 
@@ -237,6 +238,10 @@ def p_def(p):
 def p_lambda(p):
     """ lambda : LAMBDA args block """
     p[0] = syntax.Function('lambda', p[2], p[3])
+
+def p_class(p):
+    """ class_stmt : CLASS IDENTIFIER block """
+    p[0] = syntax.Assignment(p[2], syntax.Class(p[2], p[3]))
 
 parser = yacc.yacc()
 
