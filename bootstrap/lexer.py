@@ -67,6 +67,7 @@ str_escapes = {
     'n': '\n',
     't': '\t',
     'b': '\b',
+    '\\': '\\',
 }
 
 def t_IDENTIFIER(t):
