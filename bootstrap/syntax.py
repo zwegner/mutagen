@@ -161,6 +161,10 @@ def node(argstr='', compare=False):
 
     return attach
 
+def block_str(block):
+    return ':\n    %s' % (
+        '\n    '.join(str(s) for s in block))
+
 @node()
 class Nil(Node):
     def __str__(self):
@@ -334,9 +338,8 @@ class IfElse(Node):
     def __str__(self):
         else_block = ''
         if self.else_stmts:
-            else_block = ' else {%s}' % '\n'.join(str(s) for s in self.else_stmts)
-        if_block = '{%s}' % '\n'.join(str(s) for s in self.if_stmts)
-        return 'if %s %s%s' % (self.expr, if_block, else_block)
+            else_block = 'else:%s' % block_str(self.else_stmts)
+        return 'if %s%s%s' % (self.expr, block_str(self.if_stmts), else_block)
 
 @node('iter, &expr, *body')
 class For(Node):
@@ -348,8 +351,7 @@ class For(Node):
                 stmt.eval(ctx)
         return Nil()
     def __str__(self):
-        body = '{%s}' % '\n'.join(str(s) for s in self.body)
-        return 'for %s in %s:\n %s' % (self.iter, self.expr, body)
+        return 'for %s in %s%s' % (self.iter, self.expr, block_str(self.body))
 
 @node('&expr, *body')
 class While(Node):
@@ -359,8 +361,7 @@ class While(Node):
                 stmt.eval(ctx)
         return Nil()
     def __str__(self):
-        body = '{%s}' % '\n'.join(str(s) for s in self.body)
-        return 'while %s:\n %s' % (self.expr, body)
+        return 'while %s%s' % (self.expr, block_str(self.body))
 
 @node('&fn, *args')
 class Call(Node):
@@ -384,8 +385,8 @@ class Function(Node):
             ret = expr.eval(child_ctx)
         return ret
     def __str__(self):
-        return 'def %s[%s]{%s}' % (self.name, ', '.join(str(s)
-            for s in self.params), '\n'.join(str(s) for s in self.block))
+        return 'def %s(%s)%s' % (self.name, ', '.join(str(s)
+            for s in self.params), block_str(self.block))
 
 @node('name, fn')
 class BuiltinFunction(Node):
@@ -437,4 +438,7 @@ class Import(Node):
         return Nil()
 
     def __str__(self):
+        if self.names is not None:
+            names = '*' if not self.names else ', '.join(self.names)
+            return 'from %s import %s' % (self.module, names)
         return 'import %s' % self.module
