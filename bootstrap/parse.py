@@ -73,9 +73,9 @@ def p_import(p):
                | FROM IDENTIFIER IMPORT STAR
     """
     if len(p) == 3:
-        p[0] = syntax.Import(p[2], None)
+        p[0] = syntax.Import(p[2], None, False)
     else:
-        p[0] = syntax.Import(p[2], [])
+        p[0] = syntax.Import(p[2], [], False)
 
 def p_stmt(p):
     """ stmt : expr delim
@@ -233,39 +233,44 @@ def p_args(p):
 
 def p_def(p):
     """ def_stmt : DEF IDENTIFIER args block """
-    p[0] = syntax.Assignment(p[2], syntax.Function(p[2], p[3], p[4]))
+    p[0] = syntax.Assignment(p[2], syntax.Function(current_ctx, p[2], p[3], p[4]))
 
 def p_lambda(p):
     """ lambda : LAMBDA args block """
-    p[0] = syntax.Function('lambda', p[2], p[3])
+    p[0] = syntax.Function(current_ctx, 'lambda', p[2], p[3])
 
 def p_class(p):
     """ class_stmt : CLASS IDENTIFIER block """
-    p[0] = syntax.Assignment(p[2], syntax.Class(p[2], p[3]))
+    p[0] = syntax.Assignment(p[2], syntax.Class(current_ctx, p[2], p[3]))
 
 parser = yacc.yacc()
 
 module_cache = {}
+current_ctx = None
 
-def parse(path, import_builtins=True):
+def parse(path, import_builtins=True, ctx=None):
+    global current_ctx
     # Check if we've parsed this before. We do a check for recursive imports here too.
     if path in module_cache:
         if module_cache[path] is None:
             assert False
-        # Be sure and return a duplicate of the list...
-        return module_cache[path][:]
+        return module_cache[path]
     module_cache[path] = None
 
+    # Parse the file
+    current_ctx = ctx
     syntax.filename = path
     dirname = os.path.dirname(path)
     if not dirname:
         dirname = '.'
     with open(path) as f:
         block = parser.parse(input=f.read(), lexer=lexer.get_lexer())
-    new_block = []
 
+    # Do some post-processing, starting with adding builtins
     if import_builtins:
-        new_block = parse('%s/builtins.mg' % root_dir, import_builtins=False)
+        block = [syntax.Import('builtins', [], True)] + block
+
+    new_block = []
 
     for k, v in mg_builtins.builtins.items():
         new_block.append(syntax.Assignment(k, v))
@@ -273,20 +278,24 @@ def parse(path, import_builtins=True):
     # Recursively parse imports
     for expr in block:
         if isinstance(expr, syntax.Import):
-            stmts = parse('%s/%s.mg' % (dirname, expr.module))
+            if expr.is_builtins:
+                path = '%s/builtins.mg' % root_dir
+            else:
+                path = '%s/%s.mg' % (dirname, expr.module)
+            module_ctx = syntax.Context(expr.module, None)
+            stmts = parse(path, import_builtins=not expr.is_builtins,
+                    ctx=module_ctx)
+            expr.ctx = module_ctx
             expr.stmts = stmts
     new_block.extend(block)
 
-    module_cache[path] = new_block
+    # Be sure and return a duplicate of the list...
+    module_cache[path] = new_block[:]
     return new_block
 
 def interpret(path):
-    block = parse(path)
-
-    ctx = syntax.Context('<global>', None)
-    for k, v in mg_builtins.builtins.items():
-        ctx.store(k, v)
-
+    ctx = syntax.Context('__main__', None)
+    block = parse(path, ctx=ctx)
     for expr in block:
         expr.eval(ctx)
 

@@ -23,9 +23,6 @@ class Context:
             self.parent.print_stack()
         print(self.name)
 
-class ModuleContext(Context):
-    pass
-
 class Node:
     def eval(self, ctx):
         return self
@@ -369,13 +366,13 @@ class Call(Node):
     def __str__(self):
         return '%s(%s)' % (self.fn, ', '.join(str(s) for s in self.args))
 
-@node('name, params, *block')
+@node('ctx, name, params, *block')
 class Function(Node):
     def eval(self, ctx):
         return self
     def eval_call(self, ctx, args):
         ret = Nil()
-        child_ctx = Context(self.name, ctx)
+        child_ctx = Context(self.name, self.ctx)
         for p, a in zip(self.params, args):
             child_ctx.store(p, a)
         for expr in self.block:
@@ -388,15 +385,15 @@ class Function(Node):
 @node('name, fn')
 class BuiltinFunction(Node):
     def eval_call(self, ctx, args):
-        child_ctx = Context(self.name, ctx)
+        child_ctx = Context(self.name, None)
         return self.fn(child_ctx, args)
     def __str__(self):
         return '<builtin %s>' % self.name
 
-@node('name, *block')
+@node('ctx, name, *block')
 class Class(Node):
     def eval(self, ctx):
-        child_ctx = Context(self.name, ctx)
+        child_ctx = Context(self.name, self.ctx)
         for expr in self.block:
             ret = expr.eval(child_ctx)
         cls = Object([List([String(k), v.eval(ctx)]) for k, v
@@ -419,22 +416,20 @@ class Class(Node):
     def get_attr(self, attr):
         return self.cls.get_attr(attr)
 
-@node('module, names')
+@node('module, names, is_builtins')
 class Import(Node):
     def eval(self, ctx):
-        # Preload Python-defined builtins
-        child_ctx = ModuleContext(self.module, ctx)
         for expr in self.stmts:
-            expr.eval(child_ctx)
+            expr.eval(self.ctx)
         if self.names is None:
             obj = Object([List([String(k), v.eval(ctx)]) for k, v
-                in child_ctx.syms.items()])
+                in self.ctx.syms.items()])
             ctx.store(self.module, obj)
         else:
-            for k, v in child_ctx.syms.items():
+            for k, v in self.ctx.syms.items():
                 if self.names == [] or k in self.names:
                     ctx.store(k, v.eval(ctx))
         return Nil()
 
     def __str__(self):
-        return 'import %s' % self.name
+        return 'import %s' % self.module
