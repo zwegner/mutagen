@@ -122,8 +122,9 @@ def node(argstr='', compare=False):
     return attach
 
 def block_str(block):
-    return ':\n    %s' % (
-        '\n    '.join(str(s) for s in block))
+    block = [str(s) for s in block]
+    block = ['\n    '.join(s for s in b.splitlines()) for b in block]
+    return ':\n    %s' % ('\n    '.join(block))
 
 @node()
 class Nil(Node):
@@ -298,7 +299,7 @@ class IfElse(Node):
     def __str__(self):
         else_block = ''
         if self.else_stmts:
-            else_block = 'else:%s' % block_str(self.else_stmts)
+            else_block = '\nelse%s' % block_str(self.else_stmts)
         return 'if %s%s%s' % (self.expr, block_str(self.if_stmts), else_block)
 
 @node('iter, &expr, *body')
