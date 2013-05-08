@@ -45,29 +45,6 @@ class Node:
     def __repr__(self):
         return str(self)
 
-# Edge class represents the use of a Node by another. This allows us to use
-# value forwarding and such. It is used like so:
-#
-# self.expr = Edge(expr) # done implicitly by each class' constructor
-# value = self.expr()
-# self.expr.set(new_value)
-class Edge:
-    def __init__(self, value):
-        self.value = value
-        value.add_use(self)
-
-    def __call__(self):
-        return self.value
-
-    def set(self, value):
-        self.value.remove_use(self)
-        self.value = value
-        value.add_use(self)
-
-    def __str__(self):
-        print(self.value)
-        assert False
-
 ARG_REG, ARG_EDGE, ARG_EDGE_LIST = list(range(3))
 arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
 
@@ -75,7 +52,7 @@ arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
 # to Node subclasses. We use these notations:
 # op, &expr, *explist
 # op -> normal attribute
-# &expr -> edge attribute, will create an Edge object (used for linking to other Nodes)
+# &expr -> edge attribute, used for linking to other Nodes
 # *explist -> python list of edges
 def node(argstr='', compare=False):
     args = [a.strip() for a in argstr.split(',') if a.strip()]
@@ -87,8 +64,6 @@ def node(argstr='', compare=False):
             new_args.append((ARG_REG, a))
     args = new_args
 
-    atom = not any(a[0] != ARG_REG for a in args)
-
     # Decorators must return a function. This adds __init__ and some other methods
     # to a Node subclass
     def attach(node):
@@ -96,19 +71,6 @@ def node(argstr='', compare=False):
             assert len(iargs) == len(args), 'bad args, expected %s(%s)' % (node.__name__, argstr)
 
             for (arg_type, arg_name), v in zip(args, iargs):
-                #if arg_type == ARG_EDGE:
-                #    setattr(self, arg_name, Edge(v) if v is not None else None)
-                #elif arg_type == ARG_EDGE_LIST:
-                #    setattr(self, arg_name, [Edge(item) for item in v])
-                #else:
-                #    setattr(self, arg_name, v)
-                #if arg_type == ARG_EDGE:
-                #    assert isinstance(v, Node)
-                #elif arg_type == ARG_EDGE_LIST:
-                #    for i in v:
-                #        assert isinstance(i, Node)
-                #else:
-                #    assert not isinstance(v, Node)
                 setattr(self, arg_name, v)
 
             if hasattr(self, 'setup'):
@@ -155,8 +117,6 @@ def node(argstr='', compare=False):
 
         node.__init__ = __init__
         node.iterate_subtree = iterate_subtree
-        node.is_atom = atom
-
         return node
 
     return attach
