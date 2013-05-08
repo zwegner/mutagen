@@ -7,4 +7,4 @@ def map(fn, list):
     reduce(reducer, [fn, []], list)[1]
 
 def print(args):
-    putchar(repr(args) + '\n')
+    putchar(str(args) + '\n')

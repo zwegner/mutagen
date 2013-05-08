@@ -42,6 +42,9 @@ class Node:
     def __str__(self):
         assert False
 
+    def __repr__(self):
+        return str(self)
+
 # Edge class represents the use of a Node by another. This allows us to use
 # value forwarding and such. It is used like so:
 #
@@ -175,6 +178,8 @@ class Identifier(Node):
 @node('value', compare=True)
 class String(Node):
     def __str__(self):
+        return '%s' % self.value
+    def __repr__(self):
         return '"%s"' % self.value
     def __iter__(self):
         for v in self.value:
@@ -210,7 +215,7 @@ class List(Node):
     def eval(self, ctx):
         return List([i.eval(ctx) for i in self.items])
     def __str__(self):
-        return '[%s]' % ', '.join(str(s) for s in self.items)
+        return '[%s]' % ', '.join(repr(s) for s in self.items)
     def __iter__(self):
         yield from self.items
     def __getitem__(self, item):
