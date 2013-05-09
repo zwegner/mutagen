@@ -63,13 +63,6 @@ for token, regex in token_map.items():
     tokens += [token]
     globals()['t_%s' % token] = regex
 
-str_escapes = {
-    'n': '\n',
-    't': '\t',
-    'b': '\b',
-    '\\': '\\',
-}
-
 def t_IDENTIFIER(t):
     r'[a-zA-Z_][a-zA-Z0-9_]*'
     if t.value in keywords:
@@ -87,9 +80,9 @@ def t_STRING(t):
             break
         if c == '\\':
             c = next(i)
-            if c not in str_escapes:
+            if c not in syntax.str_escapes:
                 raise LexError()
-            string += str_escapes[c]
+            string += syntax.str_escapes[c]
         else:
             string += c
     t.value = string
