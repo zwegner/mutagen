@@ -3151,7 +3151,7 @@ def yacc(method='LALR', debug=yaccdebug, module=None, tabmodule=tab_module, star
         debuglog.info("Unused terminals:")
         debuglog.info("")
         for term in unused_terminals:
-            errorlog.warning("Token '%s' defined, but not used", term)
+            debuglog.warning("Token '%s' defined, but not used", term)
             debuglog.info("    %s", term)
 
     # Print out all productions to the debug log
@@ -3168,14 +3168,14 @@ def yacc(method='LALR', debug=yaccdebug, module=None, tabmodule=tab_module, star
         errorlog.warning("%s:%d: Rule '%s' defined, but not used", prod.file, prod.line, prod.name)
 
     if len(unused_terminals) == 1:
-        errorlog.warning("There is 1 unused token")
+        debuglog.warning("There is 1 unused token")
     if len(unused_terminals) > 1:
-        errorlog.warning("There are %d unused tokens", len(unused_terminals))
+        debuglog.warning("There are %d unused tokens", len(unused_terminals))
 
     if len(unused_rules) == 1:
-        errorlog.warning("There is 1 unused rule")
+        debuglog.warning("There is 1 unused rule")
     if len(unused_rules) > 1:
-        errorlog.warning("There are %d unused rules", len(unused_rules))
+        debuglog.warning("There are %d unused rules", len(unused_rules))
 
     if debug:
         debuglog.info("")
