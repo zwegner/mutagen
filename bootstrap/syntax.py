@@ -47,9 +47,12 @@ class Node:
             edge.value = new_value
             new_value.add_use(edge)
 
+    def __eq__(self, other):
+        assert False
+    def __ne__(self, other):
+        assert False
     def __str__(self):
         return repr(self)
-
     def __repr__(self):
         assert False
 
@@ -138,6 +141,10 @@ def block_str(block):
 class Nil(Node):
     def __repr__(self):
         return 'Nil'
+    def __eq__(self, other):
+        return Integer(isinstance(other, Nil))
+    def __ne__(self, other):
+        return Integer(not isinstance(other, Nil))
     def test_truth(self):
         return False
 

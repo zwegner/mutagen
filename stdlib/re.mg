@@ -68,8 +68,8 @@ class MatchAlt:
 
 # Repetition: match as many times as possible
 class MatchRep:
-    def __init__(r):
-        make(['regex', r])
+    def __init__(r, min):
+        make(['regex', r], ['min', min])
 
     def match(self, s):
         l = 0
@@ -77,7 +77,6 @@ class MatchRep:
         while r[0] != 0:
             l = l + r[1]
             r = self.regex.match(slice(s, l, len(s)))
-        0
         [1, l]
 
 # Null regex: matches nothing.
@@ -86,7 +85,7 @@ class MatchNull:
         [1, 0]
 
 def parse(string):
-    result = MatchNull()
+    result = Nil
     c = 0
     while c < len(string):
         if string[c] == '\\':
@@ -120,6 +119,10 @@ def parse(string):
             current_match = MatchOpt(inv, opts)
         else:
             current_match = MatchChar(string[c])
-        result = MatchSeq(result, current_match)
+        # HACK: only lhs dispatch for equality for now
+        if Nil == result:
+            result = current_match
+        else:
+            result = MatchSeq(result, current_match)
         c = c + 1
     result
