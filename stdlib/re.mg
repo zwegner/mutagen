@@ -25,9 +25,10 @@ class MatchOpt:
         r = 0
         for m in self.matches:
             match = m.match(s)
-            if (match[0] and not self.inv) or (
-                    not match[0] and self.inv):
+            if match[0]:
                 r = 1
+        if self.inv:
+            r = not r
         [r, 1]
 
 # Range: match a character that's in a range

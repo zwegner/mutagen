@@ -9,6 +9,7 @@ python = 'python3'
 
 passes = fails = 0
 
+# Python tests: python/mutagen should produce the same output in each case.
 py_tests = ['regex']
 py_test_dir = 'tests'
 
@@ -24,8 +25,8 @@ for test in py_tests:
     if py_output != mg_output:
         fails += 1
         print('TEST %s FAILED!' % test)
-        print('python output:\n%s' % py_output)
-        print('mutagen output:\n%s' % mg_output)
+        print('python output:\n%s' % py_output.decode('utf-8'))
+        print('mutagen output:\n%s' % mg_output.decode('utf-8'))
     else:
         passes += 1
 
