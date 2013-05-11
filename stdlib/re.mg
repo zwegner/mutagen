@@ -28,7 +28,7 @@ class MatchOpt:
             if match[0]:
                 r = 1
         if self.inv:
-            r = not r
+            r = not r and len(s) > 0
         [r, 1]
 
 # Range: match a character that's in a range
@@ -51,7 +51,7 @@ class MatchSeq:
         r = self.left.match(s)
         if r[0]:
             l = r[1]
-            r = self.right.match(slice(s, r[1], len(s)))
+            r = self.right.match(slice(s, l, len(s)))
             r = [r[0], l+r[1]]
         r
 
@@ -73,11 +73,13 @@ class MatchRep:
 
     def match(self, s):
         l = 0
+        count = 0
         r = self.regex.match(s)
         while r[0] != 0:
+            count = count + 1
             l = l + r[1]
             r = self.regex.match(slice(s, l, len(s)))
-        [1, l]
+        [count >= self.min, l]
 
 # Null regex: matches nothing.
 class MatchNull:
@@ -85,7 +87,7 @@ class MatchNull:
         [1, 0]
 
 def parse(string):
-    result = Nil
+    result = MatchNull()
     c = 0
     while c < len(string):
         if string[c] == '\\':
@@ -93,6 +95,19 @@ def parse(string):
             current_match = MatchChar(string[c])
         elif string[c] == '.':
             current_match = MatchAny()
+        # Parse */+
+        elif string[c] == '*' or string[c] == '+':
+            0 # HACK: need to fix parser
+            # HACK: assume we came after a valid regex element.
+            # We don't have real error reporting, so just act like its a seq.
+            # This is just icky regardless.
+            last_match = result.right
+            result = result.left
+            if string[c] == '*':
+                min = 0
+            else:
+                min = 1
+            current_match = MatchRep(last_match, min)
         # Parse option
         elif string[c] == '[':
             c = c + 1
@@ -119,10 +134,6 @@ def parse(string):
             current_match = MatchOpt(inv, opts)
         else:
             current_match = MatchChar(string[c])
-        # HACK: only lhs dispatch for equality for now
-        if Nil == result:
-            result = current_match
-        else:
-            result = MatchSeq(result, current_match)
+        result = MatchSeq(result, current_match)
         c = c + 1
     result
