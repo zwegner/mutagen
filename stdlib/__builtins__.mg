@@ -8,3 +8,14 @@ def map(fn, list):
 
 def print(args):
     putchar(str(args) + '\n')
+
+def str_split_lines(text):
+    c = 0
+    r = []
+    while c < len(text):
+        start = c
+        while c < len(text) and text[c] != '\n':
+            c = c + 1
+        r = r + [slice(text, start, c)]
+        c = c + 1
+    r
