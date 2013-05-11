@@ -133,6 +133,7 @@ def p_integer(p):
 
 def p_list(p):
     """ list : LBRACKET expr_list RBRACKET
+             | LBRACKET expr_list COMMA RBRACKET
              | LBRACKET RBRACKET
     """
     if len(p) == 3:

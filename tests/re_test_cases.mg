@@ -1,2 +1,17 @@
-regexes = ['[a-z]', '[b-z]', '[A-Z]', '[^a-b]', '[^b-z]', '[a-z]b']
-inputs = ['ba', 'bbb', 'bab', 'bca', 'bba', 'aa', 'b']
+regexes = [
+    '[A-Z]',
+    '[^a-b]',
+    '[^b-z]',
+    '[a-z]',
+    '[a-z]b',
+    '[b-z]',
+]
+inputs = [
+    'aa',
+    'b',
+    'ba',
+    'bab',
+    'bba',
+    'bbb',
+    'bca',
+]
