@@ -6,7 +6,7 @@ str_escapes = {
     'b': '\b',
     '\\': '\\',
 }
-inv_str_escapes = {v: k for k, v in str_escapes.items()}
+inv_str_escapes = {v: '\\%s' % k for k, v in str_escapes.items()}
 
 class Context:
     def __init__(self, name, parent):
@@ -169,7 +169,7 @@ class String(Node):
             value = value.replace('"', '\\"')
         else:
             quote = '\''
-        return '"%s"' % self.value
+        return '"%s"' % value
     def __iter__(self):
         for v in self.value:
             yield String(v)

@@ -8,6 +8,9 @@ def t_identifier(t):
             r = Token(k, t.value)
     r
 
+def t_integer(t):
+    Token(t.type, parse_int(t.value, 0))
+
 token_map = [
     ['COLON',           ':'],
     ['COMMA',           ','],
@@ -28,8 +31,9 @@ token_map = [
     ['RPAREN',          '\\)'],
     ['SEMICOLON',       ';'],
     ['STAR',            '\\*'],
-    ['WHITESPACE',      ' '],
+    ['WHITESPACE',      '[ \t]+'],
     ['IDENTIFIER',      '[a-zA-Z_][a-zA-Z0-9_]*', t_identifier],
+    ['INTEGER',         '(0x[0-9a-fA-F]*)|([0-9]+)', t_integer],
 ]
 
 keywords = [
@@ -78,7 +82,7 @@ for token in token_map:
     token_matchers = token_matchers + [TokenMatcher(type,
         re.parse(regex), token_fn)]
 
-def lex_input(input):
+def tokenize_input(input):
     r = []
     # HACK: manually split up lines
     for i in str_split_lines(input):
@@ -97,4 +101,5 @@ def lex_input(input):
             i = slice(i, best_match[1], len(i))
             token = best_token.fn(Token(best_token.name, match))
             r = r + [token]
+        r = r + [Token('NEWLINE', '\n')]
     r

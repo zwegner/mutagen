@@ -255,7 +255,7 @@ def parse(path, import_builtins=True, ctx=None):
     # Check if we've parsed this before. We do a check for recursive imports here too.
     if path in module_cache:
         if module_cache[path] is None:
-            assert False
+            raise Exception('recursive import detected for %s' % path)
         return module_cache[path]
     module_cache[path] = None
 

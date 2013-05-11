@@ -33,10 +33,7 @@ def mgb_repr(ctx, args):
 @mg_builtin('str')
 def mgb_str(ctx, args):
     arg, = args
-    arg = arg.eval(ctx)
-    if isinstance(arg, syntax.String):
-        return arg
-    return syntax.String(str(arg))
+    return syntax.String(str(arg.eval(ctx)))
 
 @mg_builtin('make')
 def mgb_make(ctx, args):
@@ -56,5 +53,10 @@ def mgb_slice(ctx, args):
     if isinstance(seq, syntax.String):
         return syntax.String(seq.value[start.value:end.value])
     return syntax.Nil()
+
+@mg_builtin('parse_int')
+def mgb_parse_int(ctx, args):
+    int_str, base = args
+    return Integer(int(int_str, base))
 
 __all__ = builtins
