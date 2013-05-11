@@ -11,6 +11,7 @@ import mg_builtins
 from lexer import tokens
 
 root_dir = os.path.dirname(sys.path[0])
+stdlib_dir = '%s/stdlib' % root_dir
 
 start = 'stmt_list'
 
@@ -279,9 +280,17 @@ def parse(path, import_builtins=True, ctx=None):
     for expr in block:
         if isinstance(expr, syntax.Import):
             if expr.is_builtins:
-                path = '%s/builtins.mg' % root_dir
+                path = '%s/__builtins__.mg' % stdlib_dir
             else:
-                path = '%s/%s.mg' % (dirname, expr.module)
+                # Normal import: find the file first in
+                # the current directory, then stdlib
+                for cd in [dirname, stdlib_dir]:
+                    path = '%s/%s.mg' % (cd, expr.module)
+                    if os.path.isfile(path):
+                        break
+                else:
+                    raise Exception('could not find import in path: %s' % expr.module)
+
             module_ctx = syntax.Context(expr.module, None)
             stmts = parse(path, import_builtins=not expr.is_builtins,
                     ctx=module_ctx)
