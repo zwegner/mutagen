@@ -244,7 +244,7 @@ def p_class(p):
     """ class_stmt : CLASS IDENTIFIER block """
     p[0] = syntax.Assignment(p[2], syntax.Class(current_ctx, p[2], p[3]))
 
-parser = yacc.yacc()
+parser = yacc.yacc(write_tables=0, debug=0)
 
 module_cache = {}
 current_ctx = None
