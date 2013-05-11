@@ -1,4 +1,5 @@
 import itertools
+import sys
 
 import ply.lex as lex
 
@@ -81,7 +82,7 @@ def t_STRING(t):
         if c == '\\':
             c = next(i)
             if c not in syntax.str_escapes:
-                raise LexError()
+                error(t, 'bad string escape: "\%s"' % c)
             string += syntax.str_escapes[c]
         else:
             string += c
@@ -109,7 +110,10 @@ def t_COMMENT(t):
     pass
 
 def t_error(t):
-    print('%s(%s): %s' % (syntax.filename, t.lineno, t))
+    error(t, 'invalid token: %s' % t)
+
+def error(t, msg):
+    print('%s(%s): %s' % (syntax.filename, t.lineno, msg))
     sys.exit(1)
 
 class Token:
@@ -178,8 +182,8 @@ def process_indentation(tokens):
                     ws_stack.pop()
                     yield Token('DEDENT', '')
                 if spaces != ws_stack[-1]:
-                    raise LexError('%s(%i): unindent level does not match' +
-                        'any previous indent' % (syntax.filename, t.lineno))
+                    error(t, 'unindent level does not match' +
+                        'any previous indent')
         else:
             yield t
 
