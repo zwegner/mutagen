@@ -16,6 +16,12 @@ def mg_builtin(name):
 def mgb_getchar(ctx, args):
     return syntax.String(sys.stdin.read(1))
 
+@mg_builtin('read_file')
+def mgb_read_file(ctx, args):
+    path, = args
+    with open(path.value) as f:
+        return syntax.String(f.read())
+
 @mg_builtin('putchar')
 def mgb_putchar(ctx, args):
     sys.stdout.write(args[0].value)
