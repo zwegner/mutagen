@@ -34,12 +34,12 @@ def mgb_len(ctx, args):
 @mg_builtin('repr')
 def mgb_repr(ctx, args):
     arg, = args
-    return syntax.String(repr(arg.eval(ctx)))
+    return syntax.String(repr(arg))
 
 @mg_builtin('str')
 def mgb_str(ctx, args):
     arg, = args
-    return syntax.String(str(arg.eval(ctx)))
+    return syntax.String(str(arg))
 
 @mg_builtin('make')
 def mgb_make(ctx, args):
@@ -48,7 +48,6 @@ def mgb_make(ctx, args):
 @mg_builtin('reduce')
 def mgb_reduce(ctx, args):
     fn, start, iter = args
-    fn = fn.eval(ctx)
     for i in iter:
         start = fn.eval_call(ctx, [start, i.eval(ctx)])
     return start
@@ -63,6 +62,8 @@ def mgb_slice(ctx, args):
 @mg_builtin('parse_int')
 def mgb_parse_int(ctx, args):
     int_str, base = args
-    return Integer(int(int_str, base))
+    assert (isinstance(int_str, syntax.String) and
+            isinstance(base, syntax.Integer))
+    return syntax.Integer(int(int_str.value, base.value))
 
 __all__ = builtins
