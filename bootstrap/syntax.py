@@ -35,18 +35,6 @@ class Node:
     def eval(self, ctx):
         return self
 
-    def add_use(self, edge):
-        assert edge not in self.uses
-        self.uses.append(edge)
-
-    def remove_use(self, edge):
-        self.uses.remove(edge)
-
-    def forward(self, new_value):
-        for edge in self.uses:
-            edge.value = new_value
-            new_value.add_use(edge)
-
     def __eq__(self, other):
         assert False
     def __ne__(self, other):
@@ -86,7 +74,6 @@ def node(argstr='', compare=False):
 
             if hasattr(self, 'setup'):
                 self.setup()
-            self.uses = []
 
         def iterate_subtree(self):
             yield self
