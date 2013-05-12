@@ -34,6 +34,7 @@ token_map = [
     ['WHITESPACE',      '[ \t]+'],
     ['IDENTIFIER',      '[a-zA-Z_][a-zA-Z0-9_]*', t_identifier],
     ['INTEGER',         '(0x[0-9a-fA-F]*)|([0-9]+)', t_integer],
+    ['WHITESPACE',      '#.*'],
 ]
 
 keywords = [
@@ -95,6 +96,7 @@ def tokenize_input(input):
                     best_match = m
                     best_token = t
             if not best_match[0]:
+                print('Error: '+i)
                 fail
 
             match = slice(i, 0, best_match[1])

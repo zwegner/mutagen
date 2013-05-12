@@ -375,7 +375,8 @@ class Class(Node):
         for expr in self.block:
             ret = expr.eval(child_ctx)
         cls = Object([List([String(k), v.eval(ctx)]) for k, v
-            in child_ctx.syms.items()])
+            in child_ctx.syms.items()] +
+            [List([String('name'), String(self.name)])])
         self.cls = cls
         ctx.store(self.name, cls)
         return self

@@ -86,54 +86,89 @@ class MatchNull:
     def match(self, s):
         [1, 0]
 
-def parse(string):
-    result = MatchNull()
-    c = 0
-    while c < len(string):
-        if string[c] == '\\':
-            c = c + 1
-            current_match = MatchChar(string[c])
-        elif string[c] == '.':
-            current_match = MatchAny()
-        # Parse */+
-        elif string[c] == '*' or string[c] == '+':
-            0 # HACK: need to fix parser
-            # HACK: assume we came after a valid regex element.
-            # We don't have real error reporting, so just act like its a seq.
-            # This is just icky regardless.
-            last_match = result.right
-            result = result.left
-            if string[c] == '*':
-                min = 0
-            else:
-                min = 1
-            current_match = MatchRep(last_match, min)
-        # Parse option
-        elif string[c] == '[':
-            c = c + 1
-            opts = []
-            if string[c] == '^':
-                c = c + 1
-                inv = 1
-            else:
-                inv = 0
-            # Special case: []] includes a literal ']' char
-            if string[c] == ']':
-                c = c + 1
-                opts = opts + [MatchChar(']')]
-            # Keep parsing ranges/single chars until we hit
-            while string[c] != ']':
-                low = string[c]
-                if string[c+1] == '-':
-                    high = string[c+2]
-                    c = c + 2
-                    opts = opts + [MatchRange(low, high)]
-                else:
-                    opts = opts + [MatchChar(low)]
-                c = c + 1
-            current_match = MatchOpt(inv, opts)
-        else:
-            current_match = MatchChar(string[c])
-        result = MatchSeq(result, current_match)
+def parse_item(string, c):
+    0 # HACK
+    # Backslash: escape next char
+    if string[c] == '\\':
         c = c + 1
+        item = MatchChar(string[c])
+    # Period: any character
+    elif string[c] == '.':
+        item = MatchAny()
+    # Parse option
+    elif string[c] == '[':
+        c = c + 1
+        opts = []
+        if string[c] == '^':
+            c = c + 1
+            inv = 1
+        else:
+            inv = 0
+        # Special case: []] includes a literal ']' char
+        if string[c] == ']':
+            c = c + 1
+            opts = opts + [MatchChar(']')]
+        # Keep parsing ranges/single chars until we hit
+        while string[c] != ']':
+            low = string[c]
+            if string[c+1] == '-':
+                high = string[c+2]
+                c = c + 2
+                opts = opts + [MatchRange(low, high)]
+            else:
+                opts = opts + [MatchChar(low)]
+            c = c + 1
+        item = MatchOpt(inv, opts)
+    # Parentheses: group a number of items together
+    elif string[c] == '(':
+        c = c + 1
+        result_c = parse_group(string, c)
+        item = result_c[0]
+        c = result_c[1]
+        if string[c] != ')':
+            error
+    # Special characters
+    elif string[c] == '*' or string[c] == '+' or string[c] == '|':
+        error
+    # Match a literal character
+    else:
+        item = MatchChar(string[c])
+    [item, c + 1]
+
+def parse_group(string, c):
+    result = Nil
+    while c < len(string) and string[c] != ')':
+        old_c = c
+        item_c = parse_item(string, c)
+        item = item_c[0]
+        c = item_c[1]
+        # Parse repeaters/connectors
+        if c < len(string):
+            if string[c] == '*':
+                c = c + 1
+                item = MatchRep(item, 0)
+            elif string[c] == '+':
+                c = c + 1
+                item = MatchRep(item, 1)
+            else:
+                while c < len(string) and string[c] == '|':
+                    c = c + 1
+                    if c >= len(string):
+                        error
+                    alt = parse_item(string, c)
+                    c = alt[1]
+                    alt = alt[0]
+                    item = MatchAlt(item, alt)
+        if Nil == result:
+            result = item
+        else:
+            result = MatchSeq(result, item)
+    [result, c]
+
+def parse(string):
+    result_c = parse_group(string, 0)
+    result = result_c[0]
+    c = result_c[1]
+    if c < len(string):
+        error
     result
