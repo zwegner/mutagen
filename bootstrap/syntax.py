@@ -299,7 +299,16 @@ class GetItem(Node):
 class Assignment(Node):
     def eval(self, ctx):
         value = self.rhs.eval(ctx)
-        ctx.store(self.name, value)
+        def assign_target(lhs, rhs):
+            if isinstance(lhs, str):
+                ctx.store(lhs, rhs)
+            elif isinstance(lhs, list):
+                assert len(lhs) == len(rhs)
+                for lhs_i, rhs_i in zip(lhs, rhs):
+                    assign_target(lhs_i, rhs_i)
+            else:
+                assert False
+        assign_target(self.name, value)
         return value
     def __repr__(self):
         return '%s = %s' % (self.name, self.rhs)

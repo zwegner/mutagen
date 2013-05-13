@@ -105,11 +105,10 @@ def null_token_fn(t):
 # Create token matchers
 token_matchers = []
 for token in token_map:
-    type = token[0]
-    regex = token[1]
     if len(token) > 2:
-        token_fn = token[2]
+        [type, regex, token_fn] = token
     else:
+        [type, regex] = token
         token_fn = null_token_fn
     token_matchers = token_matchers + [TokenMatcher(type,
         re.parse(regex), token_fn)]

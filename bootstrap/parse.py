@@ -181,8 +181,14 @@ def p_call(p):
         p[0] = syntax.Call(p[1], p[3])
 
 def p_assignment(p):
-    """ assn : IDENTIFIER EQUALS expr """
-    p[0] = syntax.Assignment(p[1], p[3])
+    """ assn : expr EQUALS expr """
+    def deconstruct_lhs(lhs):
+        if isinstance(lhs, syntax.Identifier):
+            return lhs.name
+        elif isinstance(lhs, syntax.List):
+            return [deconstruct_lhs(i) for i in lhs]
+        assert False
+    p[0] = syntax.Assignment(deconstruct_lhs(p[1]), p[3])
 
 def p_if(p):
     """ if_stmt : IF expr block """

@@ -24,8 +24,8 @@ class MatchOpt:
     def match(self, s):
         r = 0
         for m in self.matches:
-            match = m.match(s)
-            if match[0]:
+            [match, l] = m.match(s)
+            if match:
                 r = 1
         if self.inv:
             r = not r and len(s) > 0
@@ -48,12 +48,11 @@ class MatchSeq:
         make(['left', a], ['right', s])
 
     def match(self, s):
-        r = self.left.match(s)
-        if r[0]:
-            l = r[1]
-            r = self.right.match(slice(s, l, len(s)))
-            r = [r[0], l+r[1]]
-        r
+        [r, l] = self.left.match(s)
+        if r:
+            [r, i] = self.right.match(slice(s, l, len(s)))
+            l = l + i
+        [r, l]
 
 # Alternation: match either of two regexes
 class MatchAlt:
@@ -69,22 +68,17 @@ class MatchAlt:
 # Repetition: match as many times as possible
 class MatchRep:
     def __init__(r, min, max):
-        make(['regex', r], ['min', min], ['max', max])
+        make(['regex', r], ['min', min])
 
     def match(self, s):
         l = 0
         count = 0
-        r = self.regex.match(s)
-        while r[0] != 0:
+        [r, i] = self.regex.match(s)
+        while r != 0:
+            l = l + i
             count = count + 1
-            l = l + r[1]
-            r = self.regex.match(slice(s, l, len(s)))
-        result = 1
-        if Nil != self.min and count < self.min:
-            result = 0
-        if Nil != self.max and count > self.max:
-            result = 0
-        [result, l]
+            [r, i] = self.regex.match(slice(s, l, len(s)))
+        [count >= self.min, l]
 
 # Null regex: matches nothing.
 class MatchNull:
@@ -127,9 +121,7 @@ def parse_item(string, c):
     # Parentheses: group a number of items together
     elif string[c] == '(':
         c = c + 1
-        result_c = parse_group(string, c)
-        item = result_c[0]
-        c = result_c[1]
+        [item, c] = parse_group(string, c)
         if string[c] != ')':
             error
     # Special characters
@@ -144,28 +136,24 @@ def parse_group(string, c):
     result = Nil
     while c < len(string) and string[c] != ')':
         old_c = c
-        item_c = parse_item(string, c)
-        item = item_c[0]
-        c = item_c[1]
+        [item, c] = parse_item(string, c)
         # Parse repeaters/connectors
         if c < len(string):
             if string[c] == '*':
                 c = c + 1
-                item = MatchRep(item, 0, Nil)
+                item = MatchRep(item, 0)
             elif string[c] == '+':
                 c = c + 1
-                item = MatchRep(item, 1, Nil)
+                item = MatchRep(item, 1)
             elif string[c] == '?':
                 c = c + 1
-                item = MatchRep(item, 0, 1)
+                item = MatchAlt(item, MatchNull())
             else:
                 while c < len(string) and string[c] == '|':
                     c = c + 1
                     if c >= len(string):
                         error
-                    alt = parse_item(string, c)
-                    c = alt[1]
-                    alt = alt[0]
+                    [alt, c] = parse_item(string, c)
                     item = MatchAlt(item, alt)
         if Nil == result:
             result = item
