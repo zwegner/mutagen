@@ -27,6 +27,7 @@ token_map = {
     'LESS':            r'<',
     'LESS_EQUALS':     r'<=',
     'LPAREN':          r'\(',
+    'MINUS':           r'-',
     'NOT_EQUALS':      r'!=',
     'PERIOD':          r'\.',
     'PLUS':            r'\+',
@@ -90,7 +91,7 @@ def t_STRING(t):
     return t
 
 def t_INTEGER(t):
-    r'(0x[0-9a-fA-F]*)|([0-9]+)'
+    r'-?((0x[0-9a-fA-F]*)|([0-9]+))'
     t.value = int(t.value, 0)
     return t
 

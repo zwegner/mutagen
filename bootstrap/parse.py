@@ -21,7 +21,7 @@ precedence = [
     ['left', 'AND'],
     ['left', 'NOT'],
     ['left', 'EQUALS_EQUALS', 'NOT_EQUALS', 'GREATER', 'GREATER_EQUALS', 'LESS', 'LESS_EQUALS'],
-    ['left', 'PLUS'],
+    ['left', 'PLUS', 'MINUS'],
     ['left', 'LBRACKET', 'LPAREN', 'LBRACE'],
     ['left', 'PERIOD'],
 ]
@@ -156,6 +156,7 @@ def p_binary_op(p):
               | expr GREATER_EQUALS expr
               | expr LESS expr
               | expr LESS_EQUALS expr
+              | expr MINUS expr
               | expr PLUS expr
               | expr AND expr
               | expr OR expr

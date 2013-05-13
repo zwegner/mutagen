@@ -185,6 +185,10 @@ class Integer(Node):
     def __add__(self, other):
         assert isinstance(other, Integer)
         return Integer(self.value + other.value)
+    def __sub__(self, other):
+        assert isinstance(other, Integer)
+        return Integer(self.value - other.value)
+
 
 @node('*items')
 class List(Node):
@@ -263,6 +267,7 @@ class BinaryOp(Node):
             '<':  'lt',
             '<=': 'le',
             '+':  'add',
+            '-':  'sub',
         }[self.type]
         return getattr(lhs, '__%s__' % operator)(rhs)
     def __repr__(self):
