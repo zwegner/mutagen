@@ -72,7 +72,7 @@ def t_IDENTIFIER(t):
     return t
 
 def t_STRING(t):
-    r'\'[^\']*\''
+    r'\'((\\.)|[^\\\'])*\''
     string = ''
     i = iter(t.value[1:-1])
     while True:

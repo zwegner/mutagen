@@ -5,6 +5,7 @@ str_escapes = {
     't': '\t',
     'b': '\b',
     '\\': '\\',
+    '\'': '\'',
 }
 inv_str_escapes = {v: '\\%s' % k for k, v in str_escapes.items()}
 
@@ -156,7 +157,7 @@ class String(Node):
             value = value.replace('"', '\\"')
         else:
             quote = '\''
-        return '"%s"' % value
+        return '%s%s%s' % (quote, value, quote)
     def __iter__(self):
         for v in self.value:
             yield String(v)

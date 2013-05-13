@@ -1,5 +1,13 @@
 import re
 
+str_escapes = [
+    ['n', '\n'],
+    ['t', '\t'],
+    ['b', '\b'],
+    ['\\', '\\'],
+    ['\'', '\''],
+]
+
 # Special token-transforming functions
 def t_identifier(t):
     r = t
@@ -10,6 +18,27 @@ def t_identifier(t):
 
 def t_integer(t):
     Token(t.type, parse_int(t.value, 0))
+
+def t_string(t):
+    i = 1
+    result = ''
+    while i < len(t.value) - 1:
+        c = t.value[i]
+        if c == '\\':
+            i = i + 1
+            c = t.value[i]
+            esc = Nil
+            for kv in str_escapes:
+                if c == kv[0]:
+                    esc = kv[1]
+            if Nil == esc:
+                print('bad string escape: "\\'+c+'"')
+                error
+            result = result + esc
+        else:
+            result = result + c
+        i = i + 1
+    Token(t.type, result)
 
 token_map = [
     ['COLON',           ':'],
@@ -23,6 +52,7 @@ token_map = [
     ['LESS',            '<'],
     ['LESS_EQUALS',     '<='],
     ['LPAREN',          '\\('],
+    ['MINUS',           '-'],
     ['NOT_EQUALS',      '!='],
     ['PERIOD',          '\\.'],
     ['PLUS',            '\\+'],
@@ -33,8 +63,9 @@ token_map = [
     ['STAR',            '\\*'],
     ['WHITESPACE',      '[ \t]+'],
     ['IDENTIFIER',      '[a-zA-Z_][a-zA-Z0-9_]*', t_identifier],
-    ['INTEGER',         '(0x[0-9a-fA-F]*)|([0-9]+)', t_integer],
+    ['INTEGER',         '-?((0x[0-9a-fA-F]*)|([0-9]+))', t_integer],
     ['WHITESPACE',      '#.*'],
+    ['STRING',          '\'((\\\\.)|[^\\\\\'])*\'', t_string],
 ]
 
 keywords = [
@@ -96,8 +127,8 @@ def tokenize_input(input):
                     best_match = m
                     best_token = t
             if not best_match[0]:
-                print('Error: '+i)
-                fail
+                print('Error: '+repr(i))
+                error
 
             match = slice(i, 0, best_match[1])
             i = slice(i, best_match[1], len(i))
