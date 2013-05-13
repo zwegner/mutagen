@@ -68,8 +68,8 @@ class MatchAlt:
 
 # Repetition: match as many times as possible
 class MatchRep:
-    def __init__(r, min):
-        make(['regex', r], ['min', min])
+    def __init__(r, min, max):
+        make(['regex', r], ['min', min], ['max', max])
 
     def match(self, s):
         l = 0
@@ -79,7 +79,12 @@ class MatchRep:
             count = count + 1
             l = l + r[1]
             r = self.regex.match(slice(s, l, len(s)))
-        [count >= self.min, l]
+        result = 1
+        if Nil != self.min and count < self.min:
+            result = 0
+        if Nil != self.max and count > self.max:
+            result = 0
+        [result, l]
 
 # Null regex: matches nothing.
 class MatchNull:
@@ -128,7 +133,7 @@ def parse_item(string, c):
         if string[c] != ')':
             error
     # Special characters
-    elif string[c] == '*' or string[c] == '+' or string[c] == '|':
+    elif string[c] == '*' or string[c] == '+' or string[c] == '|' or string[c] == '?':
         error
     # Match a literal character
     else:
@@ -146,10 +151,13 @@ def parse_group(string, c):
         if c < len(string):
             if string[c] == '*':
                 c = c + 1
-                item = MatchRep(item, 0)
+                item = MatchRep(item, 0, Nil)
             elif string[c] == '+':
                 c = c + 1
-                item = MatchRep(item, 1)
+                item = MatchRep(item, 1, Nil)
+            elif string[c] == '?':
+                c = c + 1
+                item = MatchRep(item, 0, 1)
             else:
                 while c < len(string) and string[c] == '|':
                     c = c + 1
