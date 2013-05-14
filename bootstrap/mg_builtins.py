@@ -57,6 +57,8 @@ def mgb_slice(ctx, args):
     seq, start, end = args
     if isinstance(seq, syntax.String):
         return syntax.String(seq.value[start.value:end.value])
+    elif isinstance(seq, syntax.List):
+        return syntax.List(seq.items[start.value:end.value])
     return syntax.Nil()
 
 @mg_builtin('parse_int')
@@ -65,5 +67,11 @@ def mgb_parse_int(ctx, args):
     assert (isinstance(int_str, syntax.String) and
             isinstance(base, syntax.Integer))
     return syntax.Integer(int(int_str.value, base.value))
+
+@mg_builtin('str_upper')
+def mgb_str_upper(ctx, args):
+    arg, = args
+    assert isinstance(arg, syntax.String)
+    return syntax.String(arg.value.upper())
 
 __all__ = builtins
