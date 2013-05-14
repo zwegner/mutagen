@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import subprocess
 
-files = subprocess.check_output(['hg', 'manifest']).decode('utf8').splitlines()
+files = subprocess.check_output(['git', 'ls-files']).decode('utf8').splitlines()
 
 groups = ['bootstrap/ply', 'bootstrap', 'stdlib', 'tests', '']
 group_dict = {k: [] for k in groups}
