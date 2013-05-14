@@ -86,7 +86,6 @@ class MatchNull:
         [1, 0]
 
 def parse_item(string, c):
-    0 # HACK
     # Backslash: escape next char
     if string[c] == '\\':
         c = c + 1

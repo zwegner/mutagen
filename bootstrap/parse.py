@@ -39,10 +39,6 @@ def p_stmt_list(p):
     p[0] = [p[1]]
 
 def p_stmt_list_2(p):
-    """ stmt_list : delim """
-    p[0] = []
-
-def p_stmt_list_3(p):
     """ stmt_list : stmt_list delim
                   | stmt_list stmt
     """
@@ -66,6 +62,8 @@ def p_block(p):
 def p_delim(p):
     """ delim : NEWLINE
               | SEMICOLON
+              | delim NEWLINE
+              | delim SEMICOLON
     """
     p[0] = None
 
