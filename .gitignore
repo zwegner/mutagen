@@ -1,4 +1,4 @@
-.*~
-.*\.pyc
-\..*\.swp
-\.gitignore
+*~
+*.pyc
+.*.swp
+.gitignore
