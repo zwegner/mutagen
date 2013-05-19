@@ -71,6 +71,14 @@ def t_IDENTIFIER(t):
         t.type = t.value.upper()
     return t
 
+str_escapes = {
+    'n': '\n',
+    't': '\t',
+    'b': '\b',
+    '\\': '\\',
+    '\'': '\'',
+}
+
 def t_STRING(t):
     r'\'((\\.)|[^\\\'])*\''
     string = ''
@@ -82,9 +90,9 @@ def t_STRING(t):
             break
         if c == '\\':
             c = next(i)
-            if c not in syntax.str_escapes:
+            if c not in str_escapes:
                 error(t, 'bad string escape: "\%s"' % c)
-            string += syntax.str_escapes[c]
+            string += str_escapes[c]
         else:
             string += c
     t.value = string

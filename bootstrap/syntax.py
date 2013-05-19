@@ -1,13 +1,11 @@
 filename = 'filename'
 
-str_escapes = {
-    'n': '\n',
-    't': '\t',
-    'b': '\b',
-    '\\': '\\',
-    '\'': '\'',
-}
-inv_str_escapes = {v: '\\%s' % k for k, v in str_escapes.items()}
+# This is a list, since order matters--backslashes must come first!
+inv_str_escapes = [
+    ['\\', '\\\\'],
+    ['\n', '\\n'],
+    ['\t', '\\t'],
+]
 
 class Context:
     def __init__(self, name, parent):
@@ -149,7 +147,7 @@ class String(Node):
         return self.value
     def __repr__(self):
         value = self.value
-        for k, v in inv_str_escapes.items():
+        for k, v in inv_str_escapes:
             value = value.replace(k, v)
         has_quotes = [x in self.value for x in ['\'', '"']]
         if has_quotes[0] and not has_quotes[1]:
@@ -157,6 +155,7 @@ class String(Node):
             value = value.replace('"', '\\"')
         else:
             quote = '\''
+            value = value.replace("'", "\\'")
         return '%s%s%s' % (quote, value, quote)
     def __iter__(self):
         for v in self.value:
@@ -189,7 +188,6 @@ class Integer(Node):
     def __sub__(self, other):
         assert isinstance(other, Integer)
         return Integer(self.value - other.value)
-
 
 @node('*items')
 class List(Node):
