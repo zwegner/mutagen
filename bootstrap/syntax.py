@@ -5,6 +5,7 @@ inv_str_escapes = [
     ['\\', '\\\\'],
     ['\n', '\\n'],
     ['\t', '\\t'],
+    ['\b', '\\x08'], # HACK
 ]
 
 class Context:

@@ -40,6 +40,9 @@ def t_string(t):
         i = i + 1
     Token(t.type, result)
 
+def ignore_token_fn(t):
+    Nil
+
 token_map = [
     ['COLON',           ':'],
     ['COMMA',           ','],
@@ -64,7 +67,7 @@ token_map = [
     ['WHITESPACE',      '[ \t]+'],
     ['IDENTIFIER',      '[a-zA-Z_][a-zA-Z0-9_]*', t_identifier],
     ['INTEGER',         '-?((0x[0-9a-fA-F]*)|([0-9]+))', t_integer],
-    ['WHITESPACE',      '#.*'],
+    ['COMMENT',         '#.*', ignore_token_fn],
     ['STRING',          '\'((\\\\.)|[^\\\\\'])*\'', t_string],
 ]
 
@@ -132,7 +135,8 @@ def tokenize_input(input):
             match = slice(i, 0, best_match[1])
             i = slice(i, best_match[1], len(i))
             token = best_token.fn(Token(best_token.name, match))
-            r = r + [token]
+            if Nil != token:
+                r = r + [token]
         r = r + [Token('NEWLINE', '\n')]
     r
 
@@ -189,7 +193,7 @@ def process_whitespace(tokens):
         elif token.type != 'WHITESPACE':
             new_tokens = new_tokens + [token]
 
-        after_newline = token.type == 'NEWLINE'
+        after_newline = (token.type == 'NEWLINE')
 
         i = i + 1
 
