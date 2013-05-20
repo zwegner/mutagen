@@ -409,7 +409,7 @@ class Class(Node):
     def get_attr(self, attr):
         return self.cls.get_attr(attr)
 
-@node('module, names, is_builtins')
+@node('module, names, path, is_builtins')
 class Import(Node):
     def eval(self, ctx):
         for expr in self.stmts:

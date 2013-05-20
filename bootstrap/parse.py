@@ -72,9 +72,13 @@ def p_import(p):
                | FROM IDENTIFIER IMPORT STAR
     """
     if len(p) == 3:
-        p[0] = syntax.Import(p[2], None, False)
+        p[0] = syntax.Import(p[2], None, None, False)
     else:
-        p[0] = syntax.Import(p[2], [], False)
+        p[0] = syntax.Import(p[2], [], None, False)
+
+def p_import_from(p):
+    """ import : IMPORT IDENTIFIER FROM STRING """
+    p[0] = syntax.Import(p[2], None, p[4], False)
 
 def p_stmt(p):
     """ stmt : expr delim
@@ -275,7 +279,8 @@ def parse(path, import_builtins=True, ctx=None):
 
     # Do some post-processing, starting with adding builtins
     if import_builtins:
-        block = [syntax.Import('builtins', [], True)] + block
+        path = '%s/__builtins__.mg' % stdlib_dir
+        block = [syntax.Import('builtins', [], path, True)] + block
 
     new_block = []
 
@@ -285,8 +290,9 @@ def parse(path, import_builtins=True, ctx=None):
     # Recursively parse imports
     for expr in block:
         if isinstance(expr, syntax.Import):
-            if expr.is_builtins:
-                path = '%s/__builtins__.mg' % stdlib_dir
+            # Explicit path: use that
+            if expr.path:
+                path = expr.path
             else:
                 # Normal import: find the file first in
                 # the current directory, then stdlib
