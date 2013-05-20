@@ -10,7 +10,7 @@ python = 'python3'
 passes = fails = 0
 
 # Python tests: python/mutagen should produce the same output in each case.
-py_tests = ['regex']
+py_tests = ['regex', 'lex']
 py_test_dir = 'tests'
 
 for test in py_tests:
