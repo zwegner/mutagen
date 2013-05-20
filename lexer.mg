@@ -1,4 +1,4 @@
-import re
+import tokenize
 
 str_escapes = [
     ['n', '\n'],
@@ -13,11 +13,11 @@ def t_identifier(t):
     r = t
     for k in keywords:
         if t.value == k:
-            r = Token(str_upper(k), t.value)
+            r = tokenize.Token(str_upper(k), t.value)
     r
 
 def t_integer(t):
-    Token(t.type, parse_int(t.value, 0))
+    tokenize.Token(t.type, parse_int(t.value, 0))
 
 def t_string(t):
     i = 1
@@ -38,10 +38,7 @@ def t_string(t):
         else:
             result = result + c
         i = i + 1
-    Token(t.type, result)
-
-def ignore_token_fn(t):
-    Nil
+    tokenize.Token(t.type, result)
 
 token_map = [
     ['COLON',           ':'],
@@ -67,7 +64,7 @@ token_map = [
     ['WHITESPACE',      '[ \t]+'],
     ['IDENTIFIER',      '[a-zA-Z_][a-zA-Z0-9_]*', t_identifier],
     ['INTEGER',         '-?((0x[0-9a-fA-F]*)|([0-9]+))', t_integer],
-    ['COMMENT',         '#.*', ignore_token_fn],
+    ['COMMENT',         '#.*', tokenize.ignore_token_fn],
     ['STRING',          '\'((\\\\.)|[^\\\\\'])*\'', t_string],
 ]
 
@@ -89,56 +86,6 @@ keywords = [
     'pass',
     'while',
 ]
-
-# A class for eating up input, matching against a lex rule
-class TokenMatcher:
-    def __init__(name, regex, fn):
-        make(['name', name], ['regex', regex], ['fn', fn])
-    def match(self, s):
-        self.regex.match(s)
-
-# A token from the input stream
-class Token:
-    def __init__(type, value):
-        make(['type', type], ['value', value])
-
-def null_token_fn(t):
-    t
-
-# Create token matchers
-token_matchers = []
-for token in token_map:
-    if len(token) > 2:
-        [type, regex, token_fn] = token
-    else:
-        [type, regex] = token
-        token_fn = null_token_fn
-    token_matchers = token_matchers + [TokenMatcher(type,
-        re.parse(regex), token_fn)]
-
-def tokenize_input(input):
-    r = []
-    # HACK: manually split up lines
-    for i in str_split_lines(input):
-        while len(i) > 0:
-            best_match = [0, 0]
-            best_token = Nil
-            for t in token_matchers:
-                m = t.match(i)
-                if m[0] and m[1] > best_match[1]:
-                    best_match = m
-                    best_token = t
-            if not best_match[0]:
-                print('Error: '+repr(i))
-                error
-
-            match = slice(i, 0, best_match[1])
-            i = slice(i, best_match[1], len(i))
-            token = best_token.fn(Token(best_token.name, match))
-            if Nil != token:
-                r = r + [token]
-        r = r + [Token('NEWLINE', '\n')]
-    r
 
 def process_newlines(tokens):
     new_tokens = []
@@ -187,7 +134,7 @@ def process_whitespace(tokens):
                     new_tokens = new_tokens + [token]
             # Got a token at the beginning of the line--yield empty whitespace
             elif token.type != 'NEWLINE':
-                new_tokens = new_tokens + [Token('WHITESPACE', ''), token]
+                new_tokens = new_tokens + [tokenize.Token('WHITESPACE', ''), token]
 
         # Not after a newline--ignore whitespace
         elif token.type != 'WHITESPACE':
@@ -211,12 +158,12 @@ def process_indentation(tokens):
             # Check the indent level against the stack
             if spaces > ws_stack[-1]:
                 ws_stack = ws_stack + [spaces]
-                new_tokens = new_tokens + [Token('INDENT', '')]
+                new_tokens = new_tokens + [tokenize.Token('INDENT', '')]
             else:
                 # Pop off the indent stack until we reach the previous level
                 while spaces < ws_stack[-1]:
                     ws_stack = slice(ws_stack, 0, len(ws_stack) - 1)
-                    new_tokens = new_tokens + [Token('DEDENT', '')]
+                    new_tokens = new_tokens + [tokenize.Token('DEDENT', '')]
                 if spaces != ws_stack[-1]:
                     error(t, 'unindent level does not match' +
                         'any previous indent')
@@ -226,12 +173,14 @@ def process_indentation(tokens):
     # Make sure we have enough indents at EOF
     while len(ws_stack) > 1:
         ws_stack = slice(ws_stack, 0, len(ws_stack) - 1)
-        new_tokens = new_tokens + [Token('DEDENT', '')]
+        new_tokens = new_tokens + [tokenize.Token('DEDENT', '')]
 
     new_tokens
 
+tokenizer = tokenize.Tokenizer(token_map)
+
 def lex_input(input):
-    tokens = tokenize_input(input)
+    tokens = tokenizer.tokenize_input(input)
     tokens = process_newlines(tokens)
     tokens = process_whitespace(tokens)
     tokens = process_indentation(tokens)
