@@ -38,7 +38,7 @@ class Node:
     def __eq__(self, other):
         assert False
     def __ne__(self, other):
-        assert False
+        return Integer(not self.__eq__(other).value)
     def __str__(self):
         return repr(self)
     def __repr__(self):
@@ -202,6 +202,9 @@ class List(Node):
         if isinstance(item, Integer):
             return self.items[item.value]
         raise Exception()
+    def __eq__(self, other):
+        return Integer(isinstance(other, List) and
+                self.items == other.items)
     def __add__(self, other):
         assert isinstance(other, List)
         return List(self.items + other.items)
@@ -214,12 +217,15 @@ class Object(Node):
     def eval(self, ctx):
         return Object([List([k.eval(ctx), v.eval(ctx)]) for k, v
             in self.items])
-    def __repr__(self):
-        return '{%s}' % ', '.join('%s:%s' % (k, v) for k, v
-                in self.items)
     def get_attr(self, attr):
         results = [v for k, v in self.items if k.value == attr]
         return results[0] if results else None
+    def __repr__(self):
+        return '{%s}' % ', '.join('%s:%s' % (k, v) for k, v
+                in self.items)
+    def __eq__(self, other):
+        return Integer(isinstance(other, Object) and
+                self.items == other.items)
 
 @node('&method, &self')
 class BoundMethod(Node):

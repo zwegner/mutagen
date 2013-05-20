@@ -31,7 +31,7 @@ def t_string(t):
             for kv in str_escapes:
                 if c == kv[0]:
                     esc = kv[1]
-            if Nil == esc:
+            if esc == Nil:
                 print('bad string escape: "\\'+c+'"')
                 error
             result = result + esc
@@ -130,7 +130,7 @@ def process_whitespace(tokens):
         if after_newline:
             # Don't generate indent/dedent on empty lines
             if token.type == 'WHITESPACE':
-                if Nil != next_token and next_token.type != 'NEWLINE':
+                if next_token != Nil and next_token.type != 'NEWLINE':
                     new_tokens = new_tokens + [token]
             # Got a token at the beginning of the line--yield empty whitespace
             elif token.type != 'NEWLINE':

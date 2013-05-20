@@ -154,7 +154,7 @@ def parse_group(string, c):
                         error
                     [alt, c] = parse_item(string, c)
                     item = MatchAlt(item, alt)
-        if Nil == result:
+        if result == Nil:
             result = item
         else:
             result = MatchSeq(result, item)
