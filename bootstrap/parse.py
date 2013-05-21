@@ -26,12 +26,15 @@ precedence = [
     ['left', 'PERIOD'],
 ]
 
+def get_info(p, idx):
+    return syntax.Info(syntax.filename, p.lineno(idx))
+
 def p_error(p):
     # WHY IS THIS HAPPENING
     l = p.lexer
     if hasattr(l, 'lexer'):
         l = l.lexer
-    print('%s(%i): %s' % (syntax.filename, l.lineno, p))
+    print('%s(%i): %s' % (syntax.filename, l.lineno, p), file=sys.stderr)
     sys.exit(1)
 
 def p_stmt_list(p):
@@ -72,13 +75,13 @@ def p_import(p):
                | FROM IDENTIFIER IMPORT STAR
     """
     if len(p) == 3:
-        p[0] = syntax.Import(p[2], None, None, False)
+        p[0] = syntax.Import(p[2], None, None, False, info=get_info(p, 1))
     else:
-        p[0] = syntax.Import(p[2], [], None, False)
+        p[0] = syntax.Import(p[2], [], None, False, info=get_info(p, 1))
 
 def p_import_from(p):
     """ import : IMPORT IDENTIFIER FROM STRING """
-    p[0] = syntax.Import(p[2], None, p[4], False)
+    p[0] = syntax.Import(p[2], None, p[4], False, info=get_info(p, 1))
 
 def p_stmt(p):
     """ stmt : expr delim
@@ -123,15 +126,15 @@ def p_paren_expr(p):
 
 def p_ident(p):
     """ ident : IDENTIFIER """
-    p[0] = syntax.Identifier(p[1])
+    p[0] = syntax.Identifier(p[1], info=get_info(p, 1))
 
 def p_string(p):
     """ string : STRING """
-    p[0] = syntax.String(p[1])
+    p[0] = syntax.String(p[1], info=get_info(p, 1))
 
 def p_integer(p):
     """ integer : INTEGER """
-    p[0] = syntax.Integer(p[1])
+    p[0] = syntax.Integer(p[1], info=get_info(p, 1))
 
 def p_list(p):
     """ list : LBRACKET expr_list RBRACKET
@@ -139,13 +142,13 @@ def p_list(p):
              | LBRACKET RBRACKET
     """
     if len(p) == 3:
-        p[0] = syntax.List([])
+        p[0] = syntax.List([], info=get_info(p, 1))
     else:
-        p[0] = syntax.List(p[2])
+        p[0] = syntax.List(p[2], info=get_info(p, 1))
 
 def p_nil(p):
     """ nil : NIL """
-    p[0] = syntax.Nil()
+    p[0] = syntax.Nil(info=get_info(p, 1))
 
 def p_unary_op(p):
     """ unop : NOT expr """
@@ -189,7 +192,7 @@ def p_assignment(p):
             return lhs.name
         elif isinstance(lhs, syntax.List):
             return [deconstruct_lhs(i) for i in lhs]
-        assert False
+        lhs.error('invalid lhs for assignment')
     p[0] = syntax.Assignment(deconstruct_lhs(p[1]), p[3])
 
 def p_if(p):
@@ -244,15 +247,15 @@ def p_args(p):
 
 def p_def(p):
     """ def_stmt : DEF IDENTIFIER args block """
-    p[0] = syntax.Assignment(p[2], syntax.Function(current_ctx, p[2], p[3], p[4]))
+    p[0] = syntax.Assignment(p[2], syntax.Function(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
 
 def p_lambda(p):
     """ lambda : LAMBDA args block """
-    p[0] = syntax.Function(current_ctx, 'lambda', p[2], p[3])
+    p[0] = syntax.Function(current_ctx, 'lambda', p[2], p[3], info=get_info(p, 1))
 
 def p_class(p):
     """ class_stmt : CLASS IDENTIFIER block """
-    p[0] = syntax.Assignment(p[2], syntax.Class(current_ctx, p[2], p[3]))
+    p[0] = syntax.Assignment(p[2], syntax.Class(current_ctx, p[2], p[3], info=get_info(p, 1)))
 
 parser = yacc.yacc(write_tables=0, debug=0)
 
@@ -280,7 +283,8 @@ def parse(path, import_builtins=True, ctx=None):
     # Do some post-processing, starting with adding builtins
     if import_builtins:
         path = '%s/__builtins__.mg' % stdlib_dir
-        block = [syntax.Import('builtins', [], path, True)] + block
+        block = [syntax.Import('builtins', [], path, True,
+            info=syntax.Info('__builtins__', 0))] + block
 
     new_block = []
 
@@ -297,13 +301,13 @@ def parse(path, import_builtins=True, ctx=None):
                 # Normal import: find the file first in
                 # the current directory, then stdlib
                 for cd in [dirname, stdlib_dir]:
-                    path = '%s/%s.mg' % (cd, expr.module)
+                    path = '%s/%s.mg' % (cd, expr.name)
                     if os.path.isfile(path):
                         break
                 else:
-                    raise Exception('could not find import in path: %s' % expr.module)
+                    raise Exception('could not find import in path: %s' % expr.name)
 
-            module_ctx = syntax.Context(expr.module, None)
+            module_ctx = syntax.Context(expr.name, expr, None, ctx)
             stmts = parse(path, import_builtins=not expr.is_builtins,
                     ctx=module_ctx)
             expr.ctx = module_ctx
@@ -315,7 +319,7 @@ def parse(path, import_builtins=True, ctx=None):
     return new_block
 
 def interpret(path):
-    ctx = syntax.Context('__main__', None)
+    ctx = syntax.Context('__main__', None, None, None)
     block = parse(path, ctx=ctx)
     for expr in block:
         expr.eval(ctx)
