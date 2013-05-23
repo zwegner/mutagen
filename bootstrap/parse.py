@@ -20,7 +20,7 @@ precedence = [
     ['left', 'OR'],
     ['left', 'AND'],
     ['left', 'NOT'],
-    ['left', 'EQUALS_EQUALS', 'NOT_EQUALS', 'GREATER', 'GREATER_EQUALS', 'LESS', 'LESS_EQUALS'],
+    ['left', 'EQUALS_EQUALS', 'NOT_EQUALS', 'GREATER', 'GREATER_EQUALS', 'LESS', 'LESS_EQUALS', 'IN'],
     ['left', 'PLUS', 'MINUS'],
     ['left', 'LBRACKET', 'LPAREN', 'LBRACE'],
     ['left', 'PERIOD'],
@@ -167,6 +167,14 @@ def p_binary_op(p):
               | expr OR expr
     """
     p[0] = syntax.BinaryOp(p[2], p[1], p[3])
+
+def p_binary_op_in(p):
+    """ binop : expr IN expr """
+    p[0] = syntax.BinaryOp('in', p[3], p[1])
+
+def p_binary_op_not_in(p):
+    """ binop : expr NOT IN expr %prec IN """
+    p[0] = syntax.UnaryOp('not', syntax.BinaryOp('in', p[4], p[1]))
 
 def p_getattr(p):
     """ getattr : expr PERIOD IDENTIFIER """

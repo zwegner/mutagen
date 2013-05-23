@@ -246,6 +246,13 @@ class List(Node):
         if not isinstance(other, List):
             self.error('bad type for list.add: %s' % type(other))
         return List(self.items + other.items, info=self)
+    def __contains__(self, other):
+        r = 0
+        for i in self:
+            if (other == i).value:
+                r = 1
+                break
+        return Integer(r, info=self)
     def len(self, ctx):
         return len(self.items)
 
@@ -330,6 +337,7 @@ class BinaryOp(Node):
             '<=': 'le',
             '+':  'add',
             '-':  'sub',
+            'in': 'contains',
         }[self.type]
         operator = '__%s__' % operator
 
