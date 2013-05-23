@@ -54,9 +54,15 @@ class Node:
     def __ne__(self, other):
         return Integer(not self.__eq__(other).value, info=self)
     def __str__(self):
-        return repr(self)
+        assert False
     def __repr__(self):
-        self.error('__repr__ unimplemented for type %s' % type(self))
+        assert False
+    def len(self, ctx):
+        self.error('__len__ unimplemented for %s' % type(self))
+    def str(self, ctx):
+        return self.repr(ctx)
+    def repr(self, ctx):
+        self.error('__repr__ unimplemented for %s' % type(self))
 
 ARG_REG, ARG_EDGE, ARG_EDGE_LIST = list(range(3))
 arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
@@ -147,14 +153,14 @@ def node(argstr='', compare=False):
 
     return attach
 
-def block_str(block):
-    block = [str(s) for s in block]
+def block_str(block, ctx):
+    block = [s.repr(ctx) for s in block]
     block = ['\n    '.join(s for s in b.splitlines()) for b in block]
     return ':\n    %s' % ('\n    '.join(block))
 
 @node()
 class Nil(Node):
-    def __repr__(self):
+    def repr(self, ctx):
         return 'Nil'
     def __eq__(self, other):
         return Integer(isinstance(other, Nil), info=self)
@@ -167,14 +173,14 @@ class Nil(Node):
 class Identifier(Node):
     def eval(self, ctx):
         return ctx.load(self, self.name)
-    def __repr__(self):
+    def repr(self, ctx):
         return '%s' % self.name
 
 @node('value', compare=True)
 class String(Node):
-    def __str__(self):
+    def str(self, ctx):
         return self.value
-    def __repr__(self):
+    def repr(self, ctx):
         value = self.value
         for k, v in inv_str_escapes:
             value = value.replace(k, v)
@@ -197,7 +203,7 @@ class String(Node):
         if not isinstance(other, String):
             self.error('bad type for str.add: %s' % type(other))
         return String(self.value + other.value, info=self)
-    def __len__(self):
+    def len(self, ctx):
         return len(self.value)
 
 @node('value', compare=True)
@@ -206,7 +212,7 @@ class Integer(Node):
         self.value = int(self.value)
     def eval(self, ctx):
         return self
-    def __repr__(self):
+    def repr(self, ctx):
         return '%s' % self.value
     def test_truth(self):
         return self.value != 0
@@ -225,8 +231,8 @@ class Integer(Node):
 class List(Node):
     def eval(self, ctx):
         return List([i.eval(ctx) for i in self.items], info=self)
-    def __repr__(self):
-        return '[%s]' % ', '.join(repr(s) for s in self.items)
+    def repr(self, ctx):
+        return '[%s]' % ', '.join(s.repr(ctx) for s in self.items)
     def __iter__(self):
         yield from self.items
     def __getitem__(self, item):
@@ -240,7 +246,7 @@ class List(Node):
         if not isinstance(other, List):
             self.error('bad type for list.add: %s' % type(other))
         return List(self.items + other.items, info=self)
-    def __len__(self):
+    def len(self, ctx):
         return len(self.items)
 
 # HACK: need a dict type
@@ -252,12 +258,30 @@ class Object(Node):
     def get_attr(self, attr):
         results = [v for k, v in self.items if k.value == attr]
         return results[0] if results else None
-    def __repr__(self):
-        return '{%s}' % ', '.join('%s:%s' % (k, v) for k, v
-                in self.items)
     def __eq__(self, other):
         return Integer(isinstance(other, Object) and
                 self.items == other.items, info=self)
+
+    def base_repr(self, ctx):
+        return '{%s}' % ', '.join('%s:%s' % (k.repr(ctx), v.repr(ctx)) for k, v
+                in self.items)
+    def len(self, ctx):
+        return self.overload(ctx, '__len__', []).value
+    def str(self, ctx):
+        return self.overload(ctx, '__str__', [],
+                delegate=lambda: String(self.repr(ctx), info=self)).value
+    def repr(self, ctx):
+        return self.overload(ctx, '__repr__', [],
+                delegate=lambda: String(self.base_repr(ctx), info=self)).value
+    def overload(self, ctx, attr, args, delegate=None):
+        # Operator overloading
+        cls = self.get_attr('__class__')
+        op = cls.get_attr(attr)
+        if op is not None:
+            return op.eval_call(ctx, [self] + args)
+        if delegate:
+            return delegate()
+        self.error('%s unimplemented for %s' % (attr, cls), ctx=ctx)
 
 @node('&method, &self')
 class BoundMethod(Node):
@@ -267,8 +291,8 @@ class BoundMethod(Node):
         method = self.method.eval(ctx)
         args = [self.self] + args
         return method.eval_call(ctx, args)
-    def __repr__(self):
-        return '%s.%s' % (self.self, self.method)
+    def repr(self, ctx):
+        return '%s.%s' % (self.self.repr(ctx), self.method.repr(ctx))
 
 @node('type, &rhs')
 class UnaryOp(Node):
@@ -277,8 +301,8 @@ class UnaryOp(Node):
         if self.type == 'not':
             return rhs.__not__()
         assert False
-    def __repr__(self):
-        return '(%s %s)' % (self.type, self.rhs)
+    def repr(self, ctx):
+        return '(%s %s)' % (self.type.repr(ctx), self.rhs.repr(ctx))
 
 @node('type, &lhs, &rhs')
 class BinaryOp(Node):
@@ -309,19 +333,11 @@ class BinaryOp(Node):
         }[self.type]
         operator = '__%s__' % operator
 
-        # Operator overloading
-        if isinstance(lhs, Object):
-            cls = lhs.get_attr('__class__')
-            op = cls.get_attr(operator)
-            if op is None:
-                self.error('%s unimplemented for %s' % (operator, cls), ctx=ctx)
-            return op.eval_call(ctx, [lhs, rhs])
-
         if not hasattr(lhs, operator):
-            self.error('%s unimplemented for %s' % (operator, lhs), ctx=ctx)
+            return lhs.overload(ctx, operator, [rhs])
         return getattr(lhs, operator)(rhs)
-    def __repr__(self):
-        return '(%s %s %s)' % (self.lhs, self.type, self.rhs)
+    def repr(self, ctx):
+        return '(%s %s %s)' % (self.lhs.repr(ctx), self.type, self.rhs.repr(ctx))
 
 @node('&obj, attr')
 class GetAttr(Node):
@@ -331,8 +347,8 @@ class GetAttr(Node):
         if item is None:
             item = BoundMethod(GetAttr(obj.get_attr('__class__'), self.attr), obj)
         return item
-    def __repr__(self):
-        return '%s.%s' % (self.obj, self.attr)
+    def repr(self, ctx):
+        return '%s.%s' % (self.obj.repr(ctx), self.attr)
 
 @node('&obj, &item')
 class GetItem(Node):
@@ -341,8 +357,8 @@ class GetItem(Node):
         obj = self.obj.eval(ctx)
         item = self.item.eval(ctx)
         return obj[item]
-    def __repr__(self):
-        return '%s[%s]' % (self.obj, self.item)
+    def repr(self, ctx):
+        return '%s[%s]' % (self.obj.repr(ctx), self.item.repr(ctx))
 
 @node('name, &rhs')
 class Assignment(Node):
@@ -361,8 +377,8 @@ class Assignment(Node):
                 assert False
         assign_target(self.name, value)
         return value
-    def __repr__(self):
-        return '%s = %s' % (self.name, self.rhs)
+    def repr(self, ctx):
+        return '%s = %s' % (self.name, self.rhs.repr(ctx))
 
 @node('&expr, *if_stmts, *else_stmts')
 class IfElse(Node):
@@ -373,11 +389,11 @@ class IfElse(Node):
         for stmt in block:
             value = stmt.eval(ctx)
         return value
-    def __repr__(self):
+    def repr(self, ctx):
         else_block = ''
         if self.else_stmts:
-            else_block = '\nelse%s' % block_str(self.else_stmts)
-        return 'if %s%s%s' % (self.expr, block_str(self.if_stmts), else_block)
+            else_block = '\nelse%s' % block_str(self.else_stmts, ctx)
+        return 'if %s%s%s' % (self.expr.repr(ctx), block_str(self.if_stmts, ctx), else_block)
 
 @node('iter, &expr, *body')
 class For(Node):
@@ -388,8 +404,8 @@ class For(Node):
             for stmt in self.body:
                 stmt.eval(ctx)
         return Nil(info=self)
-    def __repr__(self):
-        return 'for %s in %s%s' % (self.iter, self.expr, block_str(self.body))
+    def repr(self, ctx):
+        return 'for %s in %s%s' % (self.iter, self.expr.repr(ctx), block_str(self.body, ctx))
 
 @node('&expr, *body')
 class While(Node):
@@ -398,8 +414,8 @@ class While(Node):
             for stmt in self.body:
                 stmt.eval(ctx)
         return Nil(info=self)
-    def __repr__(self):
-        return 'while %s%s' % (self.expr, block_str(self.body))
+    def repr(self, ctx):
+        return 'while %s%s' % (self.expr.repr(ctx), block_str(self.body, ctx))
 
 @node('&fn, *args')
 class Call(Node):
@@ -407,8 +423,8 @@ class Call(Node):
         fn = self.fn.eval(ctx)
         args = [a.eval(ctx) for a in self.args]
         return fn.eval_call(ctx, args)
-    def __repr__(self):
-        return '%s(%s)' % (self.fn, ', '.join(str(s) for s in self.args))
+    def repr(self, ctx):
+        return '%s(%s)' % (self.fn.repr(ctx), ', '.join(s.repr(ctx) for s in self.args))
 
 @node('ctx, name, params, *block')
 class Function(Node):
@@ -422,16 +438,16 @@ class Function(Node):
         for expr in self.block:
             ret = expr.eval(child_ctx)
         return ret
-    def __repr__(self):
+    def repr(self, ctx):
         return 'def %s(%s)%s' % (self.name, ', '.join(str(s)
-            for s in self.params), block_str(self.block))
+            for s in self.params), block_str(self.block, ctx))
 
 @node('name, fn')
 class BuiltinFunction(Node):
     def eval_call(self, ctx, args):
         child_ctx = Context(self.name, self, None, ctx)
         return self.fn(child_ctx, args)
-    def __repr__(self):
+    def repr(self, ctx):
         return '<builtin %s>' % self.name
 
 @node('ctx, name, *block')
@@ -457,7 +473,7 @@ class Class(Node):
         # Add __class__ attribute
         attrs += [List([String('__class__', info=self), self], info=self)]
         return Object(attrs, info=self)
-    def __repr__(self):
+    def repr(self, ctx):
         return '<class %s>' % self.name
     def get_attr(self, attr):
         return self.cls.get_attr(attr)
@@ -477,7 +493,7 @@ class Import(Node):
                     ctx.store(k, v.eval(ctx))
         return Nil(info=self)
 
-    def __repr__(self):
+    def repr(self, ctx):
         if self.names is not None:
             names = '*' if not self.names else ', '.join(self.names)
             return 'from %s import %s' % (self.name, names)
