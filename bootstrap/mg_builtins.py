@@ -13,10 +13,6 @@ def mg_builtin(name):
 
 # TODO: error checking!
 
-@mg_builtin('getchar')
-def mgb_getchar(ctx, args):
-    return syntax.String(sys.stdin.read(1), info=builtin_info)
-
 @mg_builtin('read_file')
 def mgb_read_file(ctx, args):
     path, = args

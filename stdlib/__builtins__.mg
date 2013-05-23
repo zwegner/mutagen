@@ -9,13 +9,16 @@ def map(fn, list):
 def print(args):
     putchar(str(args) + '\n')
 
-def str_split_lines(text):
+def str_split(text, delim):
     c = 0
     r = []
     while c < len(text):
         start = c
-        while c < len(text) and text[c] != '\n':
+        while c < len(text) and text[c] != delim:
             c = c + 1
         r = r + [slice(text, start, c)]
         c = c + 1
     r
+
+def str_split_lines(text):
+    str_split(text, '\n')
