@@ -308,6 +308,15 @@ class BinaryOp(Node):
             '-':  'sub',
         }[self.type]
         operator = '__%s__' % operator
+
+        # Operator overloading
+        if isinstance(lhs, Object):
+            cls = lhs.get_attr('__class__')
+            op = cls.get_attr(operator)
+            if op is None:
+                self.error('%s unimplemented for %s' % (operator, cls), ctx=ctx)
+            return op.eval_call(ctx, [lhs, rhs])
+
         if not hasattr(lhs, operator):
             self.error('%s unimplemented for %s' % (operator, lhs), ctx=ctx)
         return getattr(lhs, operator)(rhs)
