@@ -110,6 +110,7 @@ def p_expr_list(p):
 
 def p_expr(p):
     """ expr : list
+             | set
              | lambda
              | ident
              | string
@@ -148,6 +149,14 @@ def p_list(p):
         p[0] = syntax.List([], info=get_info(p, 1))
     else:
         p[0] = syntax.List(p[2], info=get_info(p, 1))
+
+def p_set(p):
+    """ set : LBRACE expr_list RBRACE
+            | LBRACE expr_list COMMA RBRACE
+    """
+    # HACK? Call the set constructor, relies on set being in __builtins__.mg
+    p[0] = syntax.Call(syntax.Identifier('set', info=get_info(p, 1)),
+            [syntax.List(p[2], info=get_info(p, 1))])
 
 def p_nil(p):
     """ nil : NIL """
