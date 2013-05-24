@@ -21,6 +21,9 @@ precedence = [
     ['left', 'AND'],
     ['left', 'NOT'],
     ['left', 'EQUALS_EQUALS', 'NOT_EQUALS', 'GREATER', 'GREATER_EQUALS', 'LESS', 'LESS_EQUALS', 'IN'],
+    ['left', 'BIT_OR'],
+    ['left', 'BIT_XOR'],
+    ['left', 'BIT_AND'],
     ['left', 'PLUS', 'MINUS'],
     ['left', 'LBRACKET', 'LPAREN', 'LBRACE'],
     ['left', 'PERIOD'],
@@ -165,6 +168,9 @@ def p_binary_op(p):
               | expr PLUS expr
               | expr AND expr
               | expr OR expr
+              | expr BIT_AND expr
+              | expr BIT_OR expr
+              | expr BIT_XOR expr
     """
     p[0] = syntax.BinaryOp(p[2], p[1], p[3])
 

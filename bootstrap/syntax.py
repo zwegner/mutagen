@@ -288,7 +288,7 @@ class Object(Node):
             return op.eval_call(ctx, [self] + args)
         if delegate:
             return delegate()
-        self.error('%s unimplemented for %s' % (attr, cls), ctx=ctx)
+        self.error('%s unimplemented for %s' % (attr, cls.repr(ctx)), ctx=ctx)
 
 @node('&method, &self')
 class BoundMethod(Node):
@@ -337,6 +337,9 @@ class BinaryOp(Node):
             '<=': 'le',
             '+':  'add',
             '-':  'sub',
+            '&':  'and',
+            '|':  'or',
+            '^':  'xor',
             'in': 'contains',
         }[self.type]
         operator = '__%s__' % operator
@@ -376,7 +379,7 @@ class Assignment(Node):
             if isinstance(lhs, str):
                 ctx.store(lhs, rhs)
             elif isinstance(lhs, list):
-                if len(lhs) != len(rhs):
+                if len(lhs) != rhs.len(ctx):
                     self.error('too %s values to unpack' %
                            ('few' if len(lhs) > len(rhs) else 'many'), ctx=ctx)
                 for lhs_i, rhs_i in zip(lhs, rhs):

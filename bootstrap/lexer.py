@@ -16,6 +16,9 @@ tokens = [
 ]
 
 token_map = {
+    'BIT_AND':         r'&',
+    'BIT_OR':          r'\|',
+    'BIT_XOR':         r'\^',
     'COLON':           r':',
     'COMMA':           r',',
     'EQUALS':          r'=',
