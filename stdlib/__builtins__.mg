@@ -22,3 +22,17 @@ def str_split(text, delim):
 
 def str_split_lines(text):
     str_split(text, '\n')
+
+class set:
+    def __init__(items):
+        set_items = []
+        for i in items:
+            if i not in set_items:
+                set_items = set_items + [i]
+        make(['items', set_items])
+    def add(self, item):
+        set(self.items + [item])
+    def __or__(self, other):
+        set(self.items + other.items)
+    def __repr__(self):
+        'set('+repr(self.items)+')'

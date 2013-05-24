@@ -472,7 +472,7 @@ class Class(Node):
         items += [List([String('name', info=self), String(self.name, info=self)], info=self)]
         cls = Object(items, info=self)
         self.cls = cls
-        ctx.store(self.name, cls)
+        ctx.store(self.name, self)
         return self
     def eval_call(self, ctx, args):
         init = self.cls.get_attr('__init__')
@@ -485,7 +485,7 @@ class Class(Node):
         attrs += [List([String('__class__', info=self), self], info=self)]
         return Object(attrs, info=self)
     def repr(self, ctx):
-        return '<class %s>' % self.name
+        return "<class '%s'>" % self.name
     def get_attr(self, attr):
         return self.cls.get_attr(attr)
 
