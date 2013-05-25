@@ -1,12 +1,12 @@
 import tokenize
 
-str_escapes = [
-    ['n', '\n'],
-    ['t', '\t'],
-    ['b', '\b'],
-    ['\\', '\\'],
-    ['\'', '\''],
-]
+str_escapes = {
+    'n': '\n',
+    't': '\t',
+    'b': '\b',
+    '\\': '\\',
+    '\'': '\'',
+}
 
 # Special token-transforming functions
 def t_identifier(t):
@@ -28,10 +28,9 @@ def t_string(t):
             i = i + 1
             c = t.value[i]
             esc = Nil
-            for kv in str_escapes:
-                if c == kv[0]:
-                    esc = kv[1]
-            if esc == Nil:
+            if c in str_escapes:
+                esc = str_escapes[c]
+            else:
                 print('bad string escape: "\\'+c+'"')
                 error
             result = result + esc

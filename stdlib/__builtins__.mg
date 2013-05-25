@@ -1,6 +1,6 @@
-# HACK!!! This is to get around a lack of closures/lifting,
-# by manually passing around the function.
 def map(fn, list):
+    # HACK!!! This is to get around a lack of closures/lifting,
+    # by manually passing around the function.
     def reducer(a, b):
         fn = a[0]
         [fn, a[1] + [fn(b)]]

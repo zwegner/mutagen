@@ -251,10 +251,10 @@ class List(Node):
         if not isinstance(other, List):
             self.error('bad type for list.add: %s' % type(other))
         return List(self.items + other.items, info=self)
-    def __contains__(self, other):
+    def __contains__(self, item):
         r = 0
         for i in self:
-            if (other == i).value:
+            if (item == i).value:
                 r = 1
                 break
         return Integer(r, info=self)
@@ -275,7 +275,7 @@ class Dict(Node):
         if item in self.items:
             return self.items[item]
         self.error('bad arg for getitem: %s' % item)
-    def __contains__(self, other):
+    def __contains__(self, item):
         return Integer(item in self.items, info=self)
     def len(self, ctx):
         return len(self.items)
