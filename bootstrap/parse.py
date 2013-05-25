@@ -66,7 +66,7 @@ def p_block(p):
         p[0] = p[4]
 
 def p_block_single_stmt(p):
-    """ block : COLON expr delim """
+    """ block : COLON simple_stmt delim """
     p[0] = [p[2]]
 
 def p_delim(p):
@@ -90,12 +90,17 @@ def p_import_from(p):
     """ import : IMPORT IDENTIFIER FROM STRING """
     p[0] = syntax.Import(p[2], None, p[4], False, info=get_info(p, 1))
 
+def p_simple_stmt(p):
+    """ simple_stmt : expr
+                    | pass
+                    | assn
+    """
+    p[0] = p[1]
+
 def p_stmt(p):
-    """ stmt : expr delim
-             | pass
+    """ stmt : simple_stmt
              | import
              | if_stmt
-             | assn
              | for_stmt
              | while_stmt
              | def_stmt

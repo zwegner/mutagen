@@ -93,20 +93,12 @@ def process_newlines(tokens):
     brackets = 0
     parens = 0
     for t in tokens:
-        if 0:
-            pass
-        elif t.type == 'LBRACE':
-            braces = braces + 1
-        elif t.type == 'RBRACE':
-             braces = braces - 1
-        elif t.type == 'LBRACKET':
-             brackets = brackets + 1
-        elif t.type == 'RBRACKET':
-             brackets = brackets - 1
-        elif t.type == 'LPAREN':
-             parens = parens + 1
-        elif t.type == 'RPAREN':
-             parens = parens - 1
+        if t.type == 'LBRACE':     braces = braces + 1
+        elif t.type == 'RBRACE':   braces = braces - 1
+        elif t.type == 'LBRACKET': brackets = brackets + 1
+        elif t.type == 'RBRACKET': brackets = brackets - 1
+        elif t.type == 'LPAREN':   parens = parens + 1
+        elif t.type == 'RPAREN':   parens = parens - 1
 
         if t.type == 'NEWLINE':
             if braces == 0 and brackets == 0 and parens == 0:
