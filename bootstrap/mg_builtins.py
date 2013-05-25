@@ -44,7 +44,7 @@ def mgb_str(ctx, arg):
 
 @mg_builtin('make', None)
 def mgb_make(ctx, *args):
-    return syntax.Object(list(args), info=builtin_info)
+    return syntax.Object(dict(args), info=builtin_info)
 
 @mg_builtin('reduce', [syntax.Function, syntax.Node, syntax.Node])
 def mgb_reduce(ctx, fn, start, iter):

@@ -280,22 +280,22 @@ class Dict(Node):
     def len(self, ctx):
         return len(self.items)
 
-# HACK: need a dict type
-@node('*items')
+@node('items')
 class Object(Node):
     def eval(self, ctx):
-        return Object([List([k.eval(ctx), v.eval(ctx)], info=self) for k, v
-            in self.items], info=self)
+        return Object({k.eval(ctx): v.eval(ctx) for k, v
+            in self.items.items()}, info=self)
     def get_attr(self, attr):
-        results = [v for k, v in self.items if k.value == attr]
-        return results[0] if results else None
+        if attr in self.items:
+            return self.items[attr]
+        return None
     def __eq__(self, other):
         return Integer(isinstance(other, Object) and
                 self.items == other.items, info=self)
 
     def base_repr(self, ctx):
         return '{%s}' % ', '.join('%s:%s' % (k.repr(ctx), v.repr(ctx)) for k, v
-                in self.items)
+                in self.items.items())
     def len(self, ctx):
         return self.overload(ctx, '__len__', []).value
     def str(self, ctx):
@@ -388,7 +388,6 @@ class GetAttr(Node):
 @node('&obj, &item')
 class GetItem(Node):
     def eval(self, ctx):
-        # HACK: no real dictionaries
         obj = self.obj.eval(ctx)
         item = self.item.eval(ctx)
         return obj[item]
@@ -491,9 +490,9 @@ class Class(Node):
         child_ctx = Context(self.name, self, self.ctx, ctx)
         for expr in self.block:
             ret = expr.eval(child_ctx)
-        items = [List([String(k, info=self), v.eval(ctx)], info=self) for k, v
-            in child_ctx.syms.items()]
-        items += [List([String('name', info=self), String(self.name, info=self)], info=self)]
+        items = {String(k, info=self): v.eval(ctx) for k, v
+            in child_ctx.syms.items()}
+        items[String('name', info=self)] = String(self.name, info=self)
         cls = Object(items, info=self)
         self.cls = cls
         ctx.store(self.name, self)
@@ -501,12 +500,12 @@ class Class(Node):
     def eval_call(self, ctx, args):
         init = self.cls.get_attr('__init__')
         if init is None:
-            attrs = []
+            attrs = {}
         else:
             obj = init.eval_call(ctx, args)
             attrs = obj.items
         # Add __class__ attribute
-        attrs += [List([String('__class__', info=self), self], info=self)]
+        attrs[String('__class__', info=self)] = self
         return Object(attrs, info=self)
     def repr(self, ctx):
         return "<class '%s'>" % self.name
@@ -519,8 +518,8 @@ class Import(Node):
         for expr in self.stmts:
             expr.eval(self.ctx)
         if self.names is None:
-            obj = Object([List([String(k, info=self), v.eval(ctx)], info=self) for k, v
-                in self.ctx.syms.items()], info=self)
+            obj = Object({String(k, info=self): v.eval(ctx) for k, v
+                in self.ctx.syms.items()}, info=self)
             ctx.store(self.name, obj)
         else:
             for k, v in self.ctx.syms.items():
