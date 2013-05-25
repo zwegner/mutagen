@@ -59,6 +59,7 @@ keywords = [
     'pass',
     'return',
     'while',
+    'yield',
 ]
 
 for keyword in keywords:

@@ -85,6 +85,7 @@ keywords = [
     'pass',
     'return',
     'while',
+    'yield',
 ]
 
 def process_newlines(tokens):

@@ -95,6 +95,7 @@ def p_simple_stmt(p):
                     | pass
                     | assn
                     | return
+                    | yield
     """
     p[0] = p[1]
 
@@ -256,6 +257,10 @@ def p_return(p):
         p[0] = syntax.Return(p[2])
     else:
         p[0] = syntax.Return(None)
+
+def p_yield(p):
+    """ yield : YIELD expr """
+    p[0] = syntax.Yield(p[2])
 
 def p_if(p):
     """ if_stmt : IF expr block """

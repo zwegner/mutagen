@@ -44,6 +44,9 @@ class Info:
 class Node:
     def eval(self, ctx):
         return self
+    def eval_gen(self, ctx):
+        self.eval(ctx)
+        return []
     def error(self, msg, ctx=None):
         if ctx:
             ctx.print_stack()
@@ -431,6 +434,13 @@ class Return(Node):
         return 'return%s' % (' %s' % self.expr.repr(ctx) if
                 self.expr else '')
 
+@node('&expr')
+class Yield(Node):
+    def eval_gen(self, ctx):
+        yield self.expr.eval(ctx)
+    def repr(self, ctx):
+        return 'yield %s' % self.expr.repr(ctx)
+
 @node('&expr, *if_stmts, *else_stmts')
 class IfElse(Node):
     def eval(self, ctx):
@@ -440,6 +450,11 @@ class IfElse(Node):
         for stmt in block:
             value = stmt.eval(ctx)
         return value
+    def eval_gen(self, ctx):
+        expr = self.expr.eval(ctx).test_truth()
+        block = self.if_stmts if expr else self.else_stmts
+        for stmt in block:
+            yield from stmt.eval_gen(ctx)
     def repr(self, ctx):
         else_block = ''
         if self.else_stmts:
@@ -455,6 +470,12 @@ class For(Node):
             for stmt in self.body:
                 stmt.eval(ctx)
         return Nil(info=self)
+    def eval_gen(self, ctx):
+        expr = self.expr.eval(ctx)
+        for i in expr:
+            ctx.store(self.iter, i)
+            for stmt in self.body:
+                yield from stmt.eval_gen(ctx)
     def repr(self, ctx):
         return 'for %s in %s%s' % (self.iter, self.expr.repr(ctx), block_str(self.body, ctx))
 
@@ -465,6 +486,10 @@ class While(Node):
             for stmt in self.body:
                 stmt.eval(ctx)
         return Nil(info=self)
+    def eval_gen(self, ctx):
+        while self.expr.eval(ctx).test_truth():
+            for stmt in self.body:
+                yield from stmt.eval_gen(ctx)
     def repr(self, ctx):
         return 'while %s%s' % (self.expr.repr(ctx), block_str(self.body, ctx))
 
@@ -479,6 +504,13 @@ class Call(Node):
 
 @node('ctx, name, params, *block')
 class Function(Node):
+    def setup(self):
+        # Check if this is a generator and not a function
+        self.is_generator = False
+        if any(isinstance(node, Yield) for node in self.iterate_subtree()):
+            if any(isinstance(node, Return) for node in self.iterate_subtree()):
+                self.error('Cannot use return in a generator')
+            self.is_generator = True
     def eval(self, ctx):
         return self
     def eval_call(self, ctx, args):
@@ -486,6 +518,8 @@ class Function(Node):
         child_ctx = Context(self.name, self, self.ctx, ctx)
         for p, a in zip(self.params, args):
             child_ctx.store(p, a)
+        if self.is_generator:
+            return Generator(child_ctx, self.block, info=self)
         for expr in self.block:
             try:
                 expr.eval(child_ctx)
@@ -496,6 +530,19 @@ class Function(Node):
     def repr(self, ctx):
         return 'def %s(%s)%s' % (self.name, ', '.join(str(s)
             for s in self.params), block_str(self.block, ctx))
+
+@node('ctx, *block')
+class Generator(Function):
+    def setup(self):
+        self.exhausted = False
+    def eval(self, ctx):
+        return self
+    def __iter__(self):
+        if self.exhausted:
+            self.error('generator exhausted', ctx=self.ctx)
+        for expr in self.block:
+            yield from expr.eval_gen(self.ctx)
+        self.exhausted = True
 
 @node('name, fn')
 class BuiltinFunction(Node):
