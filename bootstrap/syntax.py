@@ -140,12 +140,15 @@ def node(argstr='', compare=False):
                 if not isinstance(other, type(self)):
                     self.error('uncomparable types: %s, %s' % (type(self), type(other)))
                 return Integer(self.value < other.value, info=self)
+            def __hash__(self):
+                return self.value.__hash__()
             node.__eq__ = __eq__
             node.__ne__ = __ne__
             node.__ge__ = __ge__
             node.__gt__ = __gt__
             node.__le__ = __le__
             node.__lt__ = __lt__
+            node.__hash__ = __hash__
 
         node.__init__ = __init__
         node.iterate_subtree = iterate_subtree
@@ -168,6 +171,8 @@ class Nil(Node):
         return Integer(not isinstance(other, Nil), info=self)
     def test_truth(self):
         return False
+    def __hash__(self):
+        return 0
 
 @node('name')
 class Identifier(Node):
@@ -253,6 +258,25 @@ class List(Node):
                 r = 1
                 break
         return Integer(r, info=self)
+    def len(self, ctx):
+        return len(self.items)
+    def __hash__(self):
+        return tuple(self.items).__hash__()
+
+@node('items')
+class Dict(Node):
+    def eval(self, ctx):
+        return Dict({k.eval(ctx): v.eval(ctx) for k, v in
+            self.items.items()}, info=self)
+    def repr(self, ctx):
+        return '{%s}' % ', '.join('%s: %s' % (k.repr(ctx), v.repr(ctx))
+            for k, v in self.items.items())
+    def __getitem__(self, item):
+        if item in self.items:
+            return self.items[item]
+        self.error('bad arg for getitem: %s' % item)
+    def __contains__(self, other):
+        return Integer(item in self.items, info=self)
     def len(self, ctx):
         return len(self.items)
 

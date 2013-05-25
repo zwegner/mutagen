@@ -114,6 +114,7 @@ def p_expr_list(p):
 
 def p_expr(p):
     """ expr : list
+             | dict
              | set
              | lambda
              | ident
@@ -153,6 +154,25 @@ def p_list(p):
         p[0] = syntax.List([], info=get_info(p, 1))
     else:
         p[0] = syntax.List(p[2], info=get_info(p, 1))
+
+def p_dict_list(p):
+    """ dict_list : expr COLON expr
+                  | dict_list COMMA expr COLON expr
+    """
+    if len(p) == 4:
+        p[0] = [[p[1], p[3]]]
+    else:
+        p[0] = p[1] + [[p[3], p[5]]]
+
+def p_dict(p):
+    """ dict : LBRACE RBRACE
+             | LBRACE dict_list RBRACE
+             | LBRACE dict_list COMMA RBRACE
+    """
+    if len(p) == 3:
+        p[0] = syntax.Dict({}, info=get_info(p, 1))
+    else:
+        p[0] = syntax.Dict(dict(p[2]), info=get_info(p, 1))
 
 def p_set(p):
     """ set : LBRACE expr_list RBRACE
