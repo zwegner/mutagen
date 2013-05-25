@@ -65,6 +65,10 @@ def p_block(p):
     else:
         p[0] = p[4]
 
+def p_block_single_stmt(p):
+    """ block : COLON expr delim """
+    p[0] = [p[2]]
+
 def p_delim(p):
     """ delim : NEWLINE
               | SEMICOLON
