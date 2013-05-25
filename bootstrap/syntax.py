@@ -414,6 +414,23 @@ class Assignment(Node):
     def repr(self, ctx):
         return '%s = %s' % (self.name, self.rhs.repr(ctx))
 
+# Exception for backing up the eval stack on return
+class ReturnValue(Exception):
+    def __init__(self, value):
+        self.value = value
+
+@node('&expr')
+class Return(Node):
+    def eval(self, ctx):
+        if self.expr:
+            expr = self.expr.eval(ctx)
+        else:
+            expr = Nil(info=self)
+        raise ReturnValue(expr)
+    def repr(self, ctx):
+        return 'return%s' % (' %s' % self.expr.repr(ctx) if
+                self.expr else '')
+
 @node('&expr, *if_stmts, *else_stmts')
 class IfElse(Node):
     def eval(self, ctx):
@@ -470,7 +487,11 @@ class Function(Node):
         for p, a in zip(self.params, args):
             child_ctx.store(p, a)
         for expr in self.block:
-            ret = expr.eval(child_ctx)
+            try:
+                expr.eval(child_ctx)
+            except ReturnValue as r:
+                ret = r.value
+                break
         return ret
     def repr(self, ctx):
         return 'def %s(%s)%s' % (self.name, ', '.join(str(s)

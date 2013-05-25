@@ -1,25 +1,24 @@
 # char: match a single character
 class MatchChar:
     def __init__(c):
-        make(['char', c])
+        return make(['char', c])
 
     def match(self, s):
         if len(s):
-            [s[0] == self.char, 1]
-        else:
-            [0, 0]
+            return [s[0] == self.char, 1]
+        return [0, 0]
 
 # Any: match any single character
 class MatchAny:
     def match(self, s):
         match = len(s) > 0
-        [match, match]
+        return [match, match]
 
 # Opt: equivalent to a [A-Za-z] group in a regex, matches
 # a set of ranges/single characters, or the inverse of this set
 class MatchOpt:
     def __init__(inv, matches):
-        make(['inv', inv], ['matches', matches])
+        return make(['inv', inv], ['matches', matches])
 
     def match(self, s):
         r = 0
@@ -29,46 +28,45 @@ class MatchOpt:
                 r = 1
         if self.inv:
             r = not r and len(s) > 0
-        [r, 1]
+        return [r, 1]
 
 # Range: match a character that's in a range
 class MatchRange:
     def __init__(low, high):
-        make(['low', low], ['high', high])
+        return make(['low', low], ['high', high])
 
     def match(self, s):
         if len(s):
-            [s[0] >= self.low and s[0] <= self.high, 1]
-        else:
-            [0, 0]
+            return [s[0] >= self.low and s[0] <= self.high, 1]
+        return [0, 0]
 
 # Sequence: take two regexes and match them both in order.
 class MatchSeq:
     def __init__(a, s):
-        make(['left', a], ['right', s])
+        return make(['left', a], ['right', s])
 
     def match(self, s):
         [r, l] = self.left.match(s)
         if r:
             [r, i] = self.right.match(slice(s, l, len(s)))
             l = l + i
-        [r, l]
+        return [r, l]
 
 # Alternation: match either of two regexes
 class MatchAlt:
     def __init__(a, s):
-        make(['left', a], ['right', s])
+        return make(['left', a], ['right', s])
 
     def match(self, s):
         r = self.left.match(s)
         if not r[0]:
             r = self.right.match(s)
-        r
+        return r
 
 # Repetition: match as many times as possible
 class MatchRep:
     def __init__(r, min, max):
-        make(['regex', r], ['min', min])
+        return make(['regex', r], ['min', min])
 
     def match(self, s):
         l = 0
@@ -78,12 +76,12 @@ class MatchRep:
             l = l + i
             count = count + 1
             [r, i] = self.regex.match(slice(s, l, len(s)))
-        [count >= self.min, l]
+        return [count >= self.min, l]
 
 # Null regex: matches nothing.
 class MatchNull:
     def match(self, s):
-        [1, 0]
+        return [1, 0]
 
 def parse_item(string, c):
     # Backslash: escape next char
@@ -129,7 +127,7 @@ def parse_item(string, c):
     # Match a literal character
     else:
         item = MatchChar(string[c])
-    [item, c + 1]
+    return [item, c + 1]
 
 def parse_group(string, c):
     result = Nil
@@ -158,7 +156,7 @@ def parse_group(string, c):
             result = item
         else:
             result = MatchSeq(result, item)
-    [result, c]
+    return [result, c]
 
 def parse(string):
     result_c = parse_group(string, 0)
@@ -166,4 +164,4 @@ def parse(string):
     c = result_c[1]
     if c < len(string):
         error
-    result
+    return result

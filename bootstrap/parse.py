@@ -94,6 +94,7 @@ def p_simple_stmt(p):
     """ simple_stmt : expr
                     | pass
                     | assn
+                    | return
     """
     p[0] = p[1]
 
@@ -246,6 +247,15 @@ def p_assignment(p):
             return [deconstruct_lhs(i) for i in lhs]
         lhs.error('invalid lhs for assignment')
     p[0] = syntax.Assignment(deconstruct_lhs(p[1]), p[3])
+
+def p_return(p):
+    """ return : RETURN expr
+               | RETURN
+    """
+    if len(p) == 3:
+        p[0] = syntax.Return(p[2])
+    else:
+        p[0] = syntax.Return(None)
 
 def p_if(p):
     """ if_stmt : IF expr block """

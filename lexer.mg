@@ -14,10 +14,10 @@ def t_identifier(t):
     for k in keywords:
         if t.value == k:
             r = tokenize.Token(str_upper(k), t.value)
-    r
+    return r
 
 def t_integer(t):
-    tokenize.Token(t.type, parse_int(t.value, 0))
+    return tokenize.Token(t.type, parse_int(t.value, 0))
 
 def t_string(t):
     i = 1
@@ -37,7 +37,7 @@ def t_string(t):
         else:
             result = result + c
         i = i + 1
-    tokenize.Token(t.type, result)
+    return tokenize.Token(t.type, result)
 
 token_map = [
     ['COLON',           ':'],
@@ -83,6 +83,7 @@ keywords = [
     'not',
     'or',
     'pass',
+    'return',
     'while',
 ]
 
@@ -104,7 +105,7 @@ def process_newlines(tokens):
                 new_tokens = new_tokens + [t]
         else:
             new_tokens = new_tokens + [t]
-    new_tokens
+    return new_tokens
 
 def process_whitespace(tokens):
     after_newline = 1
@@ -135,7 +136,7 @@ def process_whitespace(tokens):
 
         i = i + 1
 
-    new_tokens
+    return new_tokens
 
 def process_indentation(tokens):
     ws_stack = [0]
@@ -166,7 +167,7 @@ def process_indentation(tokens):
         ws_stack = slice(ws_stack, 0, len(ws_stack) - 1)
         new_tokens = new_tokens + [tokenize.Token('DEDENT', '')]
 
-    new_tokens
+    return new_tokens
 
 tokenizer = tokenize.Tokenizer(token_map)
 
@@ -175,4 +176,4 @@ def lex_input(input):
     tokens = process_newlines(tokens)
     tokens = process_whitespace(tokens)
     tokens = process_indentation(tokens)
-    tokens
+    return tokens

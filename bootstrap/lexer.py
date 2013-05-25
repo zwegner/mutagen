@@ -57,6 +57,7 @@ keywords = [
     'not',
     'or',
     'pass',
+    'return',
     'while',
 ]
 

@@ -3,11 +3,11 @@ def map(fn, list):
     # by manually passing around the function.
     def reducer(a, b):
         fn = a[0]
-        [fn, a[1] + [fn(b)]]
-    reduce(reducer, [fn, []], list)[1]
+        return [fn, a[1] + [fn(b)]]
+    return reduce(reducer, [fn, []], list)[1]
 
 def print(args):
-    putchar(str(args) + '\n')
+    return putchar(str(args) + '\n')
 
 def str_split(text, delim):
     c = 0
@@ -18,10 +18,10 @@ def str_split(text, delim):
             c = c + 1
         r = r + [slice(text, start, c)]
         c = c + 1
-    r
+    return r
 
 def str_split_lines(text):
-    str_split(text, '\n')
+    return str_split(text, '\n')
 
 class set:
     def __init__(items):
@@ -29,10 +29,10 @@ class set:
         for i in items:
             if i not in set_items:
                 set_items = set_items + [i]
-        make(['items', set_items])
+        return make(['items', set_items])
     def add(self, item):
-        set(self.items + [item])
+        return set(self.items + [item])
     def __or__(self, other):
-        set(self.items + other.items)
+        return set(self.items + other.items)
     def __repr__(self):
-        'set('+repr(self.items)+')'
+        return 'set('+repr(self.items)+')'

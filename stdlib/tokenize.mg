@@ -1,22 +1,22 @@
 import re
 
 def ignore_token_fn(t):
-    Nil
+    return Nil
 
 def null_token_fn(t):
-    t
+    return t
 
 # A class for eating up input, matching against a lex rule
 class TokenMatcher:
     def __init__(name, regex, fn):
-        make(['name', name], ['regex', regex], ['fn', fn])
+        return make(['name', name], ['regex', regex], ['fn', fn])
     def match(self, s):
-        self.regex.match(s)
+        return self.regex.match(s)
 
 # A token from the input stream
 class Token:
     def __init__(type, value):
-        make(['type', type], ['value', value])
+        return make(['type', type], ['value', value])
 
 class Tokenizer:
     def __init__(token_map):
@@ -29,7 +29,7 @@ class Tokenizer:
                 token_fn = null_token_fn
             token_matchers = token_matchers + [TokenMatcher(type,
                 re.parse(regex), token_fn)]
-        make(['token_matchers', token_matchers])
+        return make(['token_matchers', token_matchers])
 
     def tokenize_input(self, input):
         r = []
@@ -53,4 +53,4 @@ class Tokenizer:
                 if Nil != token:
                     r = r + [token]
             r = r + [Token('NEWLINE', '\n')]
-        r
+        return r
