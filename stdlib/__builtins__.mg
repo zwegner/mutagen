@@ -6,6 +6,12 @@ def map(fn, list):
         return [fn, a[1] + [fn(b)]]
     return reduce(reducer, [fn, []], list)[1]
 
+def list(arg):
+    l = []
+    for a in arg:
+        l = l + [a]
+    return l
+
 def print(args):
     return putchar(str(args) + '\n')
 

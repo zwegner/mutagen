@@ -32,7 +32,6 @@ class Tokenizer:
         return make(['token_matchers', token_matchers])
 
     def tokenize_input(self, input):
-        r = []
         # HACK: manually split up lines
         for i in str_split_lines(input):
             while len(i) > 0:
@@ -50,7 +49,6 @@ class Tokenizer:
                 match = slice(i, 0, best_match[1])
                 i = slice(i, best_match[1], len(i))
                 token = best_token.fn(Token(best_token.name, match))
-                if Nil != token:
-                    r = r + [token]
-            r = r + [Token('NEWLINE', '\n')]
-        return r
+                if token != Nil:
+                    yield token
+            yield Token('NEWLINE', '\n')

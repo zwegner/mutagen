@@ -89,7 +89,6 @@ keywords = [
 ]
 
 def process_newlines(tokens):
-    new_tokens = []
     braces = 0
     brackets = 0
     parens = 0
@@ -103,15 +102,15 @@ def process_newlines(tokens):
 
         if t.type == 'NEWLINE':
             if braces == 0 and brackets == 0 and parens == 0:
-                new_tokens = new_tokens + [t]
+                yield t
         else:
-            new_tokens = new_tokens + [t]
-    return new_tokens
+            yield t
 
 def process_whitespace(tokens):
     after_newline = 1
     i = 0
-    new_tokens = []
+    # HACK until we have some sliding-window-type generator
+    tokens = list(tokens)
     while i < len(tokens):
         token = tokens[i]
         if i < len(tokens) - 1:
@@ -124,24 +123,22 @@ def process_whitespace(tokens):
             # Don't generate indent/dedent on empty lines
             if token.type == 'WHITESPACE':
                 if next_token != Nil and next_token.type != 'NEWLINE':
-                    new_tokens = new_tokens + [token]
+                    yield token
             # Got a token at the beginning of the line--yield empty whitespace
             elif token.type != 'NEWLINE':
-                new_tokens = new_tokens + [tokenize.Token('WHITESPACE', ''), token]
+                yield tokenize.Token('WHITESPACE', '')
+                yield token
 
         # Not after a newline--ignore whitespace
         elif token.type != 'WHITESPACE':
-            new_tokens = new_tokens + [token]
+            yield token
 
         after_newline = (token.type == 'NEWLINE')
 
         i = i + 1
 
-    return new_tokens
-
 def process_indentation(tokens):
     ws_stack = [0]
-    new_tokens = []
     for t in tokens:
         # Whitespace has been processed, so this token is at the beginning
         # of a non-empty line
@@ -151,24 +148,22 @@ def process_indentation(tokens):
             # Check the indent level against the stack
             if spaces > ws_stack[-1]:
                 ws_stack = ws_stack + [spaces]
-                new_tokens = new_tokens + [tokenize.Token('INDENT', '')]
+                yield tokenize.Token('INDENT', '')
             else:
                 # Pop off the indent stack until we reach the previous level
                 while spaces < ws_stack[-1]:
                     ws_stack = slice(ws_stack, 0, len(ws_stack) - 1)
-                    new_tokens = new_tokens + [tokenize.Token('DEDENT', '')]
+                    yield tokenize.Token('DEDENT', '')
                 if spaces != ws_stack[-1]:
                     error(t, 'unindent level does not match' +
                         'any previous indent')
         else:
-            new_tokens = new_tokens + [t]
+            yield t
 
     # Make sure we have enough indents at EOF
     while len(ws_stack) > 1:
         ws_stack = slice(ws_stack, 0, len(ws_stack) - 1)
-        new_tokens = new_tokens + [tokenize.Token('DEDENT', '')]
-
-    return new_tokens
+        yield tokenize.Token('DEDENT', '')
 
 tokenizer = tokenize.Tokenizer(token_map)
 
