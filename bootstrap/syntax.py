@@ -552,7 +552,7 @@ class BuiltinFunction(Node):
     def repr(self, ctx):
         return '<builtin %s>' % self.name
 
-@node('ctx, name, *block')
+@node('ctx, name, attrs, *block')
 class Class(Node):
     def eval(self, ctx):
         child_ctx = Context(self.name, self, self.ctx, ctx)
@@ -568,7 +568,10 @@ class Class(Node):
     def eval_call(self, ctx, args):
         init = self.cls.get_attr('__init__')
         if init is None:
-            attrs = {}
+            if len(self.attrs) != len(args):
+                self.error('wrong number of arguments to constructor, '
+                'expected %s' % len(self.attrs), ctx=ctx)
+            attrs = {String(k, info=self): v.eval(ctx) for k, v in zip(self.attrs, args)}
         else:
             obj = init.eval_call(ctx, args)
             attrs = obj.items

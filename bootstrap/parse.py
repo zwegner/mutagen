@@ -326,8 +326,8 @@ def p_lambda(p):
     p[0] = syntax.Function(current_ctx, 'lambda', p[2], p[3], info=get_info(p, 1))
 
 def p_class(p):
-    """ class_stmt : CLASS IDENTIFIER block """
-    p[0] = syntax.Assignment(p[2], syntax.Class(current_ctx, p[2], p[3], info=get_info(p, 1)))
+    """ class_stmt : CLASS IDENTIFIER args block """
+    p[0] = syntax.Assignment(p[2], syntax.Class(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
 
 parser = yacc.yacc(write_tables=0, debug=0)
 

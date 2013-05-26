@@ -7,16 +7,13 @@ def null_token_fn(t):
     return t
 
 # A class for eating up input, matching against a lex rule
-class TokenMatcher:
-    def __init__(name, regex, fn):
-        return make(['name', name], ['regex', regex], ['fn', fn])
+class TokenMatcher(name, regex, fn):
     def match(self, s):
         return self.regex.match(s)
 
 # A token from the input stream
-class Token:
-    def __init__(type, value):
-        return make(['type', type], ['value', value])
+class Token(type, value):
+    pass
 
 class Tokenizer:
     def __init__(token_map):

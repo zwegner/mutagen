@@ -1,8 +1,5 @@
 # char: match a single character
-class MatchChar:
-    def __init__(c):
-        return make(['char', c])
-
+class MatchChar(char):
     def match(self, s):
         if len(s):
             return [s[0] == self.char, 1]
@@ -16,10 +13,7 @@ class MatchAny:
 
 # Opt: equivalent to a [A-Za-z] group in a regex, matches
 # a set of ranges/single characters, or the inverse of this set
-class MatchOpt:
-    def __init__(inv, matches):
-        return make(['inv', inv], ['matches', matches])
-
+class MatchOpt(inv, matches):
     def match(self, s):
         r = 0
         for m in self.matches:
@@ -31,20 +25,14 @@ class MatchOpt:
         return [r, 1]
 
 # Range: match a character that's in a range
-class MatchRange:
-    def __init__(low, high):
-        return make(['low', low], ['high', high])
-
+class MatchRange(low, high):
     def match(self, s):
         if len(s):
             return [s[0] >= self.low and s[0] <= self.high, 1]
         return [0, 0]
 
 # Sequence: take two regexes and match them both in order.
-class MatchSeq:
-    def __init__(a, s):
-        return make(['left', a], ['right', s])
-
+class MatchSeq(left, right):
     def match(self, s):
         [r, l] = self.left.match(s)
         if r:
@@ -53,10 +41,7 @@ class MatchSeq:
         return [r, l]
 
 # Alternation: match either of two regexes
-class MatchAlt:
-    def __init__(a, s):
-        return make(['left', a], ['right', s])
-
+class MatchAlt(left, right):
     def match(self, s):
         r = self.left.match(s)
         if not r[0]:
@@ -64,10 +49,7 @@ class MatchAlt:
         return r
 
 # Repetition: match as many times as possible
-class MatchRep:
-    def __init__(r, min, max):
-        return make(['regex', r], ['min', min])
-
+class MatchRep(regex, min):
     def match(self, s):
         l = 0
         count = 0
