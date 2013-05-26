@@ -42,7 +42,9 @@ def p_error(p):
 
 def p_stmt_list(p):
     """ stmt_list : stmt """
-    p[0] = [p[1]]
+    p[0] = []
+    if p[1] is not None:
+        p[0].append(p[1])
 
 def p_stmt_list_2(p):
     """ stmt_list : stmt_list delim
@@ -67,7 +69,9 @@ def p_block(p):
 
 def p_block_single_stmt(p):
     """ block : COLON simple_stmt delim """
-    p[0] = [p[2]]
+    p[0] = []
+    if p[2] is not None:
+        p[0].append(p[2])
 
 def p_delim(p):
     """ delim : NEWLINE
@@ -306,11 +310,12 @@ def p_arg_list(p):
 def p_args(p):
     """ args : LPAREN arg_list RPAREN
              | LPAREN RPAREN
+             |
     """
-    if len(p) == 3:
-        p[0] = []
-    else:
+    if len(p) == 4:
         p[0] = p[2]
+    else:
+        p[0] = []
 
 def p_def(p):
     """ def_stmt : DEF IDENTIFIER args block """

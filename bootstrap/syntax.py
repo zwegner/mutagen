@@ -61,11 +61,11 @@ class Node:
     def __repr__(self):
         assert False
     def len(self, ctx):
-        self.error('__len__ unimplemented for %s' % type(self))
+        self.error('__len__ unimplemented for %s' % type(self), ctx=ctx)
     def str(self, ctx):
         return self.repr(ctx)
     def repr(self, ctx):
-        self.error('__repr__ unimplemented for %s' % type(self))
+        self.error('__repr__ unimplemented for %s' % type(self), ctx=ctx)
 
 ARG_REG, ARG_EDGE, ARG_EDGE_LIST = list(range(3))
 arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
@@ -532,7 +532,7 @@ class Function(Node):
             for s in self.params), block_str(self.block, ctx))
 
 @node('ctx, *block')
-class Generator(Function):
+class Generator(Node):
     def setup(self):
         self.exhausted = False
     def eval(self, ctx):
@@ -557,7 +557,7 @@ class Class(Node):
     def eval(self, ctx):
         child_ctx = Context(self.name, self, self.ctx, ctx)
         for expr in self.block:
-            ret = expr.eval(child_ctx)
+            expr.eval(child_ctx)
         items = {String(k, info=self): v.eval(ctx) for k, v
             in child_ctx.syms.items()}
         items[String('name', info=self)] = String(self.name, info=self)
