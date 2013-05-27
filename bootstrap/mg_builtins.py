@@ -46,6 +46,10 @@ def mgb_str(ctx, arg):
 def mgb_make(ctx, *args):
     return syntax.Object(dict(args), info=builtin_info)
 
+@mg_builtin('error', [syntax.String])
+def mgb_error(ctx, msg):
+    msg.error(msg.value, ctx=ctx)
+
 @mg_builtin('reduce', [syntax.Function, syntax.Node, syntax.Node])
 def mgb_reduce(ctx, fn, start, iter):
     for i in iter:

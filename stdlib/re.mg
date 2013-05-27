@@ -102,10 +102,10 @@ def parse_item(string, c):
         c = c + 1
         [item, c] = parse_group(string, c)
         if string[c] != ')':
-            error
+            error('regex parsing error')
     # Special characters
     elif string[c] == '*' or string[c] == '+' or string[c] == '|' or string[c] == '?':
-        error
+        error('regex parsing error')
     # Match a literal character
     else:
         item = MatchChar(string[c])
@@ -131,7 +131,7 @@ def parse_group(string, c):
                 while c < len(string) and string[c] == '|':
                     c = c + 1
                     if c >= len(string):
-                        error
+                        error('regex parsing error')
                     [alt, c] = parse_item(string, c)
                     item = MatchAlt(item, alt)
         if result == Nil:
@@ -145,5 +145,5 @@ def parse(string):
     result = result_c[0]
     c = result_c[1]
     if c < len(string):
-        error
+        error('regex parsing error')
     return result

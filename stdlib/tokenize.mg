@@ -40,8 +40,7 @@ class Tokenizer:
                         best_match = m
                         best_token = t
                 if not best_match[0]:
-                    print('Error: '+repr(i))
-                    error
+                    error('Error: '+repr(i))
 
                 match = slice(i, 0, best_match[1])
                 i = slice(i, best_match[1], len(i))
