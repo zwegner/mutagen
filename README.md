@@ -36,27 +36,35 @@ Syntax
 
 Mutagen's syntax is very similar to Python. As of now, there are a few small changes:
 
-* Classes are "case classes" rather than relying on \_\_init\_\_(). \_\_init\_\_() is still available, and will eventually only work as a "pre-processing" step before calling the base constructor. As of now, since there is no polymorphism, the presence of \_\_init\_\_() overrides the base constructor, and must call the manual object constructor builtin, make(). This special constructor is also different from Python in that it does not accept a "self" parameter (as the object has not been created yet, and it would be immutable anyhow). Examples:
+* Classes are "case classes" rather than relying on `__init__()`. `__init__()` is still available, and will eventually only work as a "pre-processing" step before calling the base constructor. As of now, since there is no polymorphism, the presence of `__init__()` overrides the base constructor, and must call the manual object constructor builtin, `make()`. This special constructor is also different from Python in that it does not accept a `self` parameter (as the object has not been created yet, and it would be immutable anyhow). Examples:
+```python
     class Example(attr1, attr2):
         # A basic constructor is defined by default, so the attributes are
         # available in methods:
-        def method(self):
+        def sum(self):
             return self.attr1 + self.attr2
 
-    class ExampleWithInit:
+    class ExampleWithInit(ignored_attr):
         # As of now, any parameters to a class with __init__ are ignored, so
         # the object must be constructed manually
         def __init__(attr1, attr2):
             return make(['attr1', attr1], ['attr2', attr2])
+```
 * Braces can also be used to delimit blocks, interchangeably with indentation-based blocks as in Python. To use brace-delimited blocks, semicolons must be explicity used between statements (since newlines are ignored inside braces, as in Python), and the trailing colon beginning the block must be omitted. For example, these blocks are equivalent:
+```python
     if x == y:
         x = 0
         y = 1
 
     if x == y { x = 0; y = 1 }
+```
 * Imports have a special syntactic form for allowing relative imports:
+```python
     import module from 'path/to/module.mg'
-* None in Python has been replaced by Nil in Mutagen.
-* There are no tuples, since lists are already immutable. Thus, there is no parenthesized tuple syntax like (a, b), or implicit tuple syntax like a, b.
-* Lambda is just a synonym for a def without a function identifier, not a limited expression as in Python. Thus, if used in an expression, it will usually require braces instead of indentation, semicolons as statement delimiters, and an explicit return statement. Example:
+```
+* `None` in Python has been replaced by `Nil` in Mutagen.
+* There are no tuples, since lists are already immutable. Thus, there is no parenthesized tuple syntax like `(a, b)`, or implicit tuple syntax like `a, b`.
+* `lambda` is just a synonym for a `def` without a function identifier, not a limited expression as in Python. Thus, if used in an expression, it will usually require braces instead of indentation, semicolons as statement delimiters, and an explicit return statement. Example:
+```python
     lambda(x) {return x + 1}
+```
