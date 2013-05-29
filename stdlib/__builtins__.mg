@@ -45,3 +45,5 @@ class set:
     def __iter__(self):
         for i in self.items:
             yield i
+    def __bool__(self):
+        return len(self.items) > 0

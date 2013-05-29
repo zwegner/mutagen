@@ -60,6 +60,8 @@ class Node:
         assert False
     def __repr__(self):
         assert False
+    def bool(self, ctx):
+        return self.len(ctx) > 0
     def len(self, ctx):
         self.error('__len__ unimplemented for %s' % type(self), ctx=ctx)
     def str(self, ctx):
@@ -174,7 +176,7 @@ class Nil(Node):
         return Integer(isinstance(other, Nil), info=self)
     def __ne__(self, other):
         return Integer(not isinstance(other, Nil), info=self)
-    def test_truth(self):
+    def bool(self, ctx):
         return False
     def __hash__(self):
         return 0
@@ -224,10 +226,8 @@ class Integer(Node):
         return self
     def repr(self, ctx):
         return '%s' % self.value
-    def test_truth(self):
+    def bool(self, ctx):
         return self.value != 0
-    def __not__(self):
-        return Integer(self.value == 0, info=self)
     def __add__(self, other):
         if not isinstance(other, Integer):
             self.error('bad type for int.add: %s' % type(other))
@@ -301,6 +301,8 @@ class Object(Node):
     def base_repr(self, ctx):
         return '{%s}' % ', '.join('%s:%s' % (k.repr(ctx), v.repr(ctx)) for k, v
                 in self.items.items())
+    def bool(self, ctx):
+        return self.overload(ctx, '__bool__', []).value
     def len(self, ctx):
         return self.overload(ctx, '__len__', []).value
     def str(self, ctx):
@@ -337,7 +339,7 @@ class UnaryOp(Node):
     def eval(self, ctx):
         rhs = self.rhs.eval(ctx)
         if self.type == 'not':
-            return rhs.__not__()
+            return Integer(int(not rhs.bool(ctx)), info=self)
         assert False
     def repr(self, ctx):
         return '(%s %s)' % (self.type.repr(ctx), self.rhs.repr(ctx))
@@ -350,7 +352,7 @@ class BinaryOp(Node):
         # functional this doesn't matter, but builtins and other things
         # have side effects at the moment.
         if self.type in {'and', 'or'}:
-            test = lhs.test_truth()
+            test = lhs.bool(ctx)
             if self.type == 'or':
                 test = not test
             if test:
@@ -448,14 +450,14 @@ class Yield(Node):
 @node('&expr, *if_stmts, *else_stmts')
 class IfElse(Node):
     def eval(self, ctx):
-        expr = self.expr.eval(ctx).test_truth()
+        expr = self.expr.eval(ctx).bool(ctx)
         block = self.if_stmts if expr else self.else_stmts
         value = Nil(info=self)
         for stmt in block:
             value = stmt.eval(ctx)
         return value
     def eval_gen(self, ctx):
-        expr = self.expr.eval(ctx).test_truth()
+        expr = self.expr.eval(ctx).bool(ctx)
         block = self.if_stmts if expr else self.else_stmts
         for stmt in block:
             yield from stmt.eval_gen(ctx)
@@ -486,12 +488,12 @@ class For(Node):
 @node('&expr, *body')
 class While(Node):
     def eval(self, ctx):
-        while self.expr.eval(ctx).test_truth():
+        while self.expr.eval(ctx).bool(ctx):
             for stmt in self.body:
                 stmt.eval(ctx)
         return Nil(info=self)
     def eval_gen(self, ctx):
-        while self.expr.eval(ctx).test_truth():
+        while self.expr.eval(ctx).bool(ctx):
             for stmt in self.body:
                 yield from stmt.eval_gen(ctx)
     def repr(self, ctx):
