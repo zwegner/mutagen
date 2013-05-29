@@ -574,7 +574,8 @@ class Class(Node):
             attrs = {String(k, info=self): v.eval(ctx) for k, v in zip(self.attrs, args)}
         else:
             obj = init.eval_call(ctx, args)
-            attrs = obj.items
+            assert isinstance(obj, Object) and isinstance(obj.items, Dict)
+            attrs = obj.items.items
         # Add __class__ attribute
         attrs[String('__class__', info=self)] = self
         return Object(attrs, info=self)

@@ -42,9 +42,9 @@ def mgb_repr(ctx, arg):
 def mgb_str(ctx, arg):
     return syntax.String(arg.str(ctx), info=builtin_info)
 
-@mg_builtin('make', None)
-def mgb_make(ctx, *args):
-    return syntax.Object(dict(args), info=builtin_info)
+@mg_builtin('make', [syntax.Dict])
+def mgb_make(ctx, arg):
+    return syntax.Object(arg, info=builtin_info)
 
 @mg_builtin('error', [syntax.String])
 def mgb_error(ctx, msg):

@@ -25,14 +25,14 @@ So how might Mutagen achieve such speed goals? There's several possible reasons:
 With readability, smart compilers, and superfast performance as fundamental language design choices, the overall goal of Mutagen is to increase programmer/computer efficiency exponentially, eventually leading to a blissful Utopian society free of want.
 
 Current State
-=============
+-------------
 
 Mutagen is still in a very prototypical state. It is almost entirely implemented as a Python bootstrap program, using PLY to support its lexing/parsing needs. The goal is to keep the bootstrap as small as possible, while allowing for the duplication of the bootstrap, and later compilation stages, in Mutagen, so as to allow for Pythonless execution. The bootstrap is a very simple interpreter, and actually keeps considerable state in the form of symbol tables. This is just for simplicity in the initial implementation, and the language itself has no mutable state.
 
 As of now, only the lexer has an equivalent implementation in Mutagen. It is quite reasonable in terms of code size and readability when compared to the Python version, but its speed is still quite lacking due to the slow interpretive regex engine, as well as the double interpreter layer (Mutagen on top of Python).
 
 Syntax
-======
+------
 
 Mutagen's syntax is very similar to Python. As of now, there are a few small changes:
 
@@ -48,7 +48,7 @@ Mutagen's syntax is very similar to Python. As of now, there are a few small cha
         # As of now, any parameters to a class with __init__ are ignored, so
         # the object must be constructed manually
         def __init__(attr1, attr2):
-            return make(['attr1', attr1], ['attr2', attr2])
+            return make({'attr1': attr1, 'attr2': attr2})
 ```
 * Braces can also be used to delimit blocks, interchangeably with indentation-based blocks as in Python. To use brace-delimited blocks, semicolons must be explicity used between statements (since newlines are ignored inside braces, as in Python), and the trailing colon beginning the block must be omitted. For example, these blocks are equivalent:
 ```python
