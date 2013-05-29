@@ -52,7 +52,7 @@ def mgb_error(ctx, msg):
 
 @mg_builtin('reduce', [syntax.Function, syntax.Node, syntax.Node])
 def mgb_reduce(ctx, fn, start, iter):
-    for i in iter:
+    for i in iter.iter(ctx):
         start = fn.eval_call(ctx, [start, i.eval(ctx)])
     return start
 

@@ -66,6 +66,8 @@ class Node:
         return self.repr(ctx)
     def repr(self, ctx):
         self.error('__repr__ unimplemented for %s' % type(self), ctx=ctx)
+    def iter(self, ctx):
+        return iter(self)
 
 ARG_REG, ARG_EDGE, ARG_EDGE_LIST = list(range(3))
 arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
@@ -307,6 +309,8 @@ class Object(Node):
     def repr(self, ctx):
         return self.overload(ctx, '__repr__', [],
                 delegate=lambda: String(self.base_repr(ctx), info=self)).value
+    def iter(self, ctx):
+        return self.overload(ctx, '__iter__', [])
     def overload(self, ctx, attr, args, delegate=None):
         # Operator overloading
         cls = self.get_attr('__class__')
@@ -465,14 +469,14 @@ class IfElse(Node):
 class For(Node):
     def eval(self, ctx):
         expr = self.expr.eval(ctx)
-        for i in expr:
+        for i in expr.iter(ctx):
             ctx.store(self.iter, i)
             for stmt in self.body:
                 stmt.eval(ctx)
         return Nil(info=self)
     def eval_gen(self, ctx):
         expr = self.expr.eval(ctx)
-        for i in expr:
+        for i in expr.iter(ctx):
             ctx.store(self.iter, i)
             for stmt in self.body:
                 yield from stmt.eval_gen(ctx)

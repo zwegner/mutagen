@@ -42,3 +42,6 @@ class set:
         return set(self.items + other.items)
     def __repr__(self):
         return 'set('+repr(self.items)+')'
+    def __iter__(self):
+        for i in self.items:
+            yield i
