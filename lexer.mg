@@ -68,7 +68,9 @@ token_map = [
 ]
 
 keywords = [
+    'False',
     'Nil',
+    'True',
     'and',
     'class',
     'def',

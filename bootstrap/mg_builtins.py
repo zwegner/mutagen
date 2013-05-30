@@ -32,15 +32,15 @@ def mgb_putchar(ctx, arg):
 
 @mg_builtin('len', [syntax.Node])
 def mgb_len(ctx, arg):
-    return syntax.Integer(arg.len(ctx), info=builtin_info)
+    return syntax.Integer(arg.len(ctx), info=arg)
 
 @mg_builtin('repr', [syntax.Node])
 def mgb_repr(ctx, arg):
-    return syntax.String(arg.repr(ctx), info=builtin_info)
+    return syntax.String(arg.repr(ctx), info=arg)
 
 @mg_builtin('str', [syntax.Node])
 def mgb_str(ctx, arg):
-    return syntax.String(arg.str(ctx), info=builtin_info)
+    return syntax.String(arg.str(ctx), info=arg)
 
 @mg_builtin('make', [syntax.Dict])
 def mgb_make(ctx, arg):

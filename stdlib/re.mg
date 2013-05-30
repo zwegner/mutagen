@@ -3,23 +3,24 @@ class MatchChar(char):
     def match(self, s):
         if len(s):
             return [s[0] == self.char, 1]
-        return [0, 0]
+        return [False, 0]
 
 # Any: match any single character
 class MatchAny:
     def match(self, s):
         match = len(s) > 0
-        return [match, match]
+        if match {c = 1} else {c = 0}
+        return [match, c]
 
 # Opt: equivalent to a [A-Za-z] group in a regex, matches
 # a set of ranges/single characters, or the inverse of this set
 class MatchOpt(inv, matches):
     def match(self, s):
-        r = 0
+        r = False
         for m in self.matches:
             [match, l] = m.match(s)
             if match:
-                r = 1
+                r = True
         if self.inv:
             r = not r and len(s) > 0
         return [r, 1]
@@ -29,7 +30,7 @@ class MatchRange(low, high):
     def match(self, s):
         if len(s):
             return [s[0] >= self.low and s[0] <= self.high, 1]
-        return [0, 0]
+        return [False, 0]
 
 # Sequence: take two regexes and match them both in order.
 class MatchSeq(left, right):
@@ -54,7 +55,7 @@ class MatchRep(regex, min):
         l = 0
         count = 0
         [r, i] = self.regex.match(s)
-        while r != 0:
+        while r:
             l = l + i
             count = count + 1
             [r, i] = self.regex.match(slice(s, l, len(s)))
@@ -63,7 +64,7 @@ class MatchRep(regex, min):
 # Null regex: matches nothing.
 class MatchNull:
     def match(self, s):
-        return [1, 0]
+        return [True, 0]
 
 def parse_item(string, c):
     # Backslash: escape next char
@@ -79,9 +80,9 @@ def parse_item(string, c):
         opts = []
         if string[c] == '^':
             c = c + 1
-            inv = 1
+            inv = True
         else:
-            inv = 0
+            inv = False
         # Special case: []] includes a literal ']' char
         if string[c] == ']':
             c = c + 1

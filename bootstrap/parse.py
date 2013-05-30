@@ -132,6 +132,7 @@ def p_expr(p):
              | ident
              | string
              | integer
+             | boolean
              | unop
              | binop
              | getattr
@@ -156,6 +157,13 @@ def p_string(p):
 def p_integer(p):
     """ integer : INTEGER """
     p[0] = syntax.Integer(p[1], info=get_info(p, 1))
+
+def p_bool(p):
+    """ boolean : TRUE
+                | FALSE
+    """
+    val = {'True': True, 'False': False}[p[1]]
+    p[0] = syntax.Boolean(val, info=get_info(p, 1))
 
 def p_list(p):
     """ list : LBRACKET expr_list RBRACKET

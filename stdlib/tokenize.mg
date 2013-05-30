@@ -32,7 +32,7 @@ class Tokenizer:
         # HACK: manually split up lines
         for i in str_split_lines(input):
             while len(i) > 0:
-                best_match = [0, 0]
+                best_match = [False, 0]
                 best_token = Nil
                 for t in self.token_matchers:
                     m = t.match(i)

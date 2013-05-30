@@ -6,4 +6,4 @@ with open('re_test_cases.mg') as f:
 
 for r in regexes:
     reg = re.compile(r)
-    print([int(x is not None) for x in map(reg.match, inputs)])
+    print([bool(x is not None) for x in map(reg.match, inputs)])

@@ -55,7 +55,7 @@ class Node:
     def __eq__(self, other):
         self.error('__eq__ unimplemented for type %s' % type(self))
     def __ne__(self, other):
-        return Integer(not self.__eq__(other).value, info=self)
+        return Boolean(not self.__eq__(other).value, info=self)
     def __str__(self):
         assert False
     def __repr__(self):
@@ -126,27 +126,27 @@ def node(argstr='', compare=False):
         # Python object in the value attribute
         if compare:
             def __eq__(self, other):
-                return Integer(isinstance(other, type(self)) and
+                return Boolean(isinstance(other, type(self)) and
                         self.value == other.value, info=self)
             def __ne__(self, other):
-                return Integer(not isinstance(other, type(self)) or
+                return Boolean(not isinstance(other, type(self)) or
                         self.value != other.value, info=self)
             def __ge__(self, other):
                 if not isinstance(other, type(self)):
                     self.error('uncomparable types: %s, %s' % (type(self), type(other)))
-                return Integer(self.value >= other.value, info=self)
+                return Boolean(self.value >= other.value, info=self)
             def __gt__(self, other):
                 if not isinstance(other, type(self)):
                     self.error('uncomparable types: %s, %s' % (type(self), type(other)))
-                return Integer(self.value > other.value, info=self)
+                return Boolean(self.value > other.value, info=self)
             def __le__(self, other):
                 if not isinstance(other, type(self)):
                     self.error('uncomparable types: %s, %s' % (type(self), type(other)))
-                return Integer(self.value <= other.value, info=self)
+                return Boolean(self.value <= other.value, info=self)
             def __lt__(self, other):
                 if not isinstance(other, type(self)):
                     self.error('uncomparable types: %s, %s' % (type(self), type(other)))
-                return Integer(self.value < other.value, info=self)
+                return Boolean(self.value < other.value, info=self)
             def __hash__(self):
                 return self.value.__hash__()
             node.__eq__ = __eq__
@@ -173,9 +173,9 @@ class Nil(Node):
     def repr(self, ctx):
         return 'Nil'
     def __eq__(self, other):
-        return Integer(isinstance(other, Nil), info=self)
+        return Boolean(isinstance(other, Nil), info=self)
     def __ne__(self, other):
-        return Integer(not isinstance(other, Nil), info=self)
+        return Boolean(not isinstance(other, Nil), info=self)
     def bool(self, ctx):
         return False
     def __hash__(self):
@@ -237,6 +237,17 @@ class Integer(Node):
             self.error('bad type for int.sub: %s' % type(other))
         return Integer(self.value - other.value, info=self)
 
+@node('value', compare=True)
+class Boolean(Node):
+    def setup(self):
+        self.value = bool(self.value)
+    def eval(self, ctx):
+        return self
+    def repr(self, ctx):
+        return '%s' % self.value
+    def bool(self, ctx):
+        return self.value
+
 @node('*items')
 class List(Node):
     def eval(self, ctx):
@@ -250,19 +261,19 @@ class List(Node):
             return self.items[item.value]
         self.error('bad arg for getitem: %s' % item)
     def __eq__(self, other):
-        return Integer(isinstance(other, List) and
+        return Boolean(isinstance(other, List) and
                 self.items == other.items, info=self)
     def __add__(self, other):
         if not isinstance(other, List):
             self.error('bad type for list.add: %s' % type(other))
         return List(self.items + other.items, info=self)
     def __contains__(self, item):
-        r = 0
+        r = False
         for i in self:
             if (item == i).value:
-                r = 1
+                r = True
                 break
-        return Integer(r, info=self)
+        return Boolean(r, info=self)
     def len(self, ctx):
         return len(self.items)
     def __hash__(self):
@@ -281,7 +292,7 @@ class Dict(Node):
             return self.items[item]
         self.error('bad arg for getitem: %s' % item)
     def __contains__(self, item):
-        return Integer(item in self.items, info=self)
+        return Boolean(item in self.items, info=self)
     def len(self, ctx):
         return len(self.items)
 
@@ -295,7 +306,7 @@ class Object(Node):
             return self.items[attr]
         return None
     def __eq__(self, other):
-        return Integer(isinstance(other, Object) and
+        return Boolean(isinstance(other, Object) and
                 self.items == other.items, info=self)
 
     def base_repr(self, ctx):
@@ -339,7 +350,7 @@ class UnaryOp(Node):
     def eval(self, ctx):
         rhs = self.rhs.eval(ctx)
         if self.type == 'not':
-            return Integer(int(not rhs.bool(ctx)), info=self)
+            return Boolean(not rhs.bool(ctx), info=self)
         assert False
     def repr(self, ctx):
         return '(%s %s)' % (self.type.repr(ctx), self.rhs.repr(ctx))
