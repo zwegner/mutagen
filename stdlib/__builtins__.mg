@@ -6,6 +6,12 @@ def map(fn, list):
         return [fn, a[1] + [fn(b)]]
     return reduce(reducer, [fn, []], list)[1]
 
+def enumerate(gen):
+    i = 0
+    for item in gen:
+        yield [i, item]
+        i = i + 1
+
 def list(arg):
     l = []
     for a in arg:
