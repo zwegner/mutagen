@@ -64,15 +64,16 @@ def p_block(p):
               | LBRACE stmt_list RBRACE
     """
     if len(p) == 4:
-        p[0] = p[2]
+        p[0] = syntax.Block(p[2], info=get_info(p, 1))
     else:
-        p[0] = p[4]
+        p[0] = syntax.Block(p[4], info=get_info(p, 1))
 
 def p_block_single_stmt(p):
     """ block : COLON simple_stmt delim """
-    p[0] = []
+    stmts = []
     if p[2] is not None:
-        p[0].append(p[2])
+        stmts.append(p[2])
+    p[0] = syntax.Block(stmts, info=get_info(p, 1))
 
 def p_delim(p):
     """ delim : NEWLINE
@@ -277,7 +278,7 @@ def p_yield(p):
 
 def p_if(p):
     """ if_stmt : IF expr block """
-    p[0] = syntax.IfElse(p[2], p[3], [])
+    p[0] = syntax.IfElse(p[2], p[3], syntax.Block([], info=get_info(p, 1)))
 
 def p_ifelse(p):
     """ if_stmt : IF expr block elif_stmt
@@ -287,13 +288,15 @@ def p_ifelse(p):
 
 def p_elif(p):
     """ elif_stmt : ELIF expr block """
-    p[0] = [syntax.IfElse(p[2], p[3], [])]
+    stmts = [syntax.IfElse(p[2], p[3], syntax.Block([], info=get_info(p, 1)))]
+    p[0] = syntax.Block(stmts, info=get_info(p, 1))
 
 def p_elif_2(p):
     """ elif_stmt : ELIF expr block elif_stmt
                   | ELIF expr block else_stmt
     """
-    p[0] = [syntax.IfElse(p[2], p[3], p[4])]
+    stmts = [syntax.IfElse(p[2], p[3], p[4])]
+    p[0] = syntax.Block(stmts, info=get_info(p, 1))
 
 def p_else(p):
     """ else_stmt : ELSE block """
