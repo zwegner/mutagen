@@ -2,6 +2,7 @@
 import os
 import subprocess
 import sys
+import time
 
 root_dir = sys.path[0]
 mutagen = '%s/bootstrap/parse.py' % root_dir
@@ -12,6 +13,8 @@ passes = fails = 0
 # Python tests: python/mutagen should produce the same output in each case.
 py_tests = ['regex', 'lex']
 py_test_dir = 'tests'
+
+start = time.time()
 
 for test in py_tests:
     # Run python version
@@ -30,5 +33,6 @@ for test in py_tests:
     else:
         passes += 1
 
-print('%s/%s tests passed.' % (passes, passes + fails))
+end = time.time()
+print('%s/%s tests passed. Time: %.2fs' % (passes, passes + fails, end - start))
 sys.exit(fails != 0)
