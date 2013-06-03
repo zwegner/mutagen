@@ -116,9 +116,15 @@ def p_stmt(p):
     """
     p[0] = p[1]
 
+def p_vararg(p):
+    """ vararg : STAR expr """
+    p[0] = syntax.VarArg(p[2])
+
 def p_expr_list(p):
     """ expr_list : expr
+                  | vararg
                   | expr_list COMMA expr
+                  | expr_list COMMA vararg
     """
     if len(p) == 2:
         p[0] = [p[1]]
@@ -200,6 +206,7 @@ def p_set(p):
             | LBRACE expr_list COMMA RBRACE
     """
     # HACK? Call the set constructor, relies on set being in __builtins__.mg
+    assert not any(isinstance(e, syntax.VarArg) for e in p[2])
     p[0] = syntax.Call(syntax.Identifier('set', info=get_info(p, 1)),
             [syntax.List(p[2], info=get_info(p, 1))])
 
@@ -251,7 +258,12 @@ def p_call(p):
     if len(p) == 4:
         p[0] = syntax.Call(p[1], [])
     else:
-        p[0] = syntax.Call(p[1], p[3])
+        # Check if this is a vararg call. We handle these
+        # separately just for efficiency reasons.
+        if any(isinstance(e, syntax.VarArg) for e in p[3]):
+            p[0] = syntax.CallVarArgs(p[1], p[3])
+        else:
+            p[0] = syntax.Call(p[1], p[3])
 
 def p_assignment(p):
     """ assn : expr EQUALS expr """

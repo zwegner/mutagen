@@ -521,6 +521,25 @@ class Call(Node):
     def repr(self, ctx):
         return '%s(%s)' % (self.fn.repr(ctx), ', '.join(s.repr(ctx) for s in self.args))
 
+@node('&expr')
+class VarArg(Node):
+    def eval(self, ctx):
+        return self.expr.eval(ctx)
+
+@node('&fn, *args')
+class CallVarArgs(Node):
+    def eval(self, ctx):
+        fn = self.fn.eval(ctx)
+        args = []
+        for a in self.args:
+            if isinstance(a, VarArg):
+                args.extend(list(a.eval(ctx).iter(ctx)))
+            else:
+                args.append(a.eval(ctx))
+        return fn.eval_call(ctx, args)
+    def repr(self, ctx):
+        return '%s(%s)' % (self.fn.repr(ctx), ', '.join(s.repr(ctx) for s in self.args))
+
 @node('ctx, name, params, &block')
 class Function(Node):
     def setup(self):
@@ -533,12 +552,15 @@ class Function(Node):
     def eval(self, ctx):
         return self
     def eval_call(self, ctx, args):
-        ret = Nil(info=self)
+        if len(self.params) != len(args):
+            self.error('bad number of args', ctx=ctx)
         child_ctx = Context(self.name, self, self.ctx, ctx)
         for p, a in zip(self.params, args):
             child_ctx.store(p, a)
         if self.is_generator:
             return Generator(child_ctx, self.block, info=self)
+
+        ret = Nil(info=self)
         try:
             self.block.eval(child_ctx)
         except ReturnValue as r:
