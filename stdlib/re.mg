@@ -9,7 +9,7 @@ class MatchChar(char):
 class MatchAny:
     def match(self, s):
         match = len(s) > 0
-        if match {c = 1} else {c = 0}
+        if match {c = 1;} else {c = 0;}
         return [match, c]
 
 # Opt: equivalent to a [A-Za-z] group in a regex, matches

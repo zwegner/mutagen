@@ -48,9 +48,7 @@ def p_stmt_list(p):
         p[0].append(p[1])
 
 def p_stmt_list_2(p):
-    """ stmt_list : stmt_list delim
-                  | stmt_list stmt
-    """
+    """ stmt_list : stmt_list stmt """
     p[0] = p[1]
     if p[2] is not None:
         p[0].append(p[2])
@@ -60,7 +58,7 @@ def p_pass(p):
     p[0] = None
 
 def p_block(p):
-    """ block : COLON delim INDENT stmt_list DEDENT
+    """ block : COLON delims INDENT stmt_list DEDENT
               | LBRACE stmt_list RBRACE
     """
     if len(p) == 4:
@@ -78,8 +76,12 @@ def p_block_single_stmt(p):
 def p_delim(p):
     """ delim : NEWLINE
               | SEMICOLON
-              | delim NEWLINE
-              | delim SEMICOLON
+    """
+    p[0] = None
+
+def p_delims(p):
+    """ delims : delim
+               | delims delim
     """
     p[0] = None
 
@@ -102,18 +104,22 @@ def p_simple_stmt(p):
                     | assn
                     | return
                     | yield
+                    | import
     """
     p[0] = p[1]
 
 def p_stmt(p):
-    """ stmt : simple_stmt
-             | import
+    """ stmt : simple_stmt delim
              | if_stmt
              | for_stmt
              | while_stmt
              | def_stmt
              | class_stmt
     """
+    p[0] = p[1]
+
+def p_stmt_2(p):
+    """ stmt : stmt delim """
     p[0] = p[1]
 
 def p_vararg(p):

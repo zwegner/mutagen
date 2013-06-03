@@ -56,10 +56,6 @@ class Node:
         self.error('__eq__ unimplemented for type %s' % type(self))
     def __ne__(self, other):
         return Boolean(not self.__eq__(other).value, info=self)
-    def __str__(self):
-        assert False
-    def __repr__(self):
-        assert False
     def bool(self, ctx):
         return self.len(ctx) > 0
     def len(self, ctx):
