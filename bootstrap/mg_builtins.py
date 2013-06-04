@@ -1,6 +1,6 @@
 import sys
 
-import syntax
+from syntax import *
 
 builtins = {}
 
@@ -13,62 +13,62 @@ def mg_builtin(name, arg_types):
                     assert isinstance(a, t)
             return fn(ctx, *args)
 
-        builtins[name] = syntax.BuiltinFunction(name, builtin_call, info=syntax.Info('__builtins__', 0))
+        builtins[name] = BuiltinFunction(name, builtin_call, info=Info('__builtins__', 0))
         return builtin_call
     return annotate
 
 # TODO: error checking!
 
-@mg_builtin('read_file', [syntax.String])
+@mg_builtin('read_file', [String])
 def mgb_read_file(ctx, path):
     with open(path.value) as f:
-        return syntax.String(f.read(), info=path)
+        return String(f.read(), info=path)
 
-@mg_builtin('putchar', [syntax.String])
+@mg_builtin('putchar', [String])
 def mgb_putchar(ctx, arg):
     sys.stdout.write(arg.value)
-    return syntax.Nil(info=arg)
+    return Nil(info=arg)
 
-@mg_builtin('len', [syntax.Node])
+@mg_builtin('len', [Node])
 def mgb_len(ctx, arg):
-    return syntax.Integer(arg.len(ctx), info=arg)
+    return Integer(arg.len(ctx), info=arg)
 
-@mg_builtin('repr', [syntax.Node])
+@mg_builtin('repr', [Node])
 def mgb_repr(ctx, arg):
-    return syntax.String(arg.repr(ctx), info=arg)
+    return String(arg.repr(ctx), info=arg)
 
-@mg_builtin('str', [syntax.Node])
+@mg_builtin('str', [Node])
 def mgb_str(ctx, arg):
-    return syntax.String(arg.str(ctx), info=arg)
+    return String(arg.str(ctx), info=arg)
 
-@mg_builtin('make', [syntax.Dict])
+@mg_builtin('make', [Dict])
 def mgb_make(ctx, arg):
-    return syntax.Object(arg, info=arg)
+    return Object(arg, info=arg)
 
-@mg_builtin('error', [syntax.String])
+@mg_builtin('error', [String])
 def mgb_error(ctx, msg):
     msg.error(msg.value, ctx=ctx)
 
-@mg_builtin('reduce', [syntax.Function, syntax.Node, syntax.Node])
+@mg_builtin('reduce', [Function, Node, Node])
 def mgb_reduce(ctx, fn, start, iter):
     for i in iter.iter(ctx):
         start = fn.eval_call(ctx, [start, i.eval(ctx)])
     return start
 
-@mg_builtin('slice', [syntax.Node, syntax.Integer, syntax.Integer])
+@mg_builtin('slice', [Node, Integer, Integer])
 def mgb_slice(ctx, seq, start, end):
-    if isinstance(seq, syntax.String):
-        return syntax.String(seq.value[start.value:end.value], info=seq)
-    elif isinstance(seq, syntax.List):
-        return syntax.List(seq.items[start.value:end.value], info=seq)
-    return syntax.Nil(info=seq)
+    if isinstance(seq, String):
+        return String(seq.value[start.value:end.value], info=seq)
+    elif isinstance(seq, List):
+        return List(seq.items[start.value:end.value], info=seq)
+    return Nil(info=seq)
 
-@mg_builtin('parse_int', [syntax.String, syntax.Integer])
+@mg_builtin('parse_int', [String, Integer])
 def mgb_parse_int(ctx, int_str, base):
-    return syntax.Integer(int(int_str.value, base.value), info=int_str)
+    return Integer(int(int_str.value, base.value), info=int_str)
 
-@mg_builtin('str_upper', [syntax.String])
+@mg_builtin('str_upper', [String])
 def mgb_str_upper(ctx, arg):
-    return syntax.String(arg.value.upper(), info=arg)
+    return String(arg.value.upper(), info=arg)
 
 __all__ = builtins

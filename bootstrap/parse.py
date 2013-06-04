@@ -5,8 +5,8 @@ import sys
 import ply.yacc as yacc
 
 import lexer
-import syntax
 import mg_builtins
+from syntax import *
 
 from lexer import tokens
 
@@ -31,14 +31,14 @@ precedence = [
 ]
 
 def get_info(p, idx):
-    return syntax.Info(syntax.filename, p.lineno(idx))
+    return Info(filename, p.lineno(idx))
 
 def p_error(p):
     # WHY IS THIS HAPPENING
     l = p.lexer
     if hasattr(l, 'lexer'):
         l = l.lexer
-    print('%s(%i): %s' % (syntax.filename, l.lineno, p), file=sys.stderr)
+    print('%s(%i): %s' % (filename, l.lineno, p), file=sys.stderr)
     sys.exit(1)
 
 def p_stmt_list(p):
@@ -62,16 +62,16 @@ def p_block(p):
               | LBRACE stmt_list RBRACE
     """
     if len(p) == 4:
-        p[0] = syntax.Block(p[2], info=get_info(p, 1))
+        p[0] = Block(p[2], info=get_info(p, 1))
     else:
-        p[0] = syntax.Block(p[4], info=get_info(p, 1))
+        p[0] = Block(p[4], info=get_info(p, 1))
 
 def p_block_single_stmt(p):
     """ block : COLON simple_stmt delim """
     stmts = []
     if p[2] is not None:
         stmts.append(p[2])
-    p[0] = syntax.Block(stmts, info=get_info(p, 1))
+    p[0] = Block(stmts, info=get_info(p, 1))
 
 def p_delim(p):
     """ delim : NEWLINE
@@ -90,13 +90,13 @@ def p_import(p):
                | FROM IDENTIFIER IMPORT STAR
     """
     if len(p) == 3:
-        p[0] = syntax.Import(p[2], None, None, False, info=get_info(p, 1))
+        p[0] = Import(p[2], None, None, False, info=get_info(p, 1))
     else:
-        p[0] = syntax.Import(p[2], [], None, False, info=get_info(p, 1))
+        p[0] = Import(p[2], [], None, False, info=get_info(p, 1))
 
 def p_import_from(p):
     """ import : IMPORT IDENTIFIER FROM STRING """
-    p[0] = syntax.Import(p[2], None, p[4], False, info=get_info(p, 1))
+    p[0] = Import(p[2], None, p[4], False, info=get_info(p, 1))
 
 def p_simple_stmt(p):
     """ simple_stmt : expr
@@ -124,7 +124,7 @@ def p_stmt_2(p):
 
 def p_vararg(p):
     """ vararg : STAR expr """
-    p[0] = syntax.VarArg(p[2])
+    p[0] = VarArg(p[2])
 
 def p_expr_list(p):
     """ expr_list : expr
@@ -161,22 +161,22 @@ def p_paren_expr(p):
 
 def p_ident(p):
     """ ident : IDENTIFIER """
-    p[0] = syntax.Identifier(p[1], info=get_info(p, 1))
+    p[0] = Identifier(p[1], info=get_info(p, 1))
 
 def p_string(p):
     """ string : STRING """
-    p[0] = syntax.String(p[1], info=get_info(p, 1))
+    p[0] = String(p[1], info=get_info(p, 1))
 
 def p_integer(p):
     """ integer : INTEGER """
-    p[0] = syntax.Integer(p[1], info=get_info(p, 1))
+    p[0] = Integer(p[1], info=get_info(p, 1))
 
 def p_bool(p):
     """ boolean : TRUE
                 | FALSE
     """
     val = {'True': True, 'False': False}[p[1]]
-    p[0] = syntax.Boolean(val, info=get_info(p, 1))
+    p[0] = Boolean(val, info=get_info(p, 1))
 
 def p_list(p):
     """ list : LBRACKET expr_list RBRACKET
@@ -184,9 +184,9 @@ def p_list(p):
              | LBRACKET RBRACKET
     """
     if len(p) == 3:
-        p[0] = syntax.List([], info=get_info(p, 1))
+        p[0] = List([], info=get_info(p, 1))
     else:
-        p[0] = syntax.List(p[2], info=get_info(p, 1))
+        p[0] = List(p[2], info=get_info(p, 1))
 
 def p_dict_list(p):
     """ dict_list : expr COLON expr
@@ -203,26 +203,26 @@ def p_dict(p):
              | LBRACE dict_list COMMA RBRACE
     """
     if len(p) == 3:
-        p[0] = syntax.Dict({}, info=get_info(p, 1))
+        p[0] = Dict({}, info=get_info(p, 1))
     else:
-        p[0] = syntax.Dict(dict(p[2]), info=get_info(p, 1))
+        p[0] = Dict(dict(p[2]), info=get_info(p, 1))
 
 def p_set(p):
     """ set : LBRACE expr_list RBRACE
             | LBRACE expr_list COMMA RBRACE
     """
     # HACK? Call the set constructor, relies on set being in __builtins__.mg
-    assert not any(isinstance(e, syntax.VarArg) for e in p[2])
-    p[0] = syntax.Call(syntax.Identifier('set', info=get_info(p, 1)),
-            [syntax.List(p[2], info=get_info(p, 1))])
+    assert not any(isinstance(e, VarArg) for e in p[2])
+    p[0] = Call(Identifier('set', info=get_info(p, 1)),
+            [List(p[2], info=get_info(p, 1))])
 
 def p_nil(p):
     """ nil : NIL """
-    p[0] = syntax.Nil(info=get_info(p, 1))
+    p[0] = Nil(info=get_info(p, 1))
 
 def p_unary_op(p):
     """ unop : NOT expr """
-    p[0] = syntax.UnaryOp(p[1], p[2])
+    p[0] = UnaryOp(p[1], p[2])
 
 def p_binary_op(p):
     """ binop : expr EQUALS_EQUALS expr
@@ -239,82 +239,82 @@ def p_binary_op(p):
               | expr BIT_OR expr
               | expr BIT_XOR expr
     """
-    p[0] = syntax.BinaryOp(p[2], p[1], p[3])
+    p[0] = BinaryOp(p[2], p[1], p[3])
 
 def p_binary_op_in(p):
     """ binop : expr IN expr """
-    p[0] = syntax.BinaryOp('in', p[3], p[1])
+    p[0] = BinaryOp('in', p[3], p[1])
 
 def p_binary_op_not_in(p):
     """ binop : expr NOT IN expr %prec IN """
-    p[0] = syntax.UnaryOp('not', syntax.BinaryOp('in', p[4], p[1]))
+    p[0] = UnaryOp('not', BinaryOp('in', p[4], p[1]))
 
 def p_getattr(p):
     """ getattr : expr PERIOD IDENTIFIER """
-    p[0] = syntax.GetAttr(p[1], p[3])
+    p[0] = GetAttr(p[1], p[3])
 
 def p_getitem(p):
     """ getitem : expr LBRACKET expr RBRACKET """
-    p[0] = syntax.GetItem(p[1], p[3])
+    p[0] = GetItem(p[1], p[3])
 
 def p_call(p):
     """ call : expr LPAREN expr_list RPAREN
              | expr LPAREN RPAREN
     """
     if len(p) == 4:
-        p[0] = syntax.Call(p[1], [])
+        p[0] = Call(p[1], [])
     else:
         # Check if this is a vararg call. We handle these
         # separately just for efficiency reasons.
-        if any(isinstance(e, syntax.VarArg) for e in p[3]):
-            p[0] = syntax.CallVarArgs(p[1], p[3])
+        if any(isinstance(e, VarArg) for e in p[3]):
+            p[0] = CallVarArgs(p[1], p[3])
         else:
-            p[0] = syntax.Call(p[1], p[3])
+            p[0] = Call(p[1], p[3])
 
 def p_assignment(p):
     """ assn : expr EQUALS expr """
     def deconstruct_lhs(lhs):
-        if isinstance(lhs, syntax.Identifier):
+        if isinstance(lhs, Identifier):
             return lhs.name
-        elif isinstance(lhs, syntax.List):
+        elif isinstance(lhs, List):
             return [deconstruct_lhs(i) for i in lhs]
         lhs.error('invalid lhs for assignment')
-    p[0] = syntax.Assignment(deconstruct_lhs(p[1]), p[3])
+    p[0] = Assignment(deconstruct_lhs(p[1]), p[3])
 
 def p_return(p):
     """ return : RETURN expr
                | RETURN
     """
     if len(p) == 3:
-        p[0] = syntax.Return(p[2])
+        p[0] = Return(p[2])
     else:
-        p[0] = syntax.Return(None)
+        p[0] = Return(None)
 
 def p_yield(p):
     """ yield : YIELD expr """
-    p[0] = syntax.Yield(p[2])
+    p[0] = Yield(p[2])
 
 def p_if(p):
     """ if_stmt : IF expr block """
-    p[0] = syntax.IfElse(p[2], p[3], syntax.Block([], info=get_info(p, 1)))
+    p[0] = IfElse(p[2], p[3], Block([], info=get_info(p, 1)))
 
 def p_ifelse(p):
     """ if_stmt : IF expr block elif_stmt
                 | IF expr block else_stmt
     """
-    p[0] = syntax.IfElse(p[2], p[3], p[4])
+    p[0] = IfElse(p[2], p[3], p[4])
 
 def p_elif(p):
     """ elif_stmt : ELIF expr block """
-    stmts = [syntax.IfElse(p[2], p[3], syntax.Block([], info=get_info(p, 1)))]
-    p[0] = syntax.Block(stmts, info=get_info(p, 1))
+    stmts = [IfElse(p[2], p[3], Block([], info=get_info(p, 1)))]
+    p[0] = Block(stmts, info=get_info(p, 1))
 
 def p_elif_2(p):
     """ elif_stmt : ELIF expr block elif_stmt
                   | ELIF expr block else_stmt
     """
-    stmts = [syntax.IfElse(p[2], p[3], p[4])]
-    p[0] = syntax.Block(stmts, info=get_info(p, 1))
+    stmts = [IfElse(p[2], p[3], p[4])]
+    p[0] = Block(stmts, info=get_info(p, 1))
 
 def p_else(p):
     """ else_stmt : ELSE block """
@@ -322,11 +322,11 @@ def p_else(p):
 
 def p_for(p):
     """ for_stmt : FOR IDENTIFIER IN expr block """
-    p[0] = syntax.For(p[2], p[4], p[5])
+    p[0] = For(p[2], p[4], p[5])
 
 def p_while(p):
     """ while_stmt : WHILE expr block """
-    p[0] = syntax.While(p[2], p[3])
+    p[0] = While(p[2], p[3])
 
 def p_arg_list(p):
     """ arg_list : IDENTIFIER
@@ -349,15 +349,15 @@ def p_args(p):
 
 def p_def(p):
     """ def_stmt : DEF IDENTIFIER args block """
-    p[0] = syntax.Assignment(p[2], syntax.Function(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
+    p[0] = Assignment(p[2], Function(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
 
 def p_lambda(p):
     """ lambda : LAMBDA args block """
-    p[0] = syntax.Function(current_ctx, 'lambda', p[2], p[3], info=get_info(p, 1))
+    p[0] = Function(current_ctx, 'lambda', p[2], p[3], info=get_info(p, 1))
 
 def p_class(p):
     """ class_stmt : CLASS IDENTIFIER args block """
-    p[0] = syntax.Assignment(p[2], syntax.Class(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
+    p[0] = Assignment(p[2], Class(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
 
 parser = yacc.yacc(write_tables=0, debug=0)
 
@@ -365,7 +365,7 @@ module_cache = {}
 current_ctx = None
 
 def parse(path, import_builtins=True, ctx=None):
-    global current_ctx
+    global current_ctx, filename
     # Check if we've parsed this before. We do a check for recursive imports here too.
     if path in module_cache:
         if module_cache[path] is None:
@@ -375,7 +375,7 @@ def parse(path, import_builtins=True, ctx=None):
 
     # Parse the file
     current_ctx = ctx
-    syntax.filename = path
+    filename = path
     dirname = os.path.dirname(path)
     if not dirname:
         dirname = '.'
@@ -385,17 +385,17 @@ def parse(path, import_builtins=True, ctx=None):
     # Do some post-processing, starting with adding builtins
     if import_builtins:
         path = '%s/__builtins__.mg' % stdlib_dir
-        block = [syntax.Import('builtins', [], path, True,
-            info=syntax.Info('__builtins__', 0))] + block
+        block = [Import('builtins', [], path, True,
+            info=Info('__builtins__', 0))] + block
 
     new_block = []
 
     for k, v in mg_builtins.builtins.items():
-        new_block.append(syntax.Assignment(k, v))
+        new_block.append(Assignment(k, v))
 
     # Recursively parse imports
     for expr in block:
-        if isinstance(expr, syntax.Import):
+        if isinstance(expr, Import):
             # Explicit path: use that
             if expr.path:
                 path = expr.path
@@ -409,7 +409,7 @@ def parse(path, import_builtins=True, ctx=None):
                 else:
                     raise Exception('could not find import in path: %s' % expr.name)
 
-            module_ctx = syntax.Context(expr.name, expr, None, ctx)
+            module_ctx = Context(expr.name, expr, None, ctx)
             stmts = parse(path, import_builtins=not expr.is_builtins,
                     ctx=module_ctx)
             expr.ctx = module_ctx
@@ -421,7 +421,7 @@ def parse(path, import_builtins=True, ctx=None):
     return new_block
 
 def interpret(path):
-    ctx = syntax.Context('__main__', None, None, None)
+    ctx = Context('__main__', None, None, None)
     block = parse(path, ctx=ctx)
     for expr in block:
         expr.eval(ctx)
