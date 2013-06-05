@@ -629,6 +629,8 @@ class Class(Node):
         return "<class '%s'>" % self.name
     def get_attr(self, attr):
         return self.cls.get_attr(attr)
+    def __eq__(self, other):
+        return Boolean(self is other, info=self)
 
 @node('name, names, path, is_builtins')
 class Import(Node):

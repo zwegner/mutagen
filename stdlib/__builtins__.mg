@@ -40,6 +40,9 @@ def str_split(text, delim):
 def str_split_lines(text):
     return str_split(text, '\n')
 
+def isinstance(obj, cls):
+    return obj.__class__ == cls
+
 class set:
     def __init__(items):
         set_items = []
