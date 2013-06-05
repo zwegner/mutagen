@@ -337,26 +337,36 @@ def p_arg_list(p):
     else:
         p[0] = p[1] + [p[3]]
 
-def p_args(p):
-    """ args : LPAREN arg_list RPAREN
-             | LPAREN RPAREN
-             |
+def p_params(p):
+    """ params : LPAREN arg_list RPAREN
+               | LPAREN RPAREN
+               |
     """
     if len(p) == 4:
-        p[0] = p[2]
+        params = p[2]
     else:
-        p[0] = []
+        params = []
+    p[0] = Params(params, None, info=get_info(p, 0))
+
+def p_params_star(p):
+    """ params : LPAREN arg_list COMMA STAR IDENTIFIER RPAREN
+               | LPAREN STAR IDENTIFIER RPAREN
+    """
+    if len(p) == 5:
+        p[0] = Params([], p[3], info=get_info(p, 1))
+    else:
+        p[0] = Params(p[2], p[5], info=get_info(p, 1))
 
 def p_def(p):
-    """ def_stmt : DEF IDENTIFIER args block """
+    """ def_stmt : DEF IDENTIFIER params block """
     p[0] = Assignment(p[2], Function(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
 
 def p_lambda(p):
-    """ lambda : LAMBDA args block """
+    """ lambda : LAMBDA params block """
     p[0] = Function(current_ctx, 'lambda', p[2], p[3], info=get_info(p, 1))
 
 def p_class(p):
-    """ class_stmt : CLASS IDENTIFIER args block """
+    """ class_stmt : CLASS IDENTIFIER params block """
     p[0] = Assignment(p[2], Class(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
 
 parser = yacc.yacc(write_tables=0, debug=0)

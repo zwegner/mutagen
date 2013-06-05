@@ -536,7 +536,24 @@ class CallVarArgs(Node):
     def repr(self, ctx):
         return '%s(%s)' % (self.fn.repr(ctx), ', '.join(s.repr(ctx) for s in self.args))
 
-@node('ctx, name, params, &block')
+@node('params, star_params')
+class Params(Node):
+    def bind(self, obj, ctx, args):
+        if self.star_params:
+            if len(args) < len(self.params):
+                self.error('wrong number of arguments to %s, '
+                'expected at least %s' % (obj.name, len(self.params)), ctx=ctx)
+            pos_args = args[:len(self.params)]
+            var_args = List(args[len(self.params):], info=self)
+            args = list(zip(self.params, pos_args))
+            return args + [(self.star_params, var_args)]
+        else:
+            if len(args) != len(self.params):
+                self.error('wrong number of arguments to %s, '
+                'expected %s' % (obj.name, len(self.params)), ctx=ctx)
+            return zip(self.params, args)
+
+@node('ctx, name, &params, &block')
 class Function(Node):
     def setup(self):
         # Check if this is a generator and not a function
@@ -548,10 +565,8 @@ class Function(Node):
     def eval(self, ctx):
         return self
     def eval_call(self, ctx, args):
-        if len(self.params) != len(args):
-            self.error('bad number of args', ctx=ctx)
         child_ctx = Context(self.name, self, self.ctx, ctx)
-        for p, a in zip(self.params, args):
+        for p, a in self.params.bind(self, ctx, args):
             child_ctx.store(p, a)
         if self.is_generator:
             return Generator(child_ctx, self.block, info=self)
@@ -586,7 +601,7 @@ class BuiltinFunction(Node):
     def repr(self, ctx):
         return '<builtin %s>' % self.name
 
-@node('ctx, name, attrs, &block')
+@node('ctx, name, &params, &block')
 class Class(Node):
     def eval(self, ctx):
         child_ctx = Context(self.name, self, self.ctx, ctx)
@@ -601,10 +616,8 @@ class Class(Node):
     def eval_call(self, ctx, args):
         init = self.cls.get_attr('__init__')
         if init is None:
-            if len(self.attrs) != len(args):
-                self.error('wrong number of arguments to constructor, '
-                'expected %s' % len(self.attrs), ctx=ctx)
-            attrs = {String(k, info=self): v.eval(ctx) for k, v in zip(self.attrs, args)}
+            attrs = {String(k, info=self): v.eval(ctx) for k, v in
+                    self.params.bind(self, ctx, args)}
         else:
             obj = init.eval_call(ctx, args)
             assert isinstance(obj, Object) and isinstance(obj.items, Dict)
