@@ -36,7 +36,7 @@ Syntax
 
 Mutagen's syntax is very similar to Python. As of now, there are a few small changes:
 
-* Classes are "case classes" rather than relying on `__init__()`. `__init__()` is still available, and will eventually only work as a "pre-processing" step before calling the base constructor. As of now, since there is no polymorphism, the presence of `__init__()` overrides the base constructor, and must call the manual object constructor builtin, `make()`. This special constructor is also different from Python in that it does not accept a `self` parameter (as the object has not been created yet, and it would be immutable anyhow). Examples:
+* Classes are "case classes" rather than relying on `__init__()`. `__init__()` is still available, and will eventually only work as a "pre-processing" step before calling the base constructor. As of now, since there is no polymorphism, the presence of `__init__()` overrides the base constructor, and must return a dictionary of attributes and values. This special constructor is also different from Python in that it does not accept a `self` parameter (as the object has not been created yet, and it would be immutable anyhow). Examples:
 ```python
     class Example(attr1, attr2):
         # A basic constructor is defined by default, so the attributes are
@@ -48,7 +48,7 @@ Mutagen's syntax is very similar to Python. As of now, there are a few small cha
         # As of now, any parameters to a class with __init__ are ignored, so
         # the object must be constructed manually
         def __init__(attr1, attr2):
-            return make({'attr1': attr1, 'attr2': attr2})
+            return {'attr1': attr1, 'attr2': attr2}
 ```
 * Braces can also be used to delimit blocks, interchangeably with indentation-based blocks as in Python. To use brace-delimited blocks, semicolons must be explicity used between statements (since newlines are ignored inside braces, as in Python), and the trailing colon beginning the block must be omitted. For example, these blocks are equivalent:
 ```python

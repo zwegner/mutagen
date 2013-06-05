@@ -619,9 +619,9 @@ class Class(Node):
             attrs = {String(k, info=self): v.eval(ctx) for k, v in
                     self.params.bind(self, ctx, args)}
         else:
-            obj = init.eval_call(ctx, args)
-            assert isinstance(obj, Object) and isinstance(obj.items, Dict)
-            attrs = obj.items.items
+            d = init.eval_call(ctx, args)
+            assert isinstance(d, Dict)
+            attrs = d.items
         # Add __class__ attribute
         attrs[String('__class__', info=self)] = self
         return Object(attrs, info=self)

@@ -46,7 +46,7 @@ class set:
         for i in items:
             if i not in set_items:
                 set_items = set_items + [i]
-        return make({'items': set_items})
+        return {'items': set_items}
     def add(self, item):
         return set(self.items + [item])
     def __or__(self, other):

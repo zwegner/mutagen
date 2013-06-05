@@ -26,7 +26,7 @@ class Tokenizer:
                 token_fn = null_token_fn
             token_matchers = token_matchers + [TokenMatcher(type,
                 re.parse(regex), token_fn)]
-        return make({'token_matchers': token_matchers})
+        return {'token_matchers': token_matchers}
 
     def tokenize_input(self, input):
         # HACK: manually split up lines

@@ -41,10 +41,6 @@ def mgb_repr(ctx, arg):
 def mgb_str(ctx, arg):
     return String(arg.str(ctx), info=arg)
 
-@mg_builtin('make', [Dict])
-def mgb_make(ctx, arg):
-    return Object(arg, info=arg)
-
 @mg_builtin('error', [String])
 def mgb_error(ctx, msg):
     msg.error(msg.value, ctx=ctx)
@@ -62,6 +58,14 @@ def mgb_parse_int(ctx, int_str, base):
     return Integer(int(int_str.value, base.value), info=int_str)
 
 @mg_builtin('str_upper', [String])
+def mgb_str_upper(ctx, arg):
+    return String(arg.value.upper(), info=arg)
+
+@mg_builtin('re_parse', [String])
+def mgb_str_upper(ctx, arg):
+    return String(arg.value.upper(), info=arg)
+
+@mg_builtin('re_parse', [String])
 def mgb_str_upper(ctx, arg):
     return String(arg.value.upper(), info=arg)
 
