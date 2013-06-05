@@ -287,6 +287,34 @@ class Dict(Node):
     def len(self, ctx):
         return len(self.items)
 
+def py_unwrap(obj, ctx):
+    if isinstance(obj, (Integer, String, Boolean)):
+        return obj.value
+    elif isinstance(obj, List):
+        return [py_unwrap(i, ctx) for i in obj.items]
+    elif isinstance(obj, PyObject):
+        return obj.obj
+    obj.error('cannot unwrap object of type %s' % type(obj).__name__, ctx=ctx)
+
+def py_wrap(obj, info):
+    if isinstance(obj, int):
+        return Integer(obj, info=info)
+    elif isinstance(obj, str):
+        return String(obj, info=info)
+    elif isinstance(obj, bool):
+        return Boolean(obj, info=info)
+    elif isinstance(obj, list):
+        return List([py_wrap(i) for i in obj], info=info)
+    return PyObject(obj, info=info)
+
+@node('obj')
+class PyObject(Node):
+    def get_attr(self, attr):
+        return py_wrap(getattr(self.obj, attr), info=self)
+    def __iter__(self):
+        for v in self.obj:
+            yield py_wrap(v, self)
+
 @node('items')
 class Object(Node):
     def eval(self, ctx):

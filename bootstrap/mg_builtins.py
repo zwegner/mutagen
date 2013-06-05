@@ -73,4 +73,17 @@ def mgb_str_upper(ctx, arg):
 def mgb_str_upper(ctx, arg):
     return String(arg.value.upper(), info=arg)
 
+# Python interfacing functions! At some point these would become a security
+# hole if we cared about the Python interpreter.
+@mg_builtin('py_obj_get', [String])
+def mgb_py_obj(ctx, name):
+    return PyObject(eval(name.value), info=name)
+
+@mg_builtin('py_obj_call', None)
+def mgb_py_call(ctx, *args):
+    fn = args[0]
+    assert isinstance(fn, PyObject)
+    args = [py_unwrap(a, ctx) for a in args[1:]]
+    return py_wrap(fn.obj(*args), fn)
+
 __all__ = builtins
