@@ -1,3 +1,8 @@
+def reduce(fn, start, iter):
+    for i in iter:
+        start = fn(start, i)
+    return start
+
 def map(fn, list):
     # HACK!!! This is to get around a lack of closures/lifting,
     # by manually passing around the function.

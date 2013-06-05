@@ -49,12 +49,6 @@ def mgb_make(ctx, arg):
 def mgb_error(ctx, msg):
     msg.error(msg.value, ctx=ctx)
 
-@mg_builtin('reduce', [Function, Node, Node])
-def mgb_reduce(ctx, fn, start, iter):
-    for i in iter.iter(ctx):
-        start = fn.eval_call(ctx, [start, i.eval(ctx)])
-    return start
-
 @mg_builtin('slice', [Node, Integer, Integer])
 def mgb_slice(ctx, seq, start, end):
     if isinstance(seq, String):
