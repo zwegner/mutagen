@@ -47,17 +47,16 @@ class set:
     def __init__(items):
         set_items = []
         for i in items:
-            if i not in set_items:
-                set_items = set_items + [i]
-        return {'items': set_items}
+            set_items = set_items + [i]
+        return {'items': py_obj_call(py_obj_get('set'), set_items)}
     def add(self, item):
-        return set(self.items + [item])
+        return self | set([item])
     def __or__(self, other):
-        return set(self.items + other.items)
+        return set(py_obj_call(self.items.__or__, other.items))
     def __repr__(self):
-        return 'set('+repr(self.items)+')'
+        return py_obj_call(self.items.__repr__)
     def __iter__(self):
-        for i in self.items:
+        for i in self.items.__iter__():
             yield i
     def __bool__(self):
-        return len(self.items) > 0
+        return py_obj_call(self.items.__len__) > 0
