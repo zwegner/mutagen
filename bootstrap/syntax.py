@@ -597,7 +597,7 @@ class Generator(Node):
 class BuiltinFunction(Node):
     def eval_call(self, ctx, args):
         child_ctx = Context(self.name, self, None, ctx)
-        return self.fn(child_ctx, args)
+        return self.fn(self, child_ctx, args)
     def repr(self, ctx):
         return '<builtin %s>' % self.name
 

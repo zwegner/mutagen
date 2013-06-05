@@ -6,11 +6,15 @@ builtins = {}
 
 def mg_builtin(name, arg_types):
     def annotate(fn):
-        def builtin_call(ctx, args):
+        def builtin_call(obj, ctx, args):
             if arg_types is not None:
-                assert len(args) == len(arg_types)
+                if len(args) != len(arg_types):
+                    obj.error('incorrect number of arguments to builtin %s' %
+                            obj.name, ctx=ctx)
                 for a, t in zip(args, arg_types):
-                    assert isinstance(a, t)
+                    if not isinstance(a, t):
+                        obj.error('bad argument to builtin %s, expected %s, got %s' %
+                                (obj.name, t.__name__, type(a).__name__), ctx=ctx)
             return fn(ctx, *args)
 
         builtins[name] = BuiltinFunction(name, builtin_call, info=Info('__builtins__', 0))
