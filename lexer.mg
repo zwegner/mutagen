@@ -40,6 +40,9 @@ def t_string(t):
     return tokenize.Token(t.type, result)
 
 token_map = [
+    ['BIT_AND',         '&'],
+    ['BIT_OR',          '\\|'],
+    ['BIT_XOR',         '\\^'],
     ['COLON',           ':'],
     ['COMMA',           ','],
     ['EQUALS',          '='],
