@@ -1,3 +1,7 @@
+################################################################################
+## Mutagen builtin functions ###################################################
+################################################################################
+
 def reduce(fn, start, iter):
     for i in iter:
         start = fn(start, i)
@@ -42,6 +46,26 @@ def str_split_lines(text):
 
 def isinstance(obj, cls):
     return obj.__class__ == cls
+
+################################################################################
+## Python-implemented builtins #################################################
+################################################################################
+
+def read_file(path):
+    return py_obj_get('open')(path).read()
+
+def putchar(arg):
+    return py_obj_get('sys.stdout.write')(arg)
+
+def str_upper(arg):
+    return py_obj_get('str.upper')(arg)
+
+def parse_int(int_str, base):
+    return py_obj_get('int')(int_str, base)
+
+################################################################################
+## Builtin classes #############################################################
+################################################################################
 
 class set:
     def __init__(items):

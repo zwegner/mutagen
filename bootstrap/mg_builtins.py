@@ -22,18 +22,6 @@ def mg_builtin(arg_types):
         return builtin_call
     return annotate
 
-# TODO: error checking!
-
-@mg_builtin([String])
-def mgb_read_file(ctx, path):
-    with open(path.value) as f:
-        return String(f.read(), info=path)
-
-@mg_builtin([String])
-def mgb_putchar(ctx, arg):
-    sys.stdout.write(arg.value)
-    return Nil(info=arg)
-
 @mg_builtin([Node])
 def mgb_len(ctx, arg):
     return Integer(arg.len(ctx), info=arg)
@@ -57,18 +45,6 @@ def mgb_slice(ctx, seq, start, end):
     elif isinstance(seq, List):
         return List(seq.items[start.value:end.value], info=seq)
     return Nil(info=seq)
-
-@mg_builtin([String, Integer])
-def mgb_parse_int(ctx, int_str, base):
-    return Integer(int(int_str.value, base.value), info=int_str)
-
-@mg_builtin([String])
-def mgb_str_upper(ctx, arg):
-    return String(arg.value.upper(), info=arg)
-
-@mg_builtin([String])
-def mgb_re_parse(ctx, arg):
-    return String(arg.value.upper(), info=arg)
 
 # Python interfacing functions! At some point these would become a security
 # hole if we cared about the Python interpreter.
