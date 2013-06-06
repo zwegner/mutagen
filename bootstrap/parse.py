@@ -122,15 +122,9 @@ def p_stmt_2(p):
     """ stmt : stmt delim """
     p[0] = p[1]
 
-def p_vararg(p):
-    """ vararg : STAR expr """
-    p[0] = VarArg(p[2])
-
 def p_expr_list(p):
     """ expr_list : expr
-                  | vararg
                   | expr_list COMMA expr
-                  | expr_list COMMA vararg
     """
     if len(p) == 2:
         p[0] = [p[1]]
@@ -211,8 +205,6 @@ def p_set(p):
     """ set : LBRACE expr_list RBRACE
             | LBRACE expr_list COMMA RBRACE
     """
-    # HACK? Call the set constructor, relies on set being in __builtins__.mg
-    assert not any(isinstance(e, VarArg) for e in p[2])
     p[0] = Call(Identifier('set', info=get_info(p, 1)),
             [List(p[2], info=get_info(p, 1))])
 
@@ -257,8 +249,23 @@ def p_getitem(p):
     """ getitem : expr LBRACKET expr RBRACKET """
     p[0] = GetItem(p[1], p[3])
 
+def p_vararg(p):
+    """ vararg : STAR expr """
+    p[0] = VarArg(p[2])
+
+def p_arg_list(p):
+    """ arg_list : expr
+                 | vararg
+                 | arg_list COMMA expr
+                 | arg_list COMMA vararg
+    """
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1] + [p[3]]
+
 def p_call(p):
-    """ call : expr LPAREN expr_list RPAREN
+    """ call : expr LPAREN arg_list RPAREN
              | expr LPAREN RPAREN
     """
     if len(p) == 4:
