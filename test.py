@@ -10,11 +10,25 @@ python = 'python3'
 
 passes = fails = 0
 
+# Mutagen tests: these should just not throw any errors
+mg_tests = ['builtins']
+mg_test_dir = 'mg_tests'
+
 # Python tests: python/mutagen should produce the same output in each case.
 py_tests = ['regex', 'lex']
-py_test_dir = 'tests'
+py_test_dir = 'py_tests'
 
 start = time.time()
+
+# Run mutagen tests
+for test in mg_tests:
+    try:
+        path = '%s.mg' % (test)
+        subprocess.check_output([mutagen, path], cwd=mg_test_dir)
+        passes += 1
+    except Exception:
+        fails += 1
+        print('TEST %s FAILED!' % test)
 
 for test in py_tests:
     # Run python version

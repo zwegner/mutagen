@@ -44,6 +44,13 @@ def str_split(text, delim):
 def str_split_lines(text):
     return str_split(text, '\n')
 
+# XXX need a real class
+def list(items):
+    l = []
+    for i in items:
+        l = l + [i]
+    return l
+
 def isinstance(obj, cls):
     return obj.__class__ == cls
 
