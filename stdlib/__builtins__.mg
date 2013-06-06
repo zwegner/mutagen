@@ -45,18 +45,27 @@ def isinstance(obj, cls):
 
 class set:
     def __init__(items):
-        set_items = []
-        for i in items:
-            set_items = set_items + [i]
-        return {'items': py_obj_call(py_obj_get('set'), set_items)}
+        set_items = map(py_wrap, items)
+        return {'items': py_obj_get('set')(set_items)}
     def add(self, item):
         return self | set([item])
     def __or__(self, other):
-        return set(py_obj_call(self.items.__or__, other.items))
+        return set(self.items.__or__(other.items))
     def __repr__(self):
-        return py_obj_call(self.items.__repr__)
+        s = '{'
+        first = True
+        for i in self:
+            if not first:
+                s = s + ', '
+            s = s + repr(i)
+            first = False
+        return s + '}'
     def __iter__(self):
         for i in self.items.__iter__():
             yield i
+    def __contains__(self, item):
+        return self.items.__contains__(py_wrap(item))
+    def __len__(self):
+        return self.items.__len__()
     def __bool__(self):
         return py_obj_call(self.items.__len__) > 0

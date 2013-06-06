@@ -305,6 +305,8 @@ def py_wrap(obj, info):
         return Boolean(obj, info=info)
     elif isinstance(obj, list):
         return List([py_wrap(i) for i in obj], info=info)
+    elif isinstance(obj, Node):
+        return obj
     return PyObject(obj, info=info)
 
 @node('obj')
@@ -314,6 +316,10 @@ class PyObject(Node):
     def __iter__(self):
         for v in self.obj:
             yield py_wrap(v, self)
+    def eval_call(self, ctx, args):
+        return py_wrap(self.obj(*[py_unwrap(a, ctx) for a in args]), self)
+    def repr(self, ctx):
+        return 'PyObj(%s)' % repr(self.obj)
 
 @node('items')
 class Object(Node):

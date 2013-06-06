@@ -76,11 +76,8 @@ def mgb_re_parse(ctx, arg):
 def mgb_py_obj_get(ctx, name):
     return PyObject(eval(name.value), info=name)
 
-@mg_builtin(None)
-def mgb_py_obj_call(ctx, *args):
-    fn = args[0]
-    assert isinstance(fn, PyObject)
-    args = [py_unwrap(a, ctx) for a in args[1:]]
-    return py_wrap(fn.obj(*args), fn)
+@mg_builtin([Node])
+def mgb_py_wrap(ctx, arg):
+    return PyObject(arg, info=arg)
 
 __all__ = builtins
