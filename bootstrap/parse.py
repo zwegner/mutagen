@@ -328,9 +328,22 @@ def p_while(p):
     """ while_stmt : WHILE expr block """
     p[0] = While(p[2], p[3])
 
-def p_arg_list(p):
-    """ arg_list : IDENTIFIER
-                 | arg_list COMMA IDENTIFIER
+def p_typespec(p):
+    """ typespec : expr """
+    p[0] = p[1]
+
+def p_param(p):
+    """ param : IDENTIFIER
+              | IDENTIFIER COLON typespec
+    """
+    if len(p) == 2:
+        p[0] = [p[1], None]
+    else:
+        p[0] = [p[1], p[3]]
+
+def p_param_list(p):
+    """ param_list : param
+                   | param_list COMMA param
     """
     if len(p) == 2:
         p[0] = [p[1]]
@@ -338,7 +351,7 @@ def p_arg_list(p):
         p[0] = p[1] + [p[3]]
 
 def p_params(p):
-    """ params : LPAREN arg_list RPAREN
+    """ params : LPAREN param_list RPAREN
                | LPAREN RPAREN
                |
     """
@@ -349,7 +362,7 @@ def p_params(p):
     p[0] = Params(params, None, info=get_info(p, 0))
 
 def p_params_star(p):
-    """ params : LPAREN arg_list COMMA STAR IDENTIFIER RPAREN
+    """ params : LPAREN param_list COMMA STAR IDENTIFIER RPAREN
                | LPAREN STAR IDENTIFIER RPAREN
     """
     if len(p) == 5:

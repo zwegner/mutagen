@@ -566,6 +566,8 @@ class CallVarArgs(Node):
 
 @node('params, star_params')
 class Params(Node):
+    def setup(self):
+        self.params, self.types = [[p[i] for p in self.params] for i in range(2)]
     def bind(self, obj, ctx, args):
         if self.star_params:
             if len(args) < len(self.params):
@@ -573,13 +575,30 @@ class Params(Node):
                 'expected at least %s' % (obj.name, len(self.params)), ctx=ctx)
             pos_args = args[:len(self.params)]
             var_args = List(args[len(self.params):], info=self)
-            args = list(zip(self.params, pos_args))
-            return args + [(self.star_params, var_args)]
         else:
             if len(args) != len(self.params):
                 self.error('wrong number of arguments to %s, '
                 'expected %s' % (obj.name, len(self.params)), ctx=ctx)
-            return zip(self.params, args)
+            pos_args = args
+
+        # Check argument types
+        args = []
+        for p, t, a in zip(self.params, self.types, pos_args):
+            if t is not None:
+                # HACK
+                if not isinstance(a, Object):
+                    self.error('passing non-object argument of type %s to ' \
+                            'parameter of type %s' % (type(a).__name__,
+                                t.repr(ctx)), ctx=ctx)
+                arg_type = a.get_attr('__class__')
+                t = t.eval(ctx)
+                if arg_type is not t:
+                    self.error('bad argument type %s, expected %s' % (
+                        arg_type.repr(ctx), t.repr(ctx)), ctx=ctx)
+            args += [(p, a)]
+        if self.star_params:
+            args += [(self.star_params, var_args)]
+        return args
 
 @node('ctx, name, &params, &block')
 class Function(Node):
