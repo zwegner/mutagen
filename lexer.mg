@@ -75,6 +75,7 @@ keywords = [
     'Nil',
     'True',
     'and',
+    'assert',
     'class',
     'def',
     'elif',

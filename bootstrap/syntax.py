@@ -433,6 +433,12 @@ class GetItem(Node):
     def repr(self, ctx):
         return '%s[%s]' % (self.obj.repr(ctx), self.item.repr(ctx))
 
+@node('&expr')
+class Assert(Node):
+    def eval(self, ctx):
+        if not self.expr.eval(ctx).bool(ctx):
+            self.error('Assertion failed: %s' % self.expr.repr(ctx), ctx=ctx)
+
 @node('name, &rhs')
 class Assignment(Node):
     def eval(self, ctx):

@@ -105,6 +105,7 @@ def p_simple_stmt(p):
                     | return
                     | yield
                     | import
+                    | assert
     """
     p[0] = p[1]
 
@@ -277,6 +278,10 @@ def p_call(p):
             p[0] = CallVarArgs(p[1], p[3])
         else:
             p[0] = Call(p[1], p[3])
+
+def p_assert(p):
+    """ assert : ASSERT expr """
+    p[0] = Assert(p[2])
 
 def p_assignment(p):
     """ assn : expr EQUALS expr """
