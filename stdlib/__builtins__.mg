@@ -51,8 +51,11 @@ def list(items):
         l = l + [i]
     return l
 
+def type(obj):
+    return obj.__class__
+
 def isinstance(obj, cls):
-    return obj.__class__ == cls
+    return type(obj) == cls
 
 ################################################################################
 ## Python-implemented builtins #################################################
@@ -76,8 +79,8 @@ def parse_int(int_str, base):
 
 class set:
     def __init__(items):
-        set_items = map(py_wrap, items)
-        return {'items': py_obj_get('set')(set_items)}
+        items = map(py_wrap, items)
+        return {'items': py_obj_get('set')(items)}
     def add(self, item):
         return self | set([item])
     def __or__(self, other):
@@ -96,7 +99,9 @@ class set:
             yield i
     def __contains__(self, item):
         return self.items.__contains__(py_wrap(item))
+    def __eq__(self, other):
+        return self.items == other.items
     def __len__(self):
         return self.items.__len__()
     def __bool__(self):
-        return py_obj_call(self.items.__len__) > 0
+        return len(self) > 0

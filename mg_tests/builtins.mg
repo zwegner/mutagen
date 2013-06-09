@@ -6,12 +6,15 @@ for i in [['Hello World!', 'HELLO WORLD!'], ['HELLO', 'HELLO']]:
 
 assert list(enumerate('abc')) == [[0, 'a'], [1, 'b'], [2, 'c']]
 
-items_1 = [0, 1, 2, 3, 4]
-items_2 = [5, 6, 7, 8, 9]
+items_1 = [0, 1, 2, 3, 4, {'a': 'b'}]
+items_2 = [5, 6, 7, 8, 9, {'c': 'd'}]
 s = set(items_1)
 t = set(items_2)
 u = s | t
-assert len(u) == 10
+assert u | s == u
+assert u | t == u
+assert u and s and t
+assert not set([])
 
 for i in items_1:
     assert i in s

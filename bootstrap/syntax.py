@@ -52,8 +52,6 @@ class Node:
             ctx.print_stack()
         print('%s(%i): %s' % (self.info.filename, self.info.lineno, msg), file=sys.stderr)
         sys.exit(1)
-    def __eq__(self, other):
-        self.error('__eq__ unimplemented for type %s' % type(self))
     def __ne__(self, other):
         return Boolean(not self.__eq__(other).value, info=self)
     def bool(self, ctx):
@@ -66,6 +64,8 @@ class Node:
         self.error('__repr__ unimplemented for %s' % type(self), ctx=ctx)
     def iter(self, ctx):
         return iter(self)
+    def overload(self, ctx, attr, args):
+        return None
 
 ARG_REG, ARG_EDGE, ARG_EDGE_LIST = list(range(3))
 arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
@@ -286,6 +286,10 @@ class Dict(Node):
         return Boolean(item in self.items, info=self)
     def len(self, ctx):
         return len(self.items)
+    def __eq__(self, other):
+        return Boolean(isinstance(other, Dict) and self.items == other.items, info=self)
+    def __hash__(self):
+        return tuple(self.items.items()).__hash__()
 
 def py_unwrap(obj, ctx):
     if isinstance(obj, (Integer, String, Boolean)):
@@ -320,6 +324,9 @@ class PyObject(Node):
         return py_wrap(self.obj(*[py_unwrap(a, ctx) for a in args]), self)
     def repr(self, ctx):
         return 'PyObj(%s)' % repr(self.obj)
+    def __eq__(self, other):
+        return Boolean(isinstance(other, PyObject) and
+                self.obj == other.obj, info=self)
 
 @node('items')
 class Object(Node):
@@ -330,34 +337,35 @@ class Object(Node):
         if attr in self.items:
             return self.items[attr]
         return None
-    def __eq__(self, other):
-        return Boolean(isinstance(other, Object) and
-                self.items == other.items, info=self)
-
     def base_repr(self, ctx):
         return '{%s}' % ', '.join('%s:%s' % (k.repr(ctx), v.repr(ctx)) for k, v
                 in self.items.items())
+    def __eq__(self, other):
+        return Boolean(isinstance(other, Object) and
+                self.items == other.items, info=self)
     def bool(self, ctx):
-        return self.overload(ctx, '__bool__', []).value
+        return self.dispatch(ctx, '__bool__', []).value
     def len(self, ctx):
-        return self.overload(ctx, '__len__', []).value
+        return self.dispatch(ctx, '__len__', []).value
     def str(self, ctx):
-        return self.overload(ctx, '__str__', [],
-                delegate=lambda: String(self.repr(ctx), info=self)).value
+        return (self.overload(ctx, '__str__', []) or String(
+                self.repr(ctx), info=self)).value
     def repr(self, ctx):
-        return self.overload(ctx, '__repr__', [],
-                delegate=lambda: String(self.base_repr(ctx), info=self)).value
+        return (self.overload(ctx, '__repr__', []) or String(
+                self.base_repr(ctx), info=self)).value
     def iter(self, ctx):
-        return self.overload(ctx, '__iter__', [])
-    def overload(self, ctx, attr, args, delegate=None):
+        return self.dispatch(ctx, '__iter__', [])
+    def overload(self, ctx, attr, args):
         # Operator overloading
         cls = self.get_attr('__class__')
         op = cls.get_attr(attr)
         if op is not None:
             return op.eval_call(ctx, [self] + args)
-        if delegate:
-            return delegate()
-        self.error('%s unimplemented for %s' % (attr, cls.repr(ctx)), ctx=ctx)
+        return None
+    def dispatch(self, ctx, attr, args):
+        cls = self.get_attr('__class__')
+        return self.overload(ctx, attr, args) or self.error(
+                '%s unimplemented for %s' % (attr, cls.repr(ctx)), ctx=ctx)
 
 @node('&method, &self')
 class BoundMethod(Node):
@@ -413,9 +421,8 @@ class BinaryOp(Node):
         }[self.type]
         operator = '__%s__' % operator
 
-        if not hasattr(lhs, operator):
-            return lhs.overload(ctx, operator, [rhs])
-        return getattr(lhs, operator)(rhs)
+        return lhs.overload(ctx, operator, [rhs]) or getattr(lhs,
+                operator)(rhs)
     def repr(self, ctx):
         return '(%s %s %s)' % (self.lhs.repr(ctx), self.type, self.rhs.repr(ctx))
 
