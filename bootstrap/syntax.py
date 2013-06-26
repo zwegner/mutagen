@@ -14,6 +14,7 @@ class Context:
     def __init__(self, name, node, global_ctx, parent):
         self.name = name
         self.node = node
+        self.current_node = None
         self.global_ctx = global_ctx
         self.parent = parent
         self.syms = {}
@@ -31,7 +32,9 @@ class Context:
             self.parent.print_stack()
         if self.node:
             info = self.node.info
-            print(' at %s, %s, line %s' % (self.node.name, info.filename, info.lineno), file=sys.stderr)
+            if self.current_node:
+                info = self.current_node.info
+            print(' at %s in %s, line %s' % (self.node.name, info.filename, info.lineno), file=sys.stderr)
         else:
             print('in module %s' % self.name, file=sys.stderr)
 
@@ -560,6 +563,7 @@ class Call(Node):
     def eval(self, ctx):
         fn = self.fn.eval(ctx)
         args = [a.eval(ctx) for a in self.args]
+        ctx.current_node = self
         return fn.eval_call(ctx, args)
     def repr(self, ctx):
         return '%s(%s)' % (self.fn.repr(ctx), ', '.join(s.repr(ctx) for s in self.args))
