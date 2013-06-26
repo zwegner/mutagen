@@ -7,13 +7,27 @@ def reduce(fn, start, iter):
         start = fn(start, i)
     return start
 
+def foldl(fn, list, nil):
+    for i in list:
+        nil = fn(i, nil)
+    return nil
+
+def foldr(fn, list, nil):
+    for i in reversed(list):
+        nil = fn(i, nil)
+    return nil
+
 def map(fn, list):
-    # HACK!!! This is to get around a lack of closures/lifting,
-    # by manually passing around the function.
-    def reducer(a, b):
-        fn = a[0]
-        return [fn, a[1] + [fn(b)]]
-    return reduce(reducer, [fn, []], list)[1]
+    result = []
+    for i in list:
+        result = result + [fn(i)]
+    return result
+
+def reversed(iterable):
+    i = len(iterable)
+    while i > 0:
+        i = i - 1
+        yield iterable[i]
 
 def enumerate(gen):
     i = 0
