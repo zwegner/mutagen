@@ -102,6 +102,8 @@ def p_simple_stmt(p):
     """ simple_stmt : expr
                     | pass
                     | assn
+                    | break
+                    | continue
                     | return
                     | yield
                     | import
@@ -292,6 +294,14 @@ def p_assignment(p):
             return [deconstruct_lhs(i) for i in lhs]
         lhs.error('invalid lhs for assignment')
     p[0] = Assignment(deconstruct_lhs(p[1]), p[3])
+
+def p_break(p):
+    """ break : BREAK """
+    p[0] = Break(info=get_info(p, 1))
+
+def p_continue(p):
+    """ continue : CONTINUE """
+    p[0] = Continue(info=get_info(p, 1))
 
 def p_return(p):
     """ return : RETURN expr

@@ -252,7 +252,10 @@ class List(Node):
         yield from self.items
     def __getitem__(self, item):
         if isinstance(item, Integer):
-            return self.items[item.value]
+            try:
+                return self.items[item.value]
+            except IndexError:
+                self.error('list index out of range: %s' % item.value)
         self.error('bad arg for getitem: %s' % item)
     def __eq__(self, other):
         return Boolean(isinstance(other, List) and
@@ -475,10 +478,30 @@ class Assignment(Node):
     def repr(self, ctx):
         return '%s = %s' % (self.name, self.rhs.repr(ctx))
 
-# Exception for backing up the eval stack on return
+# Exception for backing up the eval stack on break/continue/return
+class BreakExc(Exception):
+    pass
+
+class ContinueExc(Exception):
+    pass
+
 class ReturnValue(Exception):
     def __init__(self, value):
         self.value = value
+
+@node()
+class Break(Node):
+    def eval(self, ctx):
+        raise BreakExc()
+    def repr(self, ctx):
+        return 'break'
+
+@node()
+class Continue(Node):
+    def eval(self, ctx):
+        raise ContinueExc()
+    def repr(self, ctx):
+        return 'continue'
 
 @node('&expr')
 class Return(Node):
@@ -534,14 +557,24 @@ class For(Node):
     def eval(self, ctx):
         expr = self.expr.eval(ctx)
         for i in expr.iter(ctx):
-            ctx.store(self.iter, i)
-            self.block.eval(ctx)
+            try:
+                ctx.store(self.iter, i)
+                self.block.eval(ctx)
+            except BreakExc:
+                break
+            except ContinueExc:
+                continue
         return Nil(info=self)
     def eval_gen(self, ctx):
         expr = self.expr.eval(ctx)
         for i in expr.iter(ctx):
-            ctx.store(self.iter, i)
-            yield from self.block.eval_gen(ctx)
+            try:
+                ctx.store(self.iter, i)
+                yield from self.block.eval_gen(ctx)
+            except BreakExc:
+                break
+            except ContinueExc:
+                continue
     def repr(self, ctx):
         return 'for %s in %s%s' % (self.iter, self.expr.repr(ctx),
                 self.block.repr(ctx))
@@ -550,11 +583,21 @@ class For(Node):
 class While(Node):
     def eval(self, ctx):
         while self.expr.eval(ctx).bool(ctx):
-            self.block.eval(ctx)
+            try:
+                self.block.eval(ctx)
+            except BreakExc:
+                break
+            except ContinueExc:
+                continue
         return Nil(info=self)
     def eval_gen(self, ctx):
         while self.expr.eval(ctx).bool(ctx):
-            yield from self.block.eval_gen(ctx)
+            try:
+                yield from self.block.eval_gen(ctx)
+            except BreakExc:
+                break
+            except ContinueExc:
+                continue
     def repr(self, ctx):
         return 'while %s%s' % (self.expr.repr(ctx), self.block.repr(ctx))
 
