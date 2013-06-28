@@ -52,3 +52,9 @@ def join(a, b):
 
 assert foldl(join, test_list, []) == [5, [4, [3, [2, [1, []]]]]]
 assert foldr(join, test_list, []) == [1, [2, [3, [4, [5, []]]]]]
+
+# Test str join/split
+str_list = ['abc', 'def', 'ghi']
+str_joined = 'abc/def/ghi'
+assert str_join('/', str_list) == str_joined
+assert str_split(str_joined, '/') == str_list

@@ -54,14 +54,8 @@ def zip(*iterables):
             yield item
             i = i + 1
 
-def list(arg):
-    l = []
-    for a in arg:
-        l = l + [a]
-    return l
-
-def print(args):
-    return putchar(str(args) + '\n')
+def print(*args):
+    return putchar(str_join(' ', map(str, args)) + '\n')
 
 def str_split(text, delim):
     c = 0
@@ -76,6 +70,17 @@ def str_split(text, delim):
 
 def str_split_lines(text):
     return str_split(text, '\n')
+
+def str_join(sep, strs):
+    r = ''
+    first = True
+    for s in strs:
+        if first:
+            first = False
+        else:
+            r = r + sep
+        r = r + s
+    return r
 
 # XXX need a real class
 def list(items):
