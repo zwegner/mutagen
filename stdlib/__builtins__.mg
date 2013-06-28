@@ -17,11 +17,9 @@ def foldr(fn, list, nil):
         nil = fn(i, nil)
     return nil
 
-def map(fn, list):
-    result = []
-    for i in list:
-        result = result + [fn(i)]
-    return result
+def map(fn, *lists):
+    for args in zip(*lists):
+        yield fn(*args)
 
 def reversed(iterable):
     i = len(iterable)
@@ -34,6 +32,27 @@ def enumerate(gen):
     for item in gen:
         yield [i, item]
         i = i + 1
+
+def zip(*iterables):
+    # HACK: the iterables are eagerly evaluated, so this takes up too much
+    # memory/time.
+    # HACK?: can't use map here, since it calls zip...
+    iters = []
+    for iterable in iterables:
+        iters = iters + [list(iterable)]
+
+    i = 0
+    done = len(iters) == 0
+    while not done:
+        item = []
+        for iterable in iters:
+            if i >= len(iterable):
+                done = True
+                break
+            item = item + [iterable[i]]
+        if not done:
+            yield item
+            i = i + 1
 
 def list(arg):
     l = []
@@ -93,7 +112,7 @@ def parse_int(int_str, base):
 
 class set:
     def __init__(items):
-        items = map(py_wrap, items)
+        items = list(map(py_wrap, items))
         return {'items': py_obj_get('set')(items)}
     def add(self, item):
         return self | set([item])
