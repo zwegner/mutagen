@@ -392,7 +392,7 @@ class UnaryOp(Node):
             return Boolean(not rhs.bool(ctx), info=self)
         assert False
     def repr(self, ctx):
-        return '(%s %s)' % (self.type.repr(ctx), self.rhs.repr(ctx))
+        return '(%s %s)' % (self.type, self.rhs.repr(ctx))
 
 @node('type, &lhs, &rhs')
 class BinaryOp(Node):
@@ -665,6 +665,11 @@ class Params(Node):
         if self.star_params:
             args += [(self.star_params, var_args)]
         return args
+    def repr(self, ctx):
+        r = ', '.join(s for s in self.params)
+        if self.star_params:
+            r += ', %s' % self.star_params
+        return r
 
 @node('ctx, name, &params, &block')
 class Function(Node):
@@ -691,8 +696,8 @@ class Function(Node):
             ret = r.value
         return ret
     def repr(self, ctx):
-        return 'def %s(%s)%s' % (self.name, ', '.join(str(s)
-            for s in self.params), self.block.repr(ctx))
+        return 'def %s(%s)%s' % (self.name, self.params.repr(ctx),
+                self.block.repr(ctx))
 
 @node('ctx, &block')
 class Generator(Node):
