@@ -125,11 +125,11 @@ def node(argstr='', compare=False):
         # Python object in the value attribute
         if compare:
             def __eq__(self, other):
-                return Boolean(isinstance(other, type(self)) and
-                        self.value == other.value, info=self)
-            def __ne__(self, other):
-                return Boolean(not isinstance(other, type(self)) or
-                        self.value != other.value, info=self)
+                if isinstance(other, type(self)):
+                    return Boolean(self.value == other.value, info=self)
+                elif isinstance(other, type(self.value)):
+                    return Boolean(self.value == other, info=self)
+                return Boolean(False, info=self)
             def __ge__(self, other):
                 if not isinstance(other, type(self)):
                     self.error('uncomparable types: %s, %s' % (type(self), type(other)))
@@ -149,7 +149,6 @@ def node(argstr='', compare=False):
             def __hash__(self):
                 return self.value.__hash__()
             node.__eq__ = __eq__
-            node.__ne__ = __ne__
             node.__ge__ = __ge__
             node.__gt__ = __gt__
             node.__le__ = __le__
@@ -168,8 +167,6 @@ class Nil(Node):
         return 'Nil'
     def __eq__(self, other):
         return Boolean(isinstance(other, Nil), info=self)
-    def __ne__(self, other):
-        return Boolean(not isinstance(other, Nil), info=self)
     def bool(self, ctx):
         return False
     def __hash__(self):
@@ -240,6 +237,9 @@ class Boolean(Node):
     def repr(self, ctx):
         return '%s' % self.value
     def bool(self, ctx):
+        return self.value
+    # HACK: this affects equality, hope this doesn't screw anything else up...
+    def __bool__(self):
         return self.value
 
 @node('*items')
@@ -350,7 +350,8 @@ class Object(Node):
         return Boolean(isinstance(other, Object) and
                 self.items == other.items, info=self)
     def bool(self, ctx):
-        return self.dispatch(ctx, '__bool__', []).value
+        return (self.overload(ctx, '__bool__', []) or
+                self.dispatch(ctx, '__len__', [])).value
     def len(self, ctx):
         return self.dispatch(ctx, '__len__', []).value
     def str(self, ctx):
