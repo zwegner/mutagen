@@ -21,6 +21,7 @@ class MatchOpt(inv, matches):
             [match, l] = m.match(s)
             if match:
                 r = True
+                break
         if self.inv:
             r = not r and len(s) > 0
         return [r, 1]
@@ -28,8 +29,8 @@ class MatchOpt(inv, matches):
 # Range: match a character that's in a range
 class MatchRange(low, high):
     def match(self, s):
-        if len(s):
-            return [s[0] >= self.low and s[0] <= self.high, 1]
+        if len(s) and s[0] >= self.low and s[0] <= self.high:
+            return [True, 1]
         return [False, 0]
 
 # Sequence: take two regexes and match them both in order.
@@ -115,7 +116,6 @@ def parse_item(string, c):
 def parse_group(string, c):
     result = Nil
     while c < len(string) and string[c] != ')':
-        old_c = c
         [item, c] = parse_item(string, c)
         # Parse repeaters/connectors
         if c < len(string):
@@ -142,9 +142,7 @@ def parse_group(string, c):
     return [result, c]
 
 def parse(string):
-    result_c = parse_group(string, 0)
-    result = result_c[0]
-    c = result_c[1]
+    [result, c] = parse_group(string, 0)
     if c < len(string):
         error('regex parsing error')
     return result

@@ -31,8 +31,7 @@ def t_string(t):
             if c in str_escapes:
                 esc = str_escapes[c]
             else:
-                print('bad string escape: "\\'+c+'"')
-                error
+                error('bad string escape: "\\'+c+'"')
             result = result + esc
         else:
             result = result + c
@@ -163,7 +162,7 @@ def process_indentation(tokens):
                     ws_stack = slice(ws_stack, 0, len(ws_stack) - 1)
                     yield tokenize.Token('DEDENT', '')
                 if spaces != ws_stack[-1]:
-                    error(t, 'unindent level does not match' +
+                    error('unindent level does not match' +
                         'any previous indent')
         else:
             yield t

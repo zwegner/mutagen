@@ -124,14 +124,7 @@ class set:
     def __or__(self, other):
         return set(self.items.__or__(other.items))
     def __repr__(self):
-        s = '{'
-        first = True
-        for i in self:
-            if not first:
-                s = s + ', '
-            s = s + repr(i)
-            first = False
-        return s + '}'
+        return '{' + str_join(',', map(repr, self)) + '}'
     def __iter__(self):
         for i in self.items.__iter__():
             yield i
