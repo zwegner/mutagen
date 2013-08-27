@@ -454,7 +454,7 @@ def parse(path, import_builtins=True, ctx=None):
                 else:
                     raise Exception('could not find import in path: %s' % expr.name)
 
-            module_ctx = Context(expr.name, expr, None, ctx)
+            module_ctx = Context(expr.name, None, ctx)
             stmts = parse(path, import_builtins=not expr.is_builtins,
                     ctx=module_ctx)
             expr.ctx = module_ctx
@@ -466,7 +466,7 @@ def parse(path, import_builtins=True, ctx=None):
     return new_block
 
 def interpret(path):
-    ctx = Context('__main__', None, None, None)
+    ctx = Context('__main__', None, None)
     block = parse(path, ctx=ctx)
     for expr in block:
         expr.eval(ctx)

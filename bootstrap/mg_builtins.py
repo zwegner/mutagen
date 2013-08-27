@@ -15,6 +15,7 @@ def mg_builtin(arg_types):
                     if not isinstance(a, t):
                         obj.error('bad argument to builtin %s, expected %s, got %s' %
                                 (obj.name, t.__name__, type(a).__name__), ctx=ctx)
+            ctx.current_node = obj
             return fn(ctx, *args)
 
         name = fn.__name__.replace('mgb_', '')

@@ -11,9 +11,8 @@ inv_str_escapes = [
 ]
 
 class Context:
-    def __init__(self, name, node, global_ctx, parent):
+    def __init__(self, name, global_ctx, parent):
         self.name = name
-        self.node = node
         self.current_node = None
         self.global_ctx = global_ctx
         self.parent = parent
@@ -30,11 +29,10 @@ class Context:
     def print_stack(self):
         if self.parent:
             self.parent.print_stack()
-        if self.node:
-            info = self.node.info
-            if self.current_node:
-                info = self.current_node.info
-            print(' at %s in %s, line %s' % (self.node.name, info.filename, info.lineno), file=sys.stderr)
+        if self.current_node:
+            info = self.current_node.info
+            print(' at %s in %s, line %s' % (self.name, info.filename,
+                info.lineno), file=sys.stderr)
         else:
             print('in module %s' % self.name, file=sys.stderr)
 
@@ -684,7 +682,7 @@ class Function(Node):
     def eval(self, ctx):
         return self
     def eval_call(self, ctx, args):
-        child_ctx = Context(self.name, self, self.ctx, ctx)
+        child_ctx = Context(self.name, self.ctx, ctx)
         for p, a in self.params.bind(self, ctx, args):
             child_ctx.store(p, a)
         if self.is_generator:
@@ -715,7 +713,7 @@ class Generator(Node):
 @node('name, fn')
 class BuiltinFunction(Node):
     def eval_call(self, ctx, args):
-        child_ctx = Context(self.name, self, None, ctx)
+        child_ctx = Context(self.name, None, ctx)
         return self.fn(self, child_ctx, args)
     def repr(self, ctx):
         return '<builtin %s>' % self.name
@@ -723,7 +721,7 @@ class BuiltinFunction(Node):
 @node('ctx, name, &params, &block')
 class Class(Node):
     def eval(self, ctx):
-        child_ctx = Context(self.name, self, self.ctx, ctx)
+        child_ctx = Context(self.name, self.ctx, ctx)
         self.block.eval(child_ctx)
         items = {String(k, info=self): v.eval(ctx) for k, v
             in child_ctx.syms.items()}
