@@ -1,10 +1,10 @@
 # Test parse_int
-for i in [['0xf', 0, 15], ['077', 8, 63], ['-123xyz', 36, -64009403]]:
-    assert parse_int(i[0], i[1]) == i[2]
+for [input, base, result] in [['0xf', 0, 15], ['077', 8, 63], ['-123xyz', 36, -64009403]]:
+    assert parse_int(input, base) == result
 
 # Test str_upper
-for i in [['Hello World!', 'HELLO WORLD!'], ['HELLO', 'HELLO']]:
-    assert str_upper(i[0]) == i[1]
+for [reg, upper] in [['Hello World!', 'HELLO WORLD!'], ['HELLO', 'HELLO']]:
+    assert str_upper(reg) == upper
 
 # Test enumerate
 assert list(enumerate('abc')) == [[0, 'a'], [1, 'b'], [2, 'c']]

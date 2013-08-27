@@ -342,8 +342,31 @@ def p_else(p):
     """ else_stmt : ELSE block """
     p[0] = p[2]
 
+# For loop assignment grammar. This is not used for regular assignments, since
+# that needs to differentiate regular expressions on their own line, and that
+# would need a parser with more lookahead, since we just see [<identifier>.
+# We don't use <expr> as the assignment does, since 'expr in expr' is a
+# containment test, but that also could match 'for expr in expr'... icky!
+def p_for_assn_list(p):
+    """ for_assn_list : for_assn
+                      | for_assn_list COMMA for_assn
+    """
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1] + [p[3]]
+
+def p_for_assn(p):
+    """ for_assn : IDENTIFIER
+                 | LBRACKET for_assn_list RBRACKET
+    """
+    if len(p) == 2:
+        p[0] = p[1]
+    else:
+        p[0] = p[2]
+
 def p_for(p):
-    """ for_stmt : FOR IDENTIFIER IN expr block """
+    """ for_stmt : FOR for_assn IN expr block """
     p[0] = For(p[2], p[4], p[5])
 
 def p_while(p):

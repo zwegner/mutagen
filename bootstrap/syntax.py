@@ -457,22 +457,23 @@ class Assert(Node):
         if not self.expr.eval(ctx).bool(ctx):
             self.error('Assertion failed: %s' % self.expr.repr(ctx), ctx=ctx)
 
+def assign_target(ctx, lhs, rhs):
+    if isinstance(lhs, str):
+        ctx.store(lhs, rhs)
+    elif isinstance(lhs, list):
+        if len(lhs) != rhs.len(ctx):
+            self.error('too %s values to unpack' %
+                   ('few' if len(lhs) > len(rhs) else 'many'), ctx=ctx)
+        for lhs_i, rhs_i in zip(lhs, rhs):
+            assign_target(ctx, lhs_i, rhs_i)
+    else:
+        assert False
+
 @node('name, &rhs')
 class Assignment(Node):
     def eval(self, ctx):
         value = self.rhs.eval(ctx)
-        def assign_target(lhs, rhs):
-            if isinstance(lhs, str):
-                ctx.store(lhs, rhs)
-            elif isinstance(lhs, list):
-                if len(lhs) != rhs.len(ctx):
-                    self.error('too %s values to unpack' %
-                           ('few' if len(lhs) > len(rhs) else 'many'), ctx=ctx)
-                for lhs_i, rhs_i in zip(lhs, rhs):
-                    assign_target(lhs_i, rhs_i)
-            else:
-                assert False
-        assign_target(self.name, value)
+        assign_target(ctx, self.name, value)
         return value
     def repr(self, ctx):
         return '%s = %s' % (self.name, self.rhs.repr(ctx))
@@ -557,7 +558,7 @@ class For(Node):
         expr = self.expr.eval(ctx)
         for i in expr.iter(ctx):
             try:
-                ctx.store(self.iter, i)
+                assign_target(ctx, self.iter, i)
                 self.block.eval(ctx)
             except BreakExc:
                 break
