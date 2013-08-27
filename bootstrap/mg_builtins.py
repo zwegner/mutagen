@@ -45,7 +45,7 @@ def mgb_slice(ctx, seq, start, end):
         return String(seq.value[start.value:end.value], info=seq)
     elif isinstance(seq, List):
         return List(seq.items[start.value:end.value], info=seq)
-    return Nil(info=seq)
+    return seq.error('slice on unslicable type %s' % type(seq).__name__, ctx=ctx)
 
 # Python interfacing functions! At some point these would become a security
 # hole if we cared about the Python interpreter.
