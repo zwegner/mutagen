@@ -130,8 +130,6 @@ class set:
             yield i
     def __contains__(self, item):
         return self.items.__contains__(py_wrap(item))
-    def __eq__(self, other):
-        return self.items == other.items
     def __len__(self):
         return self.items.__len__()
     def __bool__(self):
