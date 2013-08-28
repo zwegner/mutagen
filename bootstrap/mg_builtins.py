@@ -23,6 +23,24 @@ def mg_builtin(arg_types):
         return builtin_call
     return annotate
 
+@mg_builtin([String])
+def mgb_read_file(ctx, path):
+    with open(path.value) as f:
+        return String(f.read(), info=path)
+
+@mg_builtin([String])
+def mgb_putstr(ctx, arg):
+    sys.stdout.write(arg.value)
+    return Nil(info=arg)
+
+@mg_builtin([String])
+def mgb_str_upper(ctx, arg):
+    return String(arg.value.upper(), info=arg)
+
+@mg_builtin([String, Integer])
+def mgb_parse_int(ctx, int_str, base):
+    return Integer(int(int_str.value, base.value), info=int_str)
+
 @mg_builtin([Node])
 def mgb_len(ctx, arg):
     return Integer(arg.len(ctx), info=arg)

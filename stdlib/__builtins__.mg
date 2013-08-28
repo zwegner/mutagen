@@ -55,7 +55,7 @@ def zip(*iterables):
             i = i + 1
 
 def print(*args):
-    return putchar(str_join(' ', map(str, args)) + '\n')
+    return putstr(str_join(' ', map(str, args)) + '\n')
 
 def str_split(text, delim):
     c = 0
@@ -96,41 +96,26 @@ def isinstance(obj, cls):
     return type(obj) == cls
 
 ################################################################################
-## Python-implemented builtins #################################################
-################################################################################
-
-def read_file(path):
-    return py_obj_get('open')(path).read()
-
-def putchar(arg):
-    return py_obj_get('sys.stdout.write')(arg)
-
-def str_upper(arg):
-    return py_obj_get('str.upper')(arg)
-
-def parse_int(int_str, base):
-    return py_obj_get('int')(int_str, base)
-
-################################################################################
 ## Builtin classes #############################################################
 ################################################################################
-
-class set:
-    def __init__(items):
-        items = list(map(py_wrap, items))
-        return {'items': py_obj_get('set')(items)}
-    def add(self, item):
-        return self | set([item])
-    def __or__(self, other):
-        return set(self.items.__or__(other.items))
-    def __repr__(self):
-        return '{' + str_join(',', map(repr, self)) + '}'
-    def __iter__(self):
-        for i in self.items.__iter__():
-            yield i
-    def __contains__(self, item):
-        return self.items.__contains__(py_wrap(item))
-    def __len__(self):
-        return self.items.__len__()
-    def __bool__(self):
-        return len(self) > 0
+#
+# XXX temporarily removed until we have a non-Python backend
+#class set:
+#    def __init__(items):
+#        items = list(map(py_wrap, items))
+#        return {'items': py_obj_get('set')(items)}
+#    def add(self, item):
+#        return self | set([item])
+#    def __or__(self, other):
+#        return set(self.items.__or__(other.items))
+#    def __repr__(self):
+#        return '{' + str_join(',', map(repr, self)) + '}'
+#    def __iter__(self):
+#        for i in self.items.__iter__():
+#            yield i
+#    def __contains__(self, item):
+#        return self.items.__contains__(py_wrap(item))
+#    def __len__(self):
+#        return self.items.__len__()
+#    def __bool__(self):
+#        return len(self) > 0
