@@ -26,6 +26,7 @@ precedence = [
     ['left', 'BIT_XOR'],
     ['left', 'BIT_AND'],
     ['left', 'PLUS', 'MINUS'],
+    ['left', 'STAR'],
     ['left', 'LBRACKET', 'LPAREN', 'LBRACE'],
     ['left', 'PERIOD'],
 ]
@@ -228,6 +229,7 @@ def p_binary_op(p):
               | expr LESS_EQUALS expr
               | expr MINUS expr
               | expr PLUS expr
+              | expr STAR expr
               | expr AND expr
               | expr OR expr
               | expr BIT_AND expr
@@ -236,6 +238,8 @@ def p_binary_op(p):
     """
     p[0] = BinaryOp(p[2], p[1], p[3])
 
+# XXX since 'x in y' calls y.contains(x), i.e. the lhs and rhs are reversed from
+# other binary operators, we have a special form here that swaps them.
 def p_binary_op_in(p):
     """ binop : expr IN expr """
     p[0] = BinaryOp('in', p[3], p[1])

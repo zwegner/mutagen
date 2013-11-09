@@ -225,6 +225,10 @@ class Integer(Node):
         if not isinstance(other, Integer):
             self.error('bad type for int.sub: %s' % type(other))
         return Integer(self.value - other.value, info=self)
+    def __mul__(self, other):
+        if not isinstance(other, Integer):
+            self.error('bad type for int.sub: %s' % type(other))
+        return Integer(self.value * other.value, info=self)
 
 @node('value', compare=True)
 class Boolean(Node):
@@ -417,6 +421,7 @@ class BinaryOp(Node):
             '<=': 'le',
             '+':  'add',
             '-':  'sub',
+            '*':  'mul',
             '&':  'and',
             '|':  'or',
             '^':  'xor',
