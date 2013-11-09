@@ -27,6 +27,12 @@ def reversed(iterable):
         i = i - 1
         yield iterable[i]
 
+def range(end):
+    i = 0
+    while i < end:
+        yield i
+        i = i + 1
+
 def enumerate(gen):
     i = 0
     for item in gen:

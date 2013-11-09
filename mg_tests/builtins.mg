@@ -6,6 +6,10 @@ for [input, base, result] in [['0xf', 0, 15], ['077', 8, 63], ['-123xyz', 36, -6
 for [reg, upper] in [['Hello World!', 'HELLO WORLD!'], ['HELLO', 'HELLO']]:
     assert str_upper(reg) == upper
 
+# Test range
+assert list(range(0)) == []
+assert list(range(4)) == [0, 1, 2, 3]
+
 # Test enumerate
 assert list(enumerate('abc')) == [[0, 'a'], [1, 'b'], [2, 'c']]
 
