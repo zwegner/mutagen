@@ -13,7 +13,7 @@ passes = fails = 0
 test_set = set(sys.argv[1:])
 
 # Mutagen tests: these should just not throw any errors
-mg_tests = ['builtins']
+mg_tests = ['builtins', 'core']
 mg_test_dir = 'mg_tests'
 
 # Python tests: python/mutagen should produce the same output in each case.

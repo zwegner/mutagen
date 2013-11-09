@@ -495,6 +495,7 @@ def parse(path, import_builtins=True, ctx=None):
 def interpret(path):
     ctx = Context('__main__', None, None)
     block = parse(path, ctx=ctx)
+    block = ctx.initialize(block)
     for expr in block:
         expr.eval(ctx)
 

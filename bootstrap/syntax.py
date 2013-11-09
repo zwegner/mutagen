@@ -26,6 +26,13 @@ class Context:
                 return ctx.syms[name]
             ctx = ctx.global_ctx
         node.error('identifier %s not found' % name, ctx=self)
+    # XXX Should this be here? What should it be named?
+    def initialize(self, block):
+        # Analyze nested functions
+        self.lifted_lambdas = []
+        for expr in block:
+            expr.lift_lambdas(self)
+        return self.lifted_lambdas + block
     def print_stack(self):
         if self.parent:
             self.parent.print_stack()
@@ -67,6 +74,51 @@ class Node:
         return iter(self)
     def overload(self, ctx, attr, args):
         return None
+    # Lift any nested functions
+    def lift_lambdas(self, ctx):
+        # Keep track of all the stores/loads in this function
+        # HACK
+        if isinstance(self, Function):
+            stores = set(self.params)
+        else:
+            stores = set()
+        loads = set()
+
+        # Python coroutines are such a drag to use man. send() also yields
+        # another value, so the control flow is crazy. At least it's possible...
+        subtree_gen = iter(self.iterate_subtree())
+        returned_node = None
+        while True:
+            try:
+                if returned_node:
+                    node = returned_node
+                    returned_node = None
+                else:
+                    node = next(subtree_gen)
+            except StopIteration:
+                break
+            if isinstance(node, Assignment):
+                stores.add(node.name)
+            elif isinstance(node, Identifier):
+                loads.add(node.name)
+            elif isinstance(node, Function):
+                # Find extra args by looking for variables that are read but
+                # not written to in the nested function, but are written to here
+                nested_locals, nested_globals = node.lift_lambdas(ctx)
+                loads |= nested_globals
+
+                extra_args = list(sorted(nested_globals))
+                if extra_args:
+                    node.params.add_extra_args(extra_args)
+
+                    ctx.lifted_lambdas.append(node)
+                    try:
+                        returned_node = subtree_gen.send(
+                                LiftedLambda(node, extra_args))
+                    except StopIteration:
+                        break
+
+        return stores, loads - stores
 
 ARG_REG, ARG_EDGE, ARG_EDGE_LIST = list(range(3))
 arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
@@ -109,18 +161,37 @@ def node(argstr='', compare=False):
             if hasattr(self, 'setup'):
                 self.setup()
 
-        def iterate_subtree(self):
-            yield self
+        # A generator that iterates through the AST below this node.
+        # It breaks the iteration at nested function barriers, since
+        # those represent a new scope and are handled specially when
+        # this generator is used. This generator also accepts values
+        # as a coroutine, which are used as replacements in the AST.
+        # This allows us to do easy AST rewriting, but relies on the
+        # AST actually being a tree.
+        def iterate_subtree(self, include_self=False):
+            if include_self:
+                replacement = yield self
+                if replacement is not None:
+                    return replacement
+                # HACK?
+                if isinstance(self, Function):
+                    return
             for (arg_type, arg_name) in args:
                 if arg_type == ARG_EDGE:
                     edge = getattr(self, arg_name)
-                    yield from edge.iterate_subtree()
+                    replacement = yield from edge.iterate_subtree(include_self=True)
+                    if replacement is not None:
+                        setattr(self, arg_name, replacement)
                 elif arg_type == ARG_EDGE_LIST:
-                    for edge in getattr(self, arg_name):
-                        yield from edge.iterate_subtree()
+                    edge_list = getattr(self, arg_name)
+                    for i, edge in enumerate(edge_list):
+                        replacement = yield from edge.iterate_subtree(include_self=True)
+                        if replacement is not None:
+                            # XXX assumes list
+                            edge_list[i] = replacement
 
-        # If the compare flag is set, we defer the comparison to the
-        # Python object in the value attribute
+        # If the compare flag is set, we delegate the comparison to the
+        # Python object in the 'value' attribute
         if compare:
             def __eq__(self, other):
                 if isinstance(other, type(self)):
@@ -673,11 +744,28 @@ class Params(Node):
         if self.star_params:
             args += [(self.star_params, var_args)]
         return args
+    def add_extra_args(self, args):
+        self.params = args + self.params
+        self.types = [None] * len(args) + self.types
     def repr(self, ctx):
         params = [s for s in self.params]
         if self.star_params:
             params += ['*%s' % self.star_params]
         return ', '.join(params)
+    def __iter__(self):
+        yield from self.params
+        if self.star_params:
+            yield self.star_params
+
+@node('&fn, *extra_args')
+class LiftedLambda(Node):
+    def eval(self, ctx):
+        # Load the args once when the lambda is evaluated first (not called)
+        arg_values = [ctx.load(self, a) for a in self.extra_args]
+        return BoundFunction(self.fn, arg_values)
+    def repr(self, ctx):
+        return '<lifted-lambda %s(%s)>' % (self.fn.name, ', '.join(s for s in
+            self.extra_args))
 
 @node('ctx, name, &params, &block')
 class Function(Node):
