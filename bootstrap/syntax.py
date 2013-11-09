@@ -456,6 +456,8 @@ class Assert(Node):
     def eval(self, ctx):
         if not self.expr.eval(ctx).bool(ctx):
             self.error('Assertion failed: %s' % self.expr.repr(ctx), ctx=ctx)
+    def repr(self, ctx):
+        return 'assert %s' % self.expr.repr(ctx)
 
 def assign_target(ctx, lhs, rhs):
     if isinstance(lhs, str):
@@ -615,6 +617,8 @@ class Call(Node):
 class VarArg(Node):
     def eval(self, ctx):
         return self.expr.eval(ctx)
+    def repr(self, ctx):
+        return '*%s' % self.expr.repr(ctx)
 
 @node('&fn, *args')
 class CallVarArgs(Node):
@@ -666,10 +670,10 @@ class Params(Node):
             args += [(self.star_params, var_args)]
         return args
     def repr(self, ctx):
-        r = ', '.join(s for s in self.params)
+        params = [s for s in self.params]
         if self.star_params:
-            r += ', %s' % self.star_params
-        return r
+            params += ['*%s' % self.star_params]
+        return ', '.join(params)
 
 @node('ctx, name, &params, &block')
 class Function(Node):
