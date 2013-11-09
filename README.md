@@ -77,3 +77,14 @@ Mutagen's syntax is very similar to Python. As of now, there are a few small cha
 ```python
     lambda(x) {return x + 1;}
 ```
+* Closures are supported, but the captured values are static. That is, whenever the inner function definition is evaluated, the values of variables in parent scopes are bound to the function at that point. This makes metaprogramming somewhat simpler, and since any benefits of dynamic scoping would require mutable variables, there is little downside given a purely functional environment. An example of this behavior:
+```python
+    lambdas = []
+    for x in [0, 1]:
+        lambdas = lambdas + [lambda: return x;]
+    for l in lambdas:
+        print(l())
+    # Outputs:
+    # 0
+    # 1
+```
