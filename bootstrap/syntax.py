@@ -372,16 +372,14 @@ class Object(Node):
         return self.overload(ctx, attr, args) or self.error(
                 '%s unimplemented for %s' % (attr, cls.repr(ctx)), ctx=ctx)
 
-@node('&method, &self')
-class BoundMethod(Node):
-    def eval(self, ctx):
-        return self
+@node('&fn, *args')
+class BoundFunction(Node):
     def eval_call(self, ctx, args):
-        method = self.method.eval(ctx)
-        args = [self.self] + args
-        return method.eval_call(ctx, args)
+        args = self.args + args
+        return self.fn.eval_call(ctx, args)
     def repr(self, ctx):
-        return '%s.%s' % (self.self.repr(ctx), self.method.repr(ctx))
+        return '<bound-fn %s(%s, ...)>' % (self.fn.repr(ctx),
+                ', '.join(a.repr(ctx) for a in self.args))
 
 @node('type, &rhs')
 class UnaryOp(Node):
@@ -437,7 +435,8 @@ class GetAttr(Node):
         obj = self.obj.eval(ctx)
         item = obj.get_attr(self.attr)
         if item is None:
-            item = BoundMethod(GetAttr(obj.get_attr('__class__'), self.attr), obj)
+            method = GetAttr(obj.get_attr('__class__'), self.attr).eval(ctx)
+            item = BoundFunction(method, [obj])
         return item
     def repr(self, ctx):
         return '%s.%s' % (self.obj.repr(ctx), self.attr)
