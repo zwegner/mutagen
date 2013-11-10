@@ -231,11 +231,11 @@ def node(argstr='', compare=False):
     return attach
 
 @node()
-class Nil(Node):
+class None_(Node):
     def repr(self, ctx):
-        return 'Nil'
+        return 'None'
     def __eq__(self, other):
-        return Boolean(isinstance(other, Nil), info=self)
+        return Boolean(isinstance(other, None_), info=self)
     def bool(self, ctx):
         return False
     def __hash__(self):
@@ -586,7 +586,7 @@ class Return(Node):
         if self.expr:
             expr = self.expr.eval(ctx)
         else:
-            expr = Nil(info=self)
+            expr = None_(info=self)
         raise ReturnValue(expr)
     def repr(self, ctx):
         return 'return%s' % (' %s' % self.expr.repr(ctx) if
@@ -604,7 +604,7 @@ class Block(Node):
     def eval(self, ctx):
         for stmt in self.stmts:
             stmt.eval(ctx)
-        return Nil(info=self)
+        return None_(info=self)
     def eval_gen(self, ctx):
         for stmt in self.stmts:
             yield from stmt.eval_gen(ctx)
@@ -641,7 +641,7 @@ class For(Node):
                 break
             except ContinueExc:
                 continue
-        return Nil(info=self)
+        return None_(info=self)
     def eval_gen(self, ctx):
         expr = self.expr.eval(ctx)
         for i in expr.iter(ctx):
@@ -666,7 +666,7 @@ class While(Node):
                 break
             except ContinueExc:
                 continue
-        return Nil(info=self)
+        return None_(info=self)
     def eval_gen(self, ctx):
         while self.expr.eval(ctx).bool(ctx):
             try:
@@ -785,7 +785,7 @@ class Function(Node):
         if self.is_generator:
             return Generator(child_ctx, self.block, info=self)
 
-        ret = Nil(info=self)
+        ret = None_(info=self)
         try:
             self.block.eval(child_ctx)
         except ReturnValue as r:
@@ -859,8 +859,7 @@ class Import(Node):
             for k, v in self.ctx.syms.items():
                 if self.names == [] or k in self.names:
                     ctx.store(k, v.eval(ctx))
-        return Nil(info=self)
-
+        return None_(info=self)
     def repr(self, ctx):
         if self.names is not None:
             names = '*' if not self.names else ', '.join(self.names)

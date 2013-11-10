@@ -149,7 +149,7 @@ def p_expr(p):
              | getattr
              | getitem
              | call
-             | nil
+             | none
     """
     p[0] = p[1]
 
@@ -212,9 +212,9 @@ def p_set(p):
     p[0] = Call(Identifier('set', info=get_info(p, 1)),
             [List(p[2], info=get_info(p, 1))])
 
-def p_nil(p):
-    """ nil : NIL """
-    p[0] = Nil(info=get_info(p, 1))
+def p_none(p):
+    """ none : NONE """
+    p[0] = None_(info=get_info(p, 1))
 
 def p_unary_op(p):
     """ unop : NOT expr """

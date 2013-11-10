@@ -1,7 +1,7 @@
 import re
 
 def ignore_token_fn(t):
-    return Nil
+    return None
 
 def null_token_fn(t):
     return t
@@ -33,7 +33,7 @@ class Tokenizer:
         for i in str_split_lines(input):
             while len(i) > 0:
                 best_match = [False, 0]
-                best_token = Nil
+                best_token = None
                 for t in self.token_matchers:
                     m = t.match(i)
                     if m[0] and m[1] > best_match[1]:
@@ -45,6 +45,6 @@ class Tokenizer:
                 match = slice(i, 0, best_match[1])
                 i = slice(i, best_match[1], len(i))
                 token = best_token.fn(Token(best_token.name, match))
-                if token != Nil:
+                if token != None:
                     yield token
             yield Token('NEWLINE', '\n')

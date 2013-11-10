@@ -75,7 +75,6 @@ if x == y { x = 0; y = 1; }
 ```python
 import module from 'path/to/module.mg'
 ```
-* `None` in Python has been replaced by `Nil` in Mutagen.
 * There are no tuples, since lists are already immutable. Thus, there is no parenthesized tuple syntax like `(a, b)`, or implicit tuple syntax like `a, b`.
 * `lambda` is just a synonym for a `def` without a function identifier, not a limited expression as in Python. Thus, if used in an expression, it will usually require braces instead of indentation, semicolons as statement delimiters, and an explicit return statement. Example:
 

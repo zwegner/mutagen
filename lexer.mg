@@ -27,7 +27,7 @@ def t_string(t):
         if c == '\\':
             i = i + 1
             c = t.value[i]
-            esc = Nil
+            esc = None
             if c in str_escapes:
                 esc = str_escapes[c]
             else:
@@ -71,7 +71,7 @@ token_map = [
 
 keywords = [
     'False',
-    'Nil',
+    'None',
     'True',
     'and',
     'assert',
@@ -123,13 +123,13 @@ def process_whitespace(tokens):
         if i < len(tokens) - 1:
             next_token = tokens[i+1]
         else:
-            next_token = Nil
+            next_token = None
 
         # Check whitespace only at the beginning of lines
         if after_newline:
             # Don't generate indent/dedent on empty lines
             if token.type == 'WHITESPACE':
-                if next_token != Nil and next_token.type != 'NEWLINE':
+                if next_token != None and next_token.type != 'NEWLINE':
                     yield token
             # Got a token at the beginning of the line--yield empty whitespace
             elif token.type != 'NEWLINE':

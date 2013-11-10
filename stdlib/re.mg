@@ -114,7 +114,7 @@ def parse_item(string, c):
     return [item, c + 1]
 
 def parse_group(string, c):
-    result = Nil
+    result = None
     while c < len(string) and string[c] != ')':
         [item, c] = parse_item(string, c)
         # Parse repeaters/connectors
@@ -135,7 +135,7 @@ def parse_group(string, c):
                         error('regex parsing error')
                     [alt, c] = parse_item(string, c)
                     item = MatchAlt(item, alt)
-        if result == Nil:
+        if result == None:
             result = item
         else:
             result = MatchSeq(result, item)

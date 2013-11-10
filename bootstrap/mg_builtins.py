@@ -31,7 +31,7 @@ def mgb_read_file(ctx, path):
 @mg_builtin([String])
 def mgb_putstr(ctx, arg):
     sys.stdout.write(arg.value)
-    return Nil(info=arg)
+    return None_(info=arg)
 
 @mg_builtin([String])
 def mgb_str_upper(ctx, arg):

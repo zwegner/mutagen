@@ -43,7 +43,7 @@ token_map = {
 
 keywords = [
     'False',
-    'Nil',
+    'None',
     'True',
     'and',
     'assert',
