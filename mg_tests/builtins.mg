@@ -13,32 +13,6 @@ assert list(range(4)) == [0, 1, 2, 3]
 # Test enumerate
 assert list(enumerate('abc')) == [[0, 'a'], [1, 'b'], [2, 'c']]
 
-# Test set
-# XXX disabled for now
-#items_1 = [0, 1, 2, 3, 4, {'a': 'b'}]
-#items_2 = [5, 6, 7, 8, 9, {'c': 'd'}]
-#s = set(items_1)
-#t = set(items_2)
-#u = s | t
-#assert u | s == u
-#assert u | t == u
-#assert u and s and t
-#assert not set([])
-#
-#for i in items_1:
-#    assert i in s
-#    assert i not in t
-#    assert i in u
-#for i in items_2:
-#    assert i not in s
-#    assert i in t
-#    assert i in u
-#for i in u:
-#    assert i in s or i in t
-#
-#for i in [-1, 'asdf', 99]:
-#    assert i not in u
-
 test_list = [1, 2, 3, 4, 5]
 
 # Test zip

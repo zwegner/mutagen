@@ -100,28 +100,3 @@ def type(obj):
 
 def isinstance(obj, cls):
     return type(obj) == cls
-
-################################################################################
-## Builtin classes #############################################################
-################################################################################
-#
-# XXX temporarily removed until we have a non-Python backend
-#class set:
-#    def __init__(items):
-#        items = list(map(py_wrap, items))
-#        return {'items': py_obj_get('set')(items)}
-#    def add(self, item):
-#        return self | set([item])
-#    def __or__(self, other):
-#        return set(self.items.__or__(other.items))
-#    def __repr__(self):
-#        return '{' + str_join(',', map(repr, self)) + '}'
-#    def __iter__(self):
-#        for i in self.items.__iter__():
-#            yield i
-#    def __contains__(self, item):
-#        return self.items.__contains__(py_wrap(item))
-#    def __len__(self):
-#        return self.items.__len__()
-#    def __bool__(self):
-#        return len(self) > 0

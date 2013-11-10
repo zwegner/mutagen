@@ -65,14 +65,4 @@ def mgb_slice(ctx, seq, start, end):
         return List(seq.items[start.value:end.value], info=seq)
     return seq.error('slice on unslicable type %s' % type(seq).__name__, ctx=ctx)
 
-# Python interfacing functions! At some point these would become a security
-# hole if we cared about the Python interpreter.
-@mg_builtin([String])
-def mgb_py_obj_get(ctx, name):
-    return PyObject(eval(name.value), info=name)
-
-@mg_builtin([Node])
-def mgb_py_wrap(ctx, arg):
-    return PyObject(arg, info=arg)
-
 __all__ = builtins
