@@ -28,6 +28,7 @@ assert isinstance(t.x, TestA)
 assert not isinstance(t.x, TestB)
 assert not isinstance(t.y, TestA)
 assert isinstance(t.y, TestB)
+assert str_starts_with(str(t), '<TestClass at ')
 
 # Test union
 union TestUnion(x, y):
@@ -38,5 +39,7 @@ assert isinstance(x, TestUnion.x)
 assert not isinstance(x, TestUnion.y)
 assert not isinstance(y, TestUnion.x)
 assert isinstance(y, TestUnion.y)
+assert str_starts_with(str(x), '<TestUnion.x at ')
+assert str_starts_with(str(y), '<TestUnion.y at ')
 # Need better isinstance
 #assert isinstance(x, TestUnion)

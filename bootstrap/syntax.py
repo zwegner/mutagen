@@ -380,8 +380,7 @@ class Object(Node):
             return self.items[attr]
         return None
     def base_repr(self, ctx):
-        return '{%s}' % ', '.join('%s:%s' % (k.repr(ctx), v.repr(ctx)) for k, v
-                in self.items.items())
+        return '<%s at %#x>' % (self.get_attr('__class__').name, id(self))
     def __eq__(self, other):
         return Boolean(isinstance(other, Object) and
                 self.items == other.items, info=self)
@@ -813,14 +812,15 @@ Type = Class(None, 'Type', Params([], None, info=builtin_info),
         Block([], info=builtin_info), info=builtin_info)
 
 @node('ctx, name, &params, &block')
-class Union(Node):
+class Union(Class):
     def eval(self, ctx):
         items = {String(param, info=self): Class(self.ctx,
             '%s.%s' % (self.name, param), Params([], None, info=self),
             self.block).eval(ctx) for param in self.params.params}
         items[String('name', info=self)] = String(self.name, info=self)
         items[String('__class__', info=self)] = Type
-        return Object(items, info=self)
+        self.cls = Object(items, info=self)
+        return self
     def repr(self, ctx):
         return "<union '%s'>" % self.name
     def __eq__(self, other):
