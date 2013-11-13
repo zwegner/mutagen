@@ -88,6 +88,9 @@ def str_join(sep, strs):
         r = r + s
     return r
 
+def str_starts_with(a, b):
+    return slice(a, 0, len(b)) == b
+
 # XXX need a real class
 def list(items):
     l = []
