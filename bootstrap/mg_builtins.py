@@ -19,7 +19,7 @@ def mg_builtin(arg_types):
             return fn(ctx, *args)
 
         name = fn.__name__.replace('mgb_', '')
-        builtins[name] = BuiltinFunction(name, builtin_call, info=Info('__builtins__', 0))
+        builtins[name] = BuiltinFunction(name, builtin_call, info=builtin_info)
         return builtin_call
     return annotate
 

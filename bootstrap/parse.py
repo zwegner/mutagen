@@ -458,7 +458,7 @@ def parse(path, import_builtins=True, ctx=None):
     if import_builtins:
         path = '%s/__builtins__.mg' % stdlib_dir
         block = [Import('builtins', [], path, True,
-            info=Info('__builtins__', 0))] + block
+            info=builtin_info)] + block
 
     new_block = []
 

@@ -711,7 +711,7 @@ class Params(Node):
         self.params = args + self.params
         self.types = [None] * len(args) + self.types
     def repr(self, ctx):
-        params = [s for s in self.params]
+        params = self.params
         if self.star_params:
             params += ['*%s' % self.star_params]
         return ', '.join(params)
@@ -786,9 +786,8 @@ class Class(Node):
         items = {String(k, info=self): v.eval(ctx) for k, v
             in child_ctx.syms.items()}
         items[String('name', info=self)] = String(self.name, info=self)
-        cls = Object(items, info=self)
-        self.cls = cls
-        ctx.store(self.name, self)
+        items[String('__class__', info=self)] = Type
+        self.cls = Object(items, info=self)
         return self
     def eval_call(self, ctx, args):
         init = self.cls.get_attr('__init__')
@@ -808,6 +807,10 @@ class Class(Node):
         return self.cls.get_attr(attr)
     def __eq__(self, other):
         return Boolean(self is other, info=self)
+
+builtin_info = Info('__builtins__', 0)
+Type = Class(None, 'Type', Params([], None, info=builtin_info),
+        Block([], info=builtin_info), info=builtin_info)
 
 @node('name, names, path, is_builtins')
 class Import(Node):

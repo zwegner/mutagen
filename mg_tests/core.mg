@@ -17,3 +17,14 @@ for x in items:
 
 for [v, l] in zip(range(16), lambdas):
     l(v)
+
+# Test class
+class TestA: pass
+class TestB: pass
+class TestClass(x: TestA, y: TestB):
+    pass
+t = TestClass(TestA(), TestB())
+assert isinstance(t.x, TestA)
+assert not isinstance(t.x, TestB)
+assert not isinstance(t.y, TestA)
+assert isinstance(t.y, TestB)
