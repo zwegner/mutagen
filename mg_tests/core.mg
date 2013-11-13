@@ -28,3 +28,15 @@ assert isinstance(t.x, TestA)
 assert not isinstance(t.x, TestB)
 assert not isinstance(t.y, TestA)
 assert isinstance(t.y, TestB)
+
+# Test union
+union TestUnion(x, y):
+    pass
+x = TestUnion.x()
+y = TestUnion.y()
+assert isinstance(x, TestUnion.x)
+assert not isinstance(x, TestUnion.y)
+assert not isinstance(y, TestUnion.x)
+assert isinstance(y, TestUnion.y)
+# Need better isinstance
+#assert isinstance(x, TestUnion)

@@ -812,6 +812,20 @@ builtin_info = Info('__builtins__', 0)
 Type = Class(None, 'Type', Params([], None, info=builtin_info),
         Block([], info=builtin_info), info=builtin_info)
 
+@node('ctx, name, &params, &block')
+class Union(Node):
+    def eval(self, ctx):
+        items = {String(param, info=self): Class(self.ctx,
+            '%s.%s' % (self.name, param), Params([], None, info=self),
+            self.block).eval(ctx) for param in self.params.params}
+        items[String('name', info=self)] = String(self.name, info=self)
+        items[String('__class__', info=self)] = Type
+        return Object(items, info=self)
+    def repr(self, ctx):
+        return "<union '%s'>" % self.name
+    def __eq__(self, other):
+        return Boolean(self is other, info=self)
+
 @node('name, names, path, is_builtins')
 class Import(Node):
     def eval(self, ctx):

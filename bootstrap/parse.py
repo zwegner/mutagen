@@ -119,6 +119,7 @@ def p_stmt(p):
              | while_stmt
              | def_stmt
              | class_stmt
+             | union_stmt
     """
     p[0] = p[1]
 
@@ -430,6 +431,10 @@ def p_lambda(p):
 def p_class(p):
     """ class_stmt : CLASS IDENTIFIER params block """
     p[0] = Assignment(p[2], Class(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
+
+def p_union(p):
+    """ union_stmt : UNION IDENTIFIER params block """
+    p[0] = Assignment(p[2], Union(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
 
 parser = yacc.yacc(write_tables=0, debug=0)
 
