@@ -31,6 +31,21 @@ Mutagen is still in a very prototypical state. It is almost entirely implemented
 
 As of now, only the lexer has an equivalent implementation in Mutagen. It is quite reasonable in terms of code size and readability when compared to the Python version, but its speed is still quite lacking due to the slow interpretive regex engine, as well as the double interpreter layer (Mutagen on top of Python).
 
+Semantics
+---------
+
+So what does a "functional python" really mean? Mutagen is fundamentally based on purity, that is, immutability of every object. But given the Python influence, every variable is really a reference. So as opposed to most other functional languages, variables can be reassigned--it's the values that the variables point to which are immutable.
+
+```python
+x = 0
+x = [1, 2, 3]   # Sure thing!
+x[0] = 5        # This won't work--the value of x, a list, is immutable
+```
+
+This choice comes with a cost. For one, basically every existing computer works in a very imperative/mutable way, and the compiler will have to do considerable work for purely functional representations of data to be performant. Also, there is the syntactic issue of describing updates of state in a coherent way. Finally, a functional language cannot go very far without recursion, and given this data model, objects cannot directly reference themselves, so there is no direct way for recursive functions or types to exist.
+
+For now, Mutagen is punting on all of these issues, with the hope that the answers will solidify as the language evolves. For the problem of recursion/recursive types, a [fixed-point combinator](https://en.wikipedia.org/wiki/Fixed-point_combinator) can be used as a workaround for now.
+
 Syntax
 ------
 
@@ -54,12 +69,27 @@ class ExampleWithInit(ignored_attr):
 * Function and class parameters have an optional type attribute, specified with a colon and expression after the parameter name. This allows type checking, and will eventually allow polymorphism and type inference. Examples:
 
 ```python
-def add_ints(a: int, b:int):
+def add_ints(a: int, b: int):
     return a + b
 
 class Point(x: int, y: int):
     def distance_from_origin(self):
         return add_ints(self.x * self.x, self.y * self.y)
+```
+* To support basic algebraic types (which will be the basis of all of Mutagen's type system once all 'builtin' classes are unified with user-defined classes), 'tagged' unions (a.k.a. sum types) are supported. These take parameters like a case class, but each parameter defines a distinct value that the union can take. Without a type for the parameter, it defines a "unit" type--a value that holds no data and only has one possible value. This can be used to create enums. With a type, the parameter can hold arbitrary data. Examples:
+
+```python
+union Bool(false, true):
+    # Demonstrating the use of methods on unions
+    def __not__(self):
+        # Enums do not have any sort of int-like behavior.
+        return {Bool.false(): Bool.true(), Bool.true(): Bool.false()}[self]
+
+# A la Haskell's Maybe monad
+union Maybe(Nothing, Just: class(value)):
+    pass
+nothing = Maybe.Nothing()
+just = Maybe.Just(7)
 ```
 * Braces can also be used to delimit blocks, interchangeably with indentation-based blocks as in Python. To use brace-delimited blocks, semicolons must be explicity used between statements (since newlines are ignored inside braces, as in Python), and the trailing colon beginning the block must be omitted. For example, these blocks are equivalent:
 
@@ -76,7 +106,14 @@ if x == y { x = 0; y = 1; }
 import module from 'path/to/module.mg'
 ```
 * There are no tuples, since lists are already immutable. Thus, there is no parenthesized tuple syntax like `(a, b)`, or implicit tuple syntax like `a, b`.
-* `lambda` is just a synonym for a `def` without a function identifier, not a limited expression as in Python. Thus, if used in an expression, it will usually require braces instead of indentation, semicolons as statement delimiters, and an explicit return statement. Example:
+* Relatedly, destructuring assignment/for loop targets are supported, but they also must use explicit list notation rather than implicit tuple notation:
+
+```python
+[a, [b, [c]]] = nested_data
+for [i, x] in enumerate(data):
+    pass
+```
+* `lambda` is just a synonym for a `def` without a function identifier, not a limited expression as in Python. Thus, if used in an expression, it will usually require braces instead of indentation, semicolons as statement delimiters, and an explicit return statement:
 
 ```python
 lambda(x) {return x + 1;}
