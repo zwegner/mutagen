@@ -347,7 +347,7 @@ class List(Node):
     def len(self, ctx):
         return len(self.items)
     def __hash__(self):
-        return tuple(self.items).__hash__()
+        return hash(tuple(self.items))
 
 @node('items')
 class Dict(Node):
@@ -368,7 +368,7 @@ class Dict(Node):
     def __eq__(self, other):
         return Boolean(isinstance(other, Dict) and self.items == other.items, info=self)
     def __hash__(self):
-        return tuple(self.items.items()).__hash__()
+        return hash(tuple(self.items.items()))
 
 @node('items')
 class Object(Node):
@@ -384,6 +384,8 @@ class Object(Node):
     def __eq__(self, other):
         return Boolean(isinstance(other, Object) and
                 self.items == other.items, info=self)
+    def __hash__(self):
+        return sum(hash(k) * hash(v) for k, v in self.items.items())
     def bool(self, ctx):
         return (self.overload(ctx, '__bool__', []) or
                 self.dispatch(ctx, '__len__', [])).value
@@ -810,6 +812,8 @@ class Class(Node):
         return self.cls.get_attr(attr)
     def __eq__(self, other):
         return Boolean(self is other, info=self)
+    def __hash__(self):
+        return hash((self.name, self.params, self.block))
 
 builtin_info = Info('__builtins__', 0)
 Type = Class(None, 'Type', Params([], None, info=builtin_info),
