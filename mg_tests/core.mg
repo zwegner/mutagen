@@ -37,9 +37,24 @@ x = TestUnion.x()
 y = TestUnion.y()
 assert isinstance(x, TestUnion.x)
 assert not isinstance(x, TestUnion.y)
-assert not isinstance(y, TestUnion.x)
 assert isinstance(y, TestUnion.y)
+assert not isinstance(y, TestUnion.x)
 assert str_starts_with(str(x), '<TestUnion.x at ')
 assert str_starts_with(str(y), '<TestUnion.y at ')
 # Need better isinstance
 #assert isinstance(x, TestUnion)
+
+# Test union with types and inline class definition
+# XXX change type of a to TestUnion when there's a better isinstance
+union TestNestedUnion(a: TestUnion.x, b: class(x, y)):
+    pass
+a = TestNestedUnion.a(x)
+b = TestNestedUnion.b(x, y)
+assert isinstance(a, TestNestedUnion.a)
+assert not isinstance(a, TestNestedUnion.b)
+assert isinstance(b, TestNestedUnion.b)
+assert isinstance(b.x, TestUnion.x)
+assert isinstance(b.y, TestUnion.y)
+assert not isinstance(b, TestNestedUnion.a)
+assert str_starts_with(str(a), '<TestNestedUnion.a at ')
+assert str_starts_with(str(b), '<TestNestedUnion.b at ')

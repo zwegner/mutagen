@@ -718,6 +718,10 @@ class Params(Node):
         yield from self.params
         if self.star_params:
             yield self.star_params
+    def iterate_with_types(self):
+        # XXX not implemented
+        assert not self.star_params
+        yield from zip(self.params, self.types)
 
 @node('&fn, *extra_args')
 class LiftedLambda(Node):
@@ -811,12 +815,23 @@ builtin_info = Info('__builtins__', 0)
 Type = Class(None, 'Type', Params([], None, info=builtin_info),
         Block([], info=builtin_info), info=builtin_info)
 
+@node('&params')
+class UnionInlineClass(Node):
+    pass
+
 @node('ctx, name, &params, &block')
 class Union(Class):
     def eval(self, ctx):
-        items = {String(param, info=self): Class(self.ctx,
-            '%s.%s' % (self.name, param), Params([], None, info=self),
-            self.block).eval(ctx) for param in self.params.params}
+        items = {}
+        for param, type in self.params.iterate_with_types():
+            if isinstance(type, UnionInlineClass):
+                params = type.params
+            elif type is None:
+                params = Params([], None, info=self)
+            else:
+                params = Params([[self.name, type]], None, info=self)
+            items[String(param, info=self)] = Class(self.ctx,
+                    '%s.%s' % (self.name, param), params, self.block).eval(ctx)
         items[String('name', info=self)] = String(self.name, info=self)
         items[String('__class__', info=self)] = Type
         self.cls = Object(items, info=self)
