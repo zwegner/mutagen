@@ -58,3 +58,17 @@ assert isinstance(b.y, TestUnion.y)
 assert not isinstance(b, TestNestedUnion.a)
 assert str_starts_with(str(a), '<TestNestedUnion.a at ')
 assert str_starts_with(str(b), '<TestNestedUnion.b at ')
+assert {TestNestedUnion.b(x, y): TestNestedUnion.a(x)}[b] == a
+
+union Bool(false, true):
+    def __not__(self):
+        return {Bool.false(): Bool.true(), Bool.true(): Bool.false()}[self]
+assert Bool.false().__not__() == Bool.true()
+assert Bool.false().__not__().__not__() == Bool.false()
+assert Bool.true().__not__() != Bool.true()
+
+union Maybe(Nothing, Just: class(value)):
+    pass
+nothing = Maybe.Nothing()
+just = Maybe.Just(7)
+assert just.value == 7
