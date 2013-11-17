@@ -250,6 +250,10 @@ class Identifier(Node):
 
 @node('value', compare=True)
 class String(Node):
+    def get_attr(self, attr):
+        if attr == '__class__':
+            return StrClass
+        return None
     def str(self, ctx):
         return self.value
     def repr(self, ctx):
@@ -815,9 +819,35 @@ class Class(Node):
     def __hash__(self):
         return hash((self.name, self.params, self.block))
 
+class BuiltinClass(Class):
+    def __init__(self, name):
+        super().__init__(None, name, Params([], None, info=builtin_info), Block([], info=builtin_info))
+    def add_methods(self, methods):
+        stmts = []
+        for name in methods:
+            fn = getattr(self.__class__, name)
+            stmts.append(Assignment(name, BuiltinFunction(name, fn,
+                info=builtin_info)))
+        self.block = Block(stmts, info=builtin_info)
+
 builtin_info = Info('__builtins__', 0)
 Type = Class(None, 'Type', Params([], None, info=builtin_info),
         Block([], info=builtin_info), info=builtin_info)
+
+class BuiltinStr(BuiltinClass):
+    def eval_call(self, ctx, args):
+        [arg] = args
+        return String(arg.str(ctx), info=arg)
+    def upper(obj, ctx, args):
+        [arg] = args
+        return String(arg.value.upper(), info=arg)
+    def join(obj, ctx, args):
+        [sep, args] = args
+        return String(sep.value.join(a.value for a in args), info=sep)
+    def setup(self):
+        self.add_methods(['upper', 'join'])
+
+StrClass = BuiltinStr('str')
 
 @node('&params')
 class UnionInlineClass(Node):

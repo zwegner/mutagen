@@ -33,10 +33,6 @@ def mgb_putstr(ctx, arg):
     sys.stdout.write(arg.value)
     return None_(info=arg)
 
-@mg_builtin([String])
-def mgb_str_upper(ctx, arg):
-    return String(arg.value.upper(), info=arg)
-
 @mg_builtin([String, Integer])
 def mgb_parse_int(ctx, int_str, base):
     return Integer(int(int_str.value, base.value), info=int_str)
@@ -49,10 +45,6 @@ def mgb_len(ctx, arg):
 def mgb_repr(ctx, arg):
     return String(arg.repr(ctx), info=arg)
 
-@mg_builtin([Node])
-def mgb_str(ctx, arg):
-    return String(arg.str(ctx), info=arg)
-
 @mg_builtin([String])
 def mgb_error(ctx, msg):
     msg.error(msg.value, ctx=ctx)
@@ -64,5 +56,8 @@ def mgb_slice(ctx, seq, start, end):
     elif isinstance(seq, List):
         return List(seq.items[start.value:end.value], info=seq)
     return seq.error('slice on unslicable type %s' % type(seq).__name__, ctx=ctx)
+
+# Add builtin classes
+builtins['str'] = StrClass
 
 __all__ = builtins

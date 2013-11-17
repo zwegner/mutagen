@@ -13,7 +13,7 @@ def t_identifier(t):
     r = t
     for k in keywords:
         if t.value == k:
-            r = tokenize.Token(str_upper(k), t.value)
+            r = tokenize.Token(k.upper(), t.value)
     return r
 
 def t_integer(t):

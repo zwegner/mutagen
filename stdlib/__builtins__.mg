@@ -61,7 +61,7 @@ def zip(*iterables):
             i = i + 1
 
 def print(*args):
-    return putstr(str_join(' ', map(str, args)) + '\n')
+    return putstr(' '.join(map(str, args)) + '\n')
 
 def str_split(text, delim):
     c = 0
@@ -76,17 +76,6 @@ def str_split(text, delim):
 
 def str_split_lines(text):
     return str_split(text, '\n')
-
-def str_join(sep, strs):
-    r = ''
-    first = True
-    for s in strs:
-        if first:
-            first = False
-        else:
-            r = r + sep
-        r = r + s
-    return r
 
 def str_starts_with(a, b):
     return slice(a, 0, len(b)) == b

@@ -2,9 +2,13 @@
 for [input, base, result] in [['0xf', 0, 15], ['077', 8, 63], ['-123xyz', 36, -64009403]]:
     assert parse_int(input, base) == result
 
-# Test str_upper
+# Test str()
+for [input, result] in [[123, '123'], ['abc', 'abc'], [[0], '[0]']]:
+    assert str(input) == result
+
+# Test str.upper
 for [reg, upper] in [['Hello World!', 'HELLO WORLD!'], ['HELLO', 'HELLO']]:
-    assert str_upper(reg) == upper
+    assert reg.upper() == upper
 
 # Test range
 assert list(range(0)) == []
@@ -35,7 +39,7 @@ assert foldr(join, test_list, []) == [1, [2, [3, [4, [5, []]]]]]
 # Test str join/split
 str_list = ['abc', 'def', 'ghi']
 str_joined = 'abc/def/ghi'
-assert str_join('/', str_list) == str_joined
+assert '/'.join(str_list) == str_joined
 assert str_split(str_joined, '/') == str_list
 
 # Test str_starts_with
