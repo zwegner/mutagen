@@ -288,6 +288,10 @@ class Integer(Node):
         self.value = int(self.value)
     def eval(self, ctx):
         return self
+    def get_attr(self, attr):
+        if attr == '__class__':
+            return IntClass
+        return None
     def repr(self, ctx):
         return '%s' % self.value
     def bool(self, ctx):
@@ -848,6 +852,19 @@ class BuiltinStr(BuiltinClass):
         self.add_methods(['upper', 'join'])
 
 StrClass = BuiltinStr('str')
+
+class BuiltinInt(BuiltinClass):
+    def eval_call(self, ctx, args):
+        if len(args) == 2:
+            [arg, base] = args
+        elif len(args) == 2:
+            [arg] = args
+            base = 0
+        else:
+            ctx.error('bad args to int()')
+        return Integer(int(arg.value, base.value), info=arg)
+
+IntClass = BuiltinInt('int')
 
 @node('&params')
 class UnionInlineClass(Node):

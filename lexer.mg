@@ -17,7 +17,7 @@ def t_identifier(t):
     return r
 
 def t_integer(t):
-    return tokenize.Token(t.type, parse_int(t.value, 0))
+    return tokenize.Token(t.type, int(t.value, 0))
 
 def t_string(t):
     i = 1

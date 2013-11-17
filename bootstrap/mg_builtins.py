@@ -33,10 +33,6 @@ def mgb_putstr(ctx, arg):
     sys.stdout.write(arg.value)
     return None_(info=arg)
 
-@mg_builtin([String, Integer])
-def mgb_parse_int(ctx, int_str, base):
-    return Integer(int(int_str.value, base.value), info=int_str)
-
 @mg_builtin([Node])
 def mgb_len(ctx, arg):
     return Integer(arg.len(ctx), info=arg)
@@ -59,5 +55,6 @@ def mgb_slice(ctx, seq, start, end):
 
 # Add builtin classes
 builtins['str'] = StrClass
+builtins['int'] = IntClass
 
 __all__ = builtins

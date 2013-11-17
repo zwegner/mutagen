@@ -1,10 +1,12 @@
 # Test parse_int
 for [input, base, result] in [['0xf', 0, 15], ['077', 8, 63], ['-123xyz', 36, -64009403]]:
-    assert parse_int(input, base) == result
+    assert int(input, base) == result
+    assert isinstance(int(input, base), int)
 
 # Test str()
 for [input, result] in [[123, '123'], ['abc', 'abc'], [[0], '[0]']]:
     assert str(input) == result
+    assert isinstance(str(input), str)
 
 # Test str.upper
 for [reg, upper] in [['Hello World!', 'HELLO WORLD!'], ['HELLO', 'HELLO']]:
