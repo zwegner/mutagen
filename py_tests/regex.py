@@ -1,9 +1,7 @@
 import re
 
-# Cheap-ass cross-language import
-with open('re_test_cases.mg') as f:
-    exec(f.read())
+import re_test_cases
 
-for r in regexes:
+for r in re_test_cases.regexes:
     reg = re.compile(r)
-    print([bool(x is not None) for x in map(reg.match, inputs)])
+    print([bool(x is not None) for x in map(reg.match, re_test_cases.inputs)])
