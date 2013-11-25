@@ -17,7 +17,7 @@ mg_tests = ['builtins', 'core']
 mg_test_dir = 'mg_tests'
 
 # Python tests: python/mutagen should produce the same output in each case.
-py_tests = ['regex', 'lex']
+py_tests = ['core', 'regex', 'lex']
 py_test_dir = 'py_tests'
 
 start = time.time()

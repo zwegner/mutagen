@@ -101,9 +101,12 @@ def t_STRING(t):
             break
         if c == '\\':
             c = next(i)
-            if c not in str_escapes:
+            if c == 'x':
+                string += chr(int(next(i) + next(i), 16))
+            elif c not in str_escapes:
                 error(t, 'bad string escape: "\%s"' % c)
-            string += str_escapes[c]
+            else:
+                string += str_escapes[c]
         else:
             string += c
     t.value = string
