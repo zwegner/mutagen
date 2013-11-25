@@ -658,7 +658,12 @@ class While(Node):
 class Call(Node):
     def eval(self, ctx):
         fn = self.fn.eval(ctx)
-        args = [a.eval(ctx) for a in self.args]
+        args = []
+        for a in self.args:
+            if isinstance(a, VarArg):
+                args.extend(list(a.eval(ctx).iter(ctx)))
+            else:
+                args.append(a.eval(ctx))
         ctx.current_node = self
         return fn.eval_call(ctx, args)
     def repr(self, ctx):
@@ -670,20 +675,6 @@ class VarArg(Node):
         return self.expr.eval(ctx)
     def repr(self, ctx):
         return '*%s' % self.expr.repr(ctx)
-
-@node('&fn, *args')
-class CallVarArgs(Node):
-    def eval(self, ctx):
-        fn = self.fn.eval(ctx)
-        args = []
-        for a in self.args:
-            if isinstance(a, VarArg):
-                args.extend(list(a.eval(ctx).iter(ctx)))
-            else:
-                args.append(a.eval(ctx))
-        return fn.eval_call(ctx, args)
-    def repr(self, ctx):
-        return '%s(%s)' % (self.fn.repr(ctx), ', '.join(s.repr(ctx) for s in self.args))
 
 @node('params, star_params')
 class Params(Node):

@@ -279,12 +279,7 @@ def p_call(p):
     if len(p) == 4:
         p[0] = Call(p[1], [])
     else:
-        # Check if this is a vararg call. We handle these
-        # separately just for efficiency reasons.
-        if any(isinstance(e, VarArg) for e in p[3]):
-            p[0] = CallVarArgs(p[1], p[3])
-        else:
-            p[0] = Call(p[1], p[3])
+        p[0] = Call(p[1], p[3])
 
 def p_assert(p):
     """ assert : ASSERT expr """
