@@ -13,12 +13,12 @@ for f in files:
             group_dict[g].append(f)
             break
 
-total = [0, 9]
+total = [0, 0]
 for group, files in sorted(group_dict.items()):
     if group in ignored_groups:
         continue
     print('%s: ' % group)
-    group_total = [0, 9]
+    group_total = [0, 0]
     for file in files:
         with open(file) as f:
             data = f.read()
