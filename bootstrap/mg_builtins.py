@@ -57,5 +57,6 @@ def mgb_slice(ctx, seq, start, end):
 builtins['str'] = StrClass
 builtins['int'] = IntClass
 builtins['bool'] = BoolClass
+builtins['type'] = TypeClass
 
 __all__ = builtins

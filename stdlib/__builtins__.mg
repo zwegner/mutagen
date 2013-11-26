@@ -87,8 +87,5 @@ def list(items):
         l = l + [i]
     return l
 
-def type(obj):
-    return obj.__class__
-
 def isinstance(obj, cls):
     return type(obj) == cls

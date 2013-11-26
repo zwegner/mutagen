@@ -232,6 +232,10 @@ def node(argstr='', compare=False):
 
 @node()
 class None_(Node):
+    def get_attr(self, attr):
+        if attr == '__class__':
+            return NoneClass
+        return None
     def repr(self, ctx):
         return 'None'
     def __eq__(self, other):
@@ -794,7 +798,7 @@ class Class(Node):
         items = {String(k, info=self): v.eval(ctx) for k, v
             in child_ctx.syms.items()}
         items[String('name', info=self)] = String(self.name, info=self)
-        items[String('__class__', info=self)] = Type
+        items[String('__class__', info=self)] = TypeClass
         self.cls = Object(items, info=self)
         return self
     def eval_call(self, ctx, args):
@@ -818,6 +822,8 @@ class Class(Node):
     def __hash__(self):
         return hash((self.name, self.params, self.block))
 
+builtin_info = Info('__builtins__', 0)
+
 class BuiltinClass(Class):
     def __init__(self, name):
         super().__init__(None, name, Params([], None, info=builtin_info), Block([], info=builtin_info))
@@ -829,9 +835,18 @@ class BuiltinClass(Class):
                 info=builtin_info)))
         self.block = Block(stmts, info=builtin_info)
 
-builtin_info = Info('__builtins__', 0)
-Type = Class(None, 'Type', Params([], None, info=builtin_info),
-        Block([], info=builtin_info), info=builtin_info)
+class BuiltinType(BuiltinClass):
+    def eval_call(self, ctx, args):
+        [arg] = args
+        return GetAttr(arg, '__class__').eval(ctx)
+
+TypeClass = BuiltinType('type')
+
+class BuiltinNone(BuiltinClass):
+    def eval_call(self, ctx, args):
+        self.error('NoneType is not callable')
+
+NoneClass = BuiltinNone('NoneType')
 
 class BuiltinStr(BuiltinClass):
     def eval_call(self, ctx, args):
@@ -887,7 +902,7 @@ class Union(Class):
             items[String(param, info=self)] = Class(self.ctx,
                     '%s.%s' % (self.name, param), params, self.block).eval(ctx)
         items[String('name', info=self)] = String(self.name, info=self)
-        items[String('__class__', info=self)] = Type
+        items[String('__class__', info=self)] = TypeClass
         self.cls = Object(items, info=self)
         return self
     def repr(self, ctx):

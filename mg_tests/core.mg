@@ -30,6 +30,9 @@ assert not isinstance(t.y, TestA)
 assert isinstance(t.y, TestB)
 assert str_starts_with(str(t), '<TestClass at ')
 
+assert isinstance(type(t), type)
+assert isinstance(type(type(t)), type)
+
 # Test union
 union TestUnion(x, y):
     pass
