@@ -1,5 +1,3 @@
-import sys
-
 filename = 'filename'
 
 # This is a list, since order matters--backslashes must come first!
@@ -33,21 +31,29 @@ class Context:
         for expr in block:
             expr.lift_lambdas(self)
         return self.lifted_lambdas + block
-    def print_stack(self):
+    def get_stack_trace(self):
         if self.parent:
-            self.parent.print_stack()
+            result = self.parent.get_stack_trace()
+        else:
+            result = []
         if self.current_node:
             info = self.current_node.info
-            print(' at %s in %s, line %s' % (self.name, info.filename,
-                info.lineno), file=sys.stderr)
+            result.append(' at %s in %s, line %s' % (self.name, info.filename,
+                info.lineno))
         else:
-            print('in module %s' % self.name, file=sys.stderr)
+            result.append('in module %s' % self.name)
+        return result
 
 # Info means basically filename/line number, used for reporting errors
 class Info:
     def __init__(self, filename, lineno):
         self.filename = filename
         self.lineno = lineno
+
+class ProgramError(Exception):
+    def __init__(self, stack_trace, msg):
+        self.stack_trace = stack_trace
+        self.msg = msg
 
 class Node:
     def eval(self, ctx):
@@ -56,10 +62,9 @@ class Node:
         self.eval(ctx)
         return []
     def error(self, msg, ctx=None):
-        if ctx:
-            ctx.print_stack()
-        print('%s(%i): %s' % (self.info.filename, self.info.lineno, msg), file=sys.stderr)
-        sys.exit(1)
+        stack_trace = ctx and ctx.get_stack_trace()
+        msg = '%s(%i): %s' % (self.info.filename, self.info.lineno, msg)
+        raise ProgramError(stack_trace, msg)
     def __ne__(self, other):
         return Boolean(not self.__eq__(other).value, info=self)
     def bool(self, ctx):

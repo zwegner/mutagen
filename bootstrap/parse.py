@@ -522,7 +522,14 @@ def interpret(path):
     ctx = Context('__main__', None, None)
     block = parse(path, ctx=ctx)
     block = ctx.initialize(block)
-    for expr in block:
-        expr.eval(ctx)
+    try:
+        for expr in block:
+            expr.eval(ctx)
+    except ProgramError as e:
+        if e.stack_trace:
+            for line in e.stack_trace:
+                print(line, file=sys.stderr)
+        print(e.msg, file=sys.stderr)
+        sys.exit(1)
 
 interpret(sys.argv[1])
