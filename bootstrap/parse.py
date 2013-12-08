@@ -507,11 +507,9 @@ def parse(path, import_builtins=True, ctx=None):
                 else:
                     raise Exception('could not find import in path: %s' % expr.name)
 
-            module_ctx = Context(expr.name, None, ctx)
-            stmts = parse(path, import_builtins=not expr.is_builtins,
-                    ctx=module_ctx)
-            expr.ctx = module_ctx
-            expr.stmts = stmts
+            expr.ctx = Context(expr.name, None, ctx)
+            expr.stmts = parse(path, import_builtins=not expr.is_builtins,
+                    ctx=expr.ctx)
     new_block.extend(block)
 
     # Be sure and return a duplicate of the list...

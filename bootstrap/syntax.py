@@ -547,7 +547,7 @@ class BreakExc(Exception):
 class ContinueExc(Exception):
     pass
 
-class ReturnValue(Exception):
+class ReturnExc(Exception):
     def __init__(self, value):
         self.value = value
 
@@ -572,7 +572,7 @@ class Return(Node):
             expr = self.expr.eval(ctx)
         else:
             expr = None_(info=self)
-        raise ReturnValue(expr)
+        raise ReturnExc(expr)
     def repr(self, ctx):
         return 'return%s' % (' %s' % self.expr.repr(ctx) if
                 self.expr else '')
@@ -766,7 +766,7 @@ class Function(Node):
         ret = None_(info=self)
         try:
             self.block.eval(child_ctx)
-        except ReturnValue as r:
+        except ReturnExc as r:
             ret = r.value
         return ret
     def repr(self, ctx):
