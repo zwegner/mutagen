@@ -415,13 +415,22 @@ def p_params_star(p):
     else:
         p[0] = Params(p[2], p[5], info=get_info(p, 1))
 
+def p_return_type(p):
+    """ return_type : RARROW expr
+                    |
+    """
+    if len(p) == 3:
+        p[0] = p[2]
+    else:
+        p[0] = None
+
 def p_def(p):
-    """ def_stmt : DEF IDENTIFIER params block """
-    p[0] = Assignment(p[2], Function(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
+    """ def_stmt : DEF IDENTIFIER params return_type block """
+    p[0] = Assignment(p[2], Function(current_ctx, p[2], p[3], p[4], p[5], info=get_info(p, 1)))
 
 def p_lambda(p):
-    """ lambda : LAMBDA params block """
-    p[0] = Function(current_ctx, 'lambda', p[2], p[3], info=get_info(p, 1))
+    """ lambda : LAMBDA params return_type block """
+    p[0] = Function(current_ctx, 'lambda', p[2], p[3], p[4], info=get_info(p, 1))
 
 def p_class(p):
     """ class_stmt : CLASS IDENTIFIER params block """

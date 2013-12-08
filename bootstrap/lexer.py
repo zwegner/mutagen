@@ -34,6 +34,7 @@ token_map = {
     'NOT_EQUALS':      r'!=',
     'PERIOD':          r'\.',
     'PLUS':            r'\+',
+    'RARROW':          r'->',
     'RBRACE':          r'}',
     'RBRACKET':        r']',
     'RPAREN':          r'\)',

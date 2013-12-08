@@ -1,3 +1,27 @@
+# Test parameter errors
+def test_fn(a: int, b: str):
+    return str(a) + b
+assert_call_fails(lambda() { test_fn('a', 'b'); })
+assert_call_fails(lambda() {
+        assert_call_fails(lambda() { test_fn(1, 'b'); });
+    })
+
+# Test return types
+test_types = ['abc', 123, True, False]
+for x in test_types:
+    for y in test_types:
+        def test_ret() -> type(x):
+            return y
+        if isinstance(y, type(x)):
+            assert isinstance(test_ret(), type(x))
+            assert_call_fails(assert_call_fails, test_ret)
+        else:
+            assert_call_fails(test_ret)
+
+    def test_ret_bad() -> x:
+        return 0
+    assert_call_fails(test_ret_bad)
+
 # Test lambda lifting--static closures mean variables capture value at time of
 # definition
 items = list(range(4))

@@ -745,7 +745,8 @@ class LiftedLambda(Node):
         return '<lifted-lambda %s(%s)>' % (self.fn.name, ', '.join(s for s in
             self.extra_args))
 
-@node('ctx, name, &params, &block')
+# XXX return_type should be an edge
+@node('ctx, name, &params, return_type, &block')
 class Function(Node):
     def setup(self):
         # Check if this is a generator and not a function
@@ -755,6 +756,11 @@ class Function(Node):
                 self.error('Cannot use return in a generator')
             self.is_generator = True
     def eval(self, ctx):
+        # Be sure to evaluate the return type expression in the context
+        # of the function declaration, and only once
+        # XXX evaluate params
+        if self.return_type:
+            self.rt_eval = self.return_type.eval(ctx)
         return self
     def eval_call(self, ctx, args):
         child_ctx = Context(self.name, self.ctx, ctx)
@@ -768,10 +774,14 @@ class Function(Node):
             self.block.eval(child_ctx)
         except ReturnExc as r:
             ret = r.value
+            if self.return_type:
+                check_obj_type(self, 'return value', ctx, ret, self.rt_eval)
+
         return ret
     def repr(self, ctx):
-        return 'def %s(%s)%s' % (self.name, self.params.repr(ctx),
-                self.block.repr(ctx))
+        ret_str = ' -> %s' % self.return_type.repr(ctx) if self.return_type else ''
+        return 'def %s(%s)%s%s' % (self.name, self.params.repr(ctx),
+                ret_str, self.block.repr(ctx))
 
 @node('ctx, &block')
 class Generator(Node):
