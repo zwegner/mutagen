@@ -51,7 +51,17 @@ def mgb_slice(ctx, seq, start, end):
         return String(seq.value[start.value:end.value], info=seq)
     elif isinstance(seq, List):
         return List(seq.items[start.value:end.value], info=seq)
-    return seq.error('slice on unslicable type %s' % type(seq).__name__, ctx=ctx)
+    return seq.error('slice on unsliceable type %s' % type(seq).__name__, ctx=ctx)
+
+# XXX remove this, just temporarily added to test stuff that should fail.
+# Need to work out semantics of any exceptions/error handling first.
+@mg_builtin(None)
+def mgb_assert_call_fails(ctx, fn, *args):
+    try:
+        fn.eval_call(ctx, [a.eval(ctx) for a in args])
+    except ProgramError as e:
+        return None_(info=fn)
+    fn.error('did not throw error', ctx=ctx)
 
 # Add builtin classes
 builtins['str'] = StrClass
