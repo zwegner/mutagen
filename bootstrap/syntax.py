@@ -722,7 +722,12 @@ class Params(Node):
         self.params = args + self.params
         self.types = [None] * len(args) + self.types
     def repr(self, ctx):
-        params = self.params
+        params = []
+        for p, t in zip(self.params, self.types):
+            if t is not None:
+                params.append('%s: %s' % (p, t.str(ctx)))
+            else:
+                params.append(p)
         if self.star_params:
             params += ['*%s' % self.star_params]
         return ', '.join(params)
