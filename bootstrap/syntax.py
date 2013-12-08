@@ -735,7 +735,7 @@ class Params(Node):
         assert not self.star_params
         yield from zip(self.params, self.types)
 
-@node('&fn, *extra_args')
+@node('&fn, extra_args')
 class LiftedLambda(Node):
     def eval(self, ctx):
         # Load the args once when the lambda is evaluated first (not called)
@@ -929,13 +929,13 @@ class Import(Node):
         for expr in self.stmts:
             expr.eval(self.ctx)
         if self.names is None:
-            obj = Object({String(k, info=self): v.eval(ctx) for k, v
+            obj = Object({String(k, info=self): v for k, v
                 in self.ctx.syms.items()}, info=self)
             ctx.store(self.name, obj)
         else:
             for k, v in self.ctx.syms.items():
                 if self.names == [] or k in self.names:
-                    ctx.store(k, v.eval(ctx))
+                    ctx.store(k, v)
         return None_(info=self)
     def repr(self, ctx):
         if self.names is not None:
