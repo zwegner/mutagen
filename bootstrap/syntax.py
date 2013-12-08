@@ -685,6 +685,13 @@ class VarArg(Node):
     def repr(self, ctx):
         return '*%s' % self.expr.repr(ctx)
 
+def check_obj_type(self, msg_type, ctx, obj, type):
+    obj_type = obj.get_attr('__class__')
+    if obj_type is not type:
+        self.error('bad %s type %s, expected %s' % (msg_type,
+            obj_type.repr(ctx), type.repr(ctx)), ctx=ctx)
+
+# XXX types need to be edges
 @node('params, star_params')
 class Params(Node):
     def setup(self):
@@ -706,16 +713,7 @@ class Params(Node):
         args = []
         for p, t, a in zip(self.params, self.types, pos_args):
             if t is not None:
-                # HACK
-                if not isinstance(a, Object):
-                    self.error('passing non-object argument of type %s to ' \
-                            'parameter of type %s' % (type(a).__name__,
-                                t.repr(ctx)), ctx=ctx)
-                arg_type = a.get_attr('__class__')
-                t = t.eval(ctx)
-                if arg_type is not t:
-                    self.error('bad argument type %s, expected %s' % (
-                        arg_type.repr(ctx), t.repr(ctx)), ctx=ctx)
+                check_obj_type(self, 'argument', ctx, a, t.eval(ctx))
             args += [(p, a)]
         if self.star_params:
             args += [(self.star_params, var_args)]
