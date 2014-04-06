@@ -133,7 +133,7 @@ arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
 # op -> normal attribute
 # &expr -> edge attribute, used for linking to other Nodes
 # *explist -> python list of edges
-def node(argstr='', compare=False):
+def node(argstr='', compare=False, base_type=None, ops=[]):
     args = [a.strip() for a in argstr.split(',') if a.strip()]
     new_args = []
     for a in args:
@@ -146,6 +146,7 @@ def node(argstr='', compare=False):
     # Decorators must return a function. This adds __init__ and some other methods
     # to a Node subclass
     def attach(node):
+        nonlocal ops
         def __init__(self, *iargs, info=None):
             assert len(iargs) == len(args), 'bad args, expected %s(%s)' % (node.__name__, argstr)
 
@@ -203,30 +204,38 @@ def node(argstr='', compare=False):
                 elif isinstance(other, type(self.value)):
                     return Boolean(self.value == other, info=self)
                 return Boolean(False, info=self)
-            def __ge__(self, other):
-                if not isinstance(other, type(self)):
-                    self.error('uncomparable types: %s, %s' % (type(self), type(other)))
-                return Boolean(self.value >= other.value, info=self)
-            def __gt__(self, other):
-                if not isinstance(other, type(self)):
-                    self.error('uncomparable types: %s, %s' % (type(self), type(other)))
-                return Boolean(self.value > other.value, info=self)
-            def __le__(self, other):
-                if not isinstance(other, type(self)):
-                    self.error('uncomparable types: %s, %s' % (type(self), type(other)))
-                return Boolean(self.value <= other.value, info=self)
-            def __lt__(self, other):
-                if not isinstance(other, type(self)):
-                    self.error('uncomparable types: %s, %s' % (type(self), type(other)))
-                return Boolean(self.value < other.value, info=self)
             def __hash__(self):
                 return self.value.__hash__()
+
             node.__eq__ = __eq__
-            node.__ge__ = __ge__
-            node.__gt__ = __gt__
-            node.__le__ = __le__
-            node.__lt__ = __lt__
             node.__hash__ = __hash__
+
+            # Fucking Python default arguments
+            ops = ops + ['ge', 'gt', 'le', 'lt']
+
+        # Generate wrappers for builtin operations without having to write
+        # a shitload of boilerplate. If you're asking why we don't just
+        # derive from int/str/whatever, well, we want to whitelist functionality
+        # like this, and make it slightly more Python-agnostic
+        if ops:
+            assert base_type
+            for op in ops:
+                full_op = '__%s__' % op
+                op_fn = getattr(base_type, full_op)
+                # Ugh, seriously fuck lexical scoping. Better than dynamic I guess,
+                # but I really just want to create a bunch of different functions
+                # with different parameterizations. So we have to pass them in
+                # as parameters with defaults...
+                def operator(self, other, op=op, op_fn=op_fn, full_op=full_op):
+                    if not isinstance(other, node):
+                        self.error('bad operand type for %s.%s: %s' % (
+                            base_type.__name__, op, type(other).__name__))
+                    # I'd like to hoist this outside of this function, but Boolean
+                    # isn't defined yet.
+                    result_type = Boolean if op in ['ge', 'gt', 'le', 'lt'] else node
+                    return result_type(op_fn(self.value, other.value), info=self)
+
+                setattr(node, full_op, operator)
 
         node.__init__ = __init__
         node.iterate_subtree = iterate_subtree
@@ -256,7 +265,7 @@ class Identifier(Node):
     def repr(self, ctx):
         return '%s' % self.name
 
-@node('value', compare=True)
+@node('value', compare=True, base_type=str)
 class String(Node):
     def get_attr(self, attr):
         if attr == '__class__':
@@ -290,7 +299,8 @@ class String(Node):
     def len(self, ctx):
         return len(self.value)
 
-@node('value', compare=True)
+@node('value', compare=True, base_type=int, ops=['add', 'sub', 'mul',
+    'lshift', 'rshift', 'and', 'or'])
 class Integer(Node):
     def setup(self):
         self.value = int(self.value)
@@ -304,20 +314,8 @@ class Integer(Node):
         return '%s' % self.value
     def bool(self, ctx):
         return self.value != 0
-    def __add__(self, other):
-        if not isinstance(other, Integer):
-            self.error('bad type for int.add: %s' % type(other))
-        return Integer(self.value + other.value, info=self)
-    def __sub__(self, other):
-        if not isinstance(other, Integer):
-            self.error('bad type for int.sub: %s' % type(other))
-        return Integer(self.value - other.value, info=self)
-    def __mul__(self, other):
-        if not isinstance(other, Integer):
-            self.error('bad type for int.sub: %s' % type(other))
-        return Integer(self.value * other.value, info=self)
 
-@node('value', compare=True)
+@node('value', compare=True, base_type=bool)
 class Boolean(Node):
     def setup(self):
         self.value = bool(self.value)
