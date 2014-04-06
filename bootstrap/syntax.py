@@ -18,11 +18,10 @@ class Context:
     def store(self, name, value):
         self.syms[name] = value
     def load(self, node, name):
-        ctx = self
-        while ctx:
-            if name in ctx.syms:
-                return ctx.syms[name]
-            ctx = ctx.global_ctx
+        if name in self.syms:
+            return self.syms[name]
+        if self.global_ctx and name in self.global_ctx.syms:
+            return self.global_ctx.syms[name]
         node.error('identifier %s not found' % name, ctx=self)
     # XXX Should this be here? What should it be named?
     def initialize(self, block):
