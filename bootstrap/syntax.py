@@ -897,14 +897,12 @@ StrClass = BuiltinStr('str')
 class BuiltinInt(BuiltinClass):
     def eval_call(self, ctx, args):
         if len(args) == 2:
-            [arg, base] = args
-            base = base.value
+            result = int(args[0].value, args[1].value)
         elif len(args) == 1:
-            [arg] = args
-            base = 0
+            result = int(args[0].value)
         else:
             ctx.error('bad args to int()')
-        return Integer(int(arg.value, base), info=arg)
+        return Integer(result, info=args[0])
 
 IntClass = BuiltinInt('int')
 
