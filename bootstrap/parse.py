@@ -219,7 +219,9 @@ def p_none(p):
     p[0] = None_(info=get_info(p, 1))
 
 def p_unary_op(p):
-    """ unop : NOT expr """
+    """ unop : NOT expr
+             | MINUS expr
+    """
     p[0] = UnaryOp(p[1], p[2])
 
 def p_binary_op(p):
