@@ -101,8 +101,8 @@ class Node:
                     node = next(subtree_gen)
             except StopIteration:
                 break
-            if isinstance(node, Assignment):
-                stores.add(node.name)
+            if isinstance(node, (Assignment, For)):
+                stores.update(get_target_stores(node.target))
             elif isinstance(node, Identifier):
                 loads.add(node.name)
             elif isinstance(node, Function):
@@ -530,14 +530,23 @@ def assign_target(ctx, lhs, rhs):
     else:
         assert False
 
-@node('name, &rhs')
+def get_target_stores(target):
+    if isinstance(target, str):
+        return {target}
+    assert isinstance(target, list)
+    stores = set()
+    for t in target:
+        stores |= get_target_stores(t)
+    return stores
+
+@node('target, &rhs')
 class Assignment(Node):
     def eval(self, ctx):
         value = self.rhs.eval(ctx)
-        assign_target(ctx, self.name, value)
+        assign_target(ctx, self.target, value)
         return value
     def repr(self, ctx):
-        return '%s = %s' % (self.name, self.rhs.repr(ctx))
+        return '%s = %s' % (self.target, self.rhs.repr(ctx))
 
 # Exception for backing up the eval stack on break/continue/return
 class BreakExc(Exception):
@@ -613,13 +622,13 @@ class IfElse(Node):
             else_block = '\nelse%s' % self.else_block.repr(ctx)
         return 'if %s%s%s' % (self.expr.repr(ctx), self.if_block.repr(ctx), else_block)
 
-@node('iter, &expr, &block')
+@node('target, &expr, &block')
 class For(Node):
     def eval(self, ctx):
         expr = self.expr.eval(ctx)
         for i in expr.iter(ctx):
             try:
-                assign_target(ctx, self.iter, i)
+                assign_target(ctx, self.target, i)
                 self.block.eval(ctx)
             except BreakExc:
                 break
@@ -630,14 +639,14 @@ class For(Node):
         expr = self.expr.eval(ctx)
         for i in expr.iter(ctx):
             try:
-                ctx.store(self.iter, i)
+                ctx.store(self.target, i)
                 yield from self.block.eval_gen(ctx)
             except BreakExc:
                 break
             except ContinueExc:
                 continue
     def repr(self, ctx):
-        return 'for %s in %s%s' % (self.iter, self.expr.repr(ctx),
+        return 'for %s in %s%s' % (self.target, self.expr.repr(ctx),
                 self.block.repr(ctx))
 
 @node('&expr, &block')

@@ -1,3 +1,13 @@
+# Test that scoping works properly for assignments and for loops, that is,
+# both of them should put their targets in the set of locals.
+def test_scoping():
+    x = [[0, 1]]
+    for y in x:
+        y
+    for [y, z] in x:
+        return y + z
+test_scoping()
+
 # Test parameter errors
 def test_fn(a: int, b: str):
     return str(a) + b
