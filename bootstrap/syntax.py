@@ -484,8 +484,13 @@ class BinaryOp(Node):
         }[self.type]
         operator = '__%s__' % operator
 
-        return lhs.overload(ctx, operator, [rhs]) or getattr(lhs,
-                operator)(rhs)
+        overloaded = lhs.overload(ctx, operator, [rhs])
+        if overloaded:
+            return overloaded
+        elif not hasattr(lhs, operator):
+            self.error('object of type %s cannot handle operator %s' % (
+                type(lhs).__name__, operator))
+        return getattr(lhs, operator)(rhs)
     def repr(self, ctx):
         return '(%s %s %s)' % (self.lhs.repr(ctx), self.type, self.rhs.repr(ctx))
 
