@@ -1,10 +1,28 @@
 import struct
 
 class Register(index, size):
-    pass
+    def __str__(self):
+        names = ['ip', 'ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di']
+        if self.size == 32:
+            prefix = 'e'
+            suffix = 'd'
+        else:
+            assert self.size == 64
+            prefix = 'r'
+            suffix = ''
+        if self.index >= 8:
+            return 'r' + str(self.index) + suffix
+        else:
+            return prefix + names[self.index + 1]
 
 class Address(base, scale, index, disp):
-    pass
+    def __str__(self):
+        parts = [str(Register(self.base, 64))]
+        if self.scale:
+            parts = parts + [str(Register(self.index, 64)) + '*' + str(self.scale)]
+        if self.disp:
+            parts = parts + [str(self.disp)]
+        return 'DWORD PTR [' + '+'.join(parts) + ']'
 
 def fits_8bit(imm):
     return -128 <= imm and imm <= 127
@@ -121,6 +139,8 @@ class Instruction(opcode: str, *args):
                 assert isinstance(src, Register)
                 w = int(src.size == 64)
                 return rex_addr(w, src, dst) + [1 | opcode << 3] + mod_rm_sib(src, dst)
+    def __str__(self):
+        return self.opcode + ' ' + ','.join(map(str, self.args))
 
 def build():
     # Just a bunch of random instructions to test out different encodings.
