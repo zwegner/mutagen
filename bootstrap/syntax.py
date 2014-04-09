@@ -503,8 +503,13 @@ class GetAttr(Node):
     def eval(self, ctx):
         obj = self.obj.eval(ctx)
         item = obj.get_attr(self.attr)
+        # If the attribute doesn't exist, create a bound method with the attribute
+        # from the object's class, assuming it exists.
         if item is None:
-            method = GetAttr(obj.get_attr('__class__'), self.attr).eval(ctx)
+            method = obj.get_attr('__class__').get_attr(self.attr)
+            if method is None:
+                self.error('object of type %s has no attribute %s' %
+                        (type(obj).__name__, self.attr), ctx=ctx)
             item = BoundFunction(method, [obj])
         return item
     def repr(self, ctx):
