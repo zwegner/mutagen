@@ -493,7 +493,7 @@ class BinaryOp(Node):
             return overloaded
         elif not hasattr(lhs, operator):
             self.error('object of type %s cannot handle operator %s' % (
-                type(lhs).__name__, operator))
+                type(lhs).__name__, operator), ctx=ctx)
         return getattr(lhs, operator)(rhs)
     def repr(self, ctx):
         return '(%s %s %s)' % (self.lhs.repr(ctx), self.type, self.rhs.repr(ctx))
@@ -847,6 +847,7 @@ class Class(Node):
             attrs = {String(k, info=self): v.eval(ctx) for k, v in
                     self.params.bind(self, ctx, args)}
         else:
+            ctx.current_node = self
             d = init.eval_call(ctx, args)
             assert isinstance(d, Dict)
             attrs = d.items
