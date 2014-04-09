@@ -87,6 +87,14 @@ class Instruction(opcode: str, *args):
         if self.opcode in arg0_table:
             assert not self.args
             return arg0_table[self.opcode]
+        elif self.opcode in arg1_table:
+            opcode = arg1_table[self.opcode]
+            [dst] = self.args
+            if isinstance(dst, Register):
+                w = int(dst.size == 64)
+                return rex(w, 0, 0, dst.index) + [0xF7] + mod_rm_sib(opcode, dst)
+            else:
+                assert False
         elif self.opcode in arg2_table:
             opcode = arg2_table[self.opcode]
             [dst, src] = self.args
@@ -131,6 +139,12 @@ def build():
             Instruction('add', Register(1, 32), -2),
             Instruction('add', Register(1, 32), -0x200),
             Instruction('add', Register(1, 32), 0xFFF),
+            Instruction('not', Register(1, 32)),
+            Instruction('neg', Register(1, 32)),
+            Instruction('mul', Register(1, 32)),
+            Instruction('imul', Register(1, 32)),
+            Instruction('div', Register(1, 32)),
+            Instruction('idiv', Register(1, 32)),
             Instruction('ret')]
     bytes = []
     for x in insts:
