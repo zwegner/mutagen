@@ -27,6 +27,9 @@ class Address(base, scale, index, disp):
 def fits_8bit(imm):
     return -128 <= imm and imm <= 127
 
+def pack8(imm):
+    return struct.pack('<b', imm)
+
 def pack32(imm):
     return struct.pack('<i', imm)
 
@@ -58,7 +61,7 @@ def mod_rm_sib(reg, rm):
             mod = 0
         elif fits_8bit(addr.disp):
             mod = 0x40
-            disp_bytes = [addr.disp]
+            disp_bytes = pack8(addr.disp)
         else:
             mod = 0x80
             disp_bytes = pack32(addr.disp)
@@ -122,7 +125,7 @@ class Instruction(opcode: str, *args):
                 # going in the opcode extension in the mod/rm.
                 if isinstance(src, int):
                     if fits_8bit(src):
-                        [size_flag, imm_bytes] = [0x2, [src]]
+                        [size_flag, imm_bytes] = [0x2, pack8(src)]
                     else:
                         [size_flag, imm_bytes] = [0, pack32(src)]
                     return rex(w, 0, 0, dst) + [0x81 | size_flag] + mod_rm_sib(opcode, dst) + imm_bytes
