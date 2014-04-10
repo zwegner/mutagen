@@ -33,6 +33,9 @@ def pack8(imm):
 def pack32(imm):
     return struct.pack('<i', imm)
 
+def pack64(imm):
+    return struct.pack('<q', imm)
+
 def mod_rm_sib(reg, rm):
     if isinstance(reg, Register):
         reg = reg.index
@@ -116,6 +119,26 @@ class Instruction(opcode: str, *args):
                 return rex(w, 0, 0, dst.index) + [0xF7] + mod_rm_sib(opcode, dst)
             else:
                 assert False
+        elif self.opcode == 'mov':
+            [dst, src] = self.args
+            if isinstance(dst, Register):
+                w = int(dst.size == 64)
+                if isinstance(src, int):
+                    if w:
+                        imm_bytes = pack64(src)
+                    else:
+                        imm_bytes = pack32(src)
+                    return rex(w, 0, 0, dst) + [0xB8 | dst.index & 7] + imm_bytes
+                elif isinstance(src, Register):
+                    assert dst.size == src.size
+                    return rex(w, src, 0, dst) + [0x89] + mod_rm_sib(src, dst)
+                else:
+                    assert isinstance(src, Address)
+                    return rex_addr(w, dst, src) + [0x8B] + mod_rm_sib(dst, src)
+            else:
+                assert isinstance(src, Register)
+                w = int(src.size == 64)
+                return rex_addr(w, src, dst) + [0x89] + mod_rm_sib(src, dst)
         elif self.opcode in arg2_table:
             opcode = arg2_table[self.opcode]
             [dst, src] = self.args
@@ -158,6 +181,15 @@ def build():
             Instruction('add', Address(3, 8, 3, 0), Register(1, 32)),
             Instruction('add', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
             Instruction('add', Address(5, 8, 5, 0), Register(1, 32)),
+            Instruction('mov', Address(3, 8, 3, 0xFFFF), Register(1, 32)),
+            Instruction('mov', Register(1, 32), Address(-1, 0, 0, 0xFFFF)),
+            Instruction('mov', Address(-1, 0, 0, 0xFFFF), Register(1, 32)),
+            Instruction('mov', Address(3, 8, 3, 0), Register(1, 32)),
+            Instruction('mov', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
+            Instruction('mov', Address(5, 8, 5, 0), Register(1, 32)),
+            Instruction('mov', Register(1, 32), Register(14, 32)),
+            Instruction('mov', Register(1, 32), Register(7, 32)),
+            Instruction('mov', Register(1, 64), Register(14, 64)),
             Instruction('add', Register(1, 32), 4),
             Instruction('add', Register(1, 32), -2),
             Instruction('add', Register(1, 32), -0x200),
