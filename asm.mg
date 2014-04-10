@@ -98,6 +98,7 @@ class Instruction(opcode: str, *args):
         'idiv': 7,
     }
     arg2_table = {
+        'mov': -1, # handled separately
         'add': 0,
         'or': 1,
         'adc': 2,
@@ -118,53 +119,51 @@ class Instruction(opcode: str, *args):
                 w = int(dst.size == 64)
                 return rex(w, 0, 0, dst.index) + [0xF7] + mod_rm_sib(opcode, dst)
             else:
+                # Need to handle size of address somehow
                 assert False
-        elif self.opcode == 'mov':
+        elif self.opcode in arg2_table:
+            opcode = arg2_table[self.opcode]
             [dst, src] = self.args
-            if isinstance(dst, Register):
+
+            # Immediates have separate opcodes, so handle them specially here.
+            if isinstance(src, int):
+                assert isinstance(dst, Register)
                 w = int(dst.size == 64)
-                if isinstance(src, int):
+                if self.opcode == 'mov':
                     if w:
                         imm_bytes = pack64(src)
                     else:
                         imm_bytes = pack32(src)
                     return rex(w, 0, 0, dst) + [0xB8 | dst.index & 7] + imm_bytes
-                elif isinstance(src, Register):
-                    assert dst.size == src.size
-                    return rex(w, src, 0, dst) + [0x89] + mod_rm_sib(src, dst)
                 else:
-                    assert isinstance(src, Address)
-                    return rex_addr(w, dst, src) + [0x8B] + mod_rm_sib(dst, src)
-            else:
-                assert isinstance(src, Register)
-                w = int(src.size == 64)
-                return rex_addr(w, src, dst) + [0x89] + mod_rm_sib(src, dst)
-        elif self.opcode in arg2_table:
-            opcode = arg2_table[self.opcode]
-            [dst, src] = self.args
-            if isinstance(dst, Register):
-                w = int(dst.size == 64)
-                # op reg, imm. These have a different opcode, with the normal opcode
-                # going in the opcode extension in the mod/rm.
-                if isinstance(src, int):
                     if fits_8bit(src):
                         [size_flag, imm_bytes] = [0x2, pack8(src)]
                     else:
                         [size_flag, imm_bytes] = [0, pack32(src)]
                     return rex(w, 0, 0, dst) + [0x81 | size_flag] + mod_rm_sib(opcode, dst) + imm_bytes
+
+            # Mov is also a bit different, but can mostly be handled like other ops
+            if self.opcode == 'mov':
+                opcode = 0x89
+            else:
+                opcode = 1 | opcode << 3
+
+            # op reg, mem is handled by flipping the direction bit and
+            # swapping src/dst.
+            if isinstance(src, Address):
+                opcode = opcode | 0x2
+                [src, dst] = [dst, src]
+
+            if isinstance(dst, Register):
+                w = int(dst.size == 64)
                 # op reg, reg
-                elif isinstance(src, Register):
-                    assert dst.size == src.size
-                    assert dst.size >= 32
-                    return rex(w, src, 0, dst) + [1 | opcode << 3] + mod_rm_sib(src, dst)
-                # op reg, mem
-                else:
-                    assert isinstance(src, Address)
-                    return rex_addr(w, dst, src) + [3 | opcode << 3] + mod_rm_sib(dst, src)
+                assert isinstance(src, Register)
+                assert dst.size == src.size
+                return rex(w, src, 0, dst) + [opcode] + mod_rm_sib(src, dst)
             else:
                 assert isinstance(src, Register)
                 w = int(src.size == 64)
-                return rex_addr(w, src, dst) + [1 | opcode << 3] + mod_rm_sib(src, dst)
+                return rex_addr(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
     def __str__(self):
         return self.opcode + ' ' + ','.join(map(str, self.args))
 
