@@ -4,7 +4,7 @@ import subprocess
 import sys
 import time
 
-root_dir = sys.path[0]
+root_dir = os.path.dirname(sys.path[0])
 mutagen = '%s/bootstrap/parse.py' % root_dir
 python = 'python3'
 
@@ -14,11 +14,11 @@ test_set = set(sys.argv[1:])
 
 # Mutagen tests: these should just not throw any errors
 mg_tests = ['builtins', 'core']
-mg_test_dir = 'mg_tests'
+mg_test_dir = 'tests/mg/'
 
 # Python tests: python/mutagen should produce the same output in each case.
 py_tests = ['core', 'regex', 'lex']
-py_test_dir = 'py_tests'
+py_test_dir = 'tests/py'
 
 start = time.time()
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import utils
 
-lexer = utils.import_path('../bootstrap/lexer.py')
+lexer = utils.import_path('../../bootstrap/lexer.py')
 
-for path in ['../stdlib/__builtins__.mg', '../stdlib/re.mg', '../lexer.mg']:
+for path in ['../../stdlib/__builtins__.mg', '../../stdlib/re.mg', '../../compiler/lexer.mg']:
     with open(path) as f:
         blah = f.read()
     lex = lexer.get_lexer()
