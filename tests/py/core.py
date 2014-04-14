@@ -1,3 +1,9 @@
+# Test string operations
+print('a' + 'b' + 'c')
+print('abc' * 0)
+print('abc' * 1)
+print('abc' * 20)
+
 # Test string escape sequences
 for escape in ['\x00', '\x20', '\x40', '\x80', '\xFF',
         '\n', '\t', '\b', '\'', '\\']:

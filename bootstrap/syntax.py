@@ -265,7 +265,7 @@ class Identifier(Node):
     def repr(self, ctx):
         return '%s' % self.name
 
-@node('value', compare=True, base_type=str)
+@node('value', compare=True, base_type=str, ops=['add'])
 class String(Node):
     def get_attr(self, attr):
         if attr == '__class__':
@@ -292,10 +292,10 @@ class String(Node):
         if isinstance(item, Integer):
             return String(self.value[item.value], info=self)
         self.error('bad arg for getitem: %s' % item)
-    def __add__(self, other):
-        if not isinstance(other, String):
-            self.error('bad type for str.add: %s' % type(other))
-        return String(self.value + other.value, info=self)
+    def __mul__(self, other):
+        if not isinstance(other, Integer):
+            self.error('bad type for str.mul: %s' % type(other))
+        return String(self.value * other.value, info=self)
     def len(self, ctx):
         return len(self.value)
 
