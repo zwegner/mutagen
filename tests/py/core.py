@@ -9,3 +9,10 @@ print(type(0))
 print(type(type(0)))
 print(type('abc'))
 print(type(None))
+
+# Test list operations
+print([0] + [1])
+print([0] * 0)
+print([0] * 1)
+print([0] * 20)
+print([0, 1, 2] * 20)

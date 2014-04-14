@@ -357,6 +357,10 @@ class List(Node):
         if not isinstance(other, List):
             self.error('bad type for list.add: %s' % type(other))
         return List(self.items + other.items, info=self)
+    def __mul__(self, other):
+        if not isinstance(other, Integer):
+            self.error('bad type for list.mul: %s' % type(other))
+        return List(self.items * other.value, info=self)
     def __contains__(self, item):
         r = False
         for i in self:
