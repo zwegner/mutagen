@@ -543,8 +543,8 @@ def assign_target(ctx, lhs, rhs):
         ctx.store(lhs, rhs)
     elif isinstance(lhs, list):
         if len(lhs) != rhs.len(ctx):
-            self.error('too %s values to unpack' %
-                   ('few' if len(lhs) > len(rhs) else 'many'), ctx=ctx)
+            rhs.error('too %s values to unpack' %
+                   ('few' if len(lhs) > rhs.len(ctx) else 'many'), ctx=ctx)
         for lhs_i, rhs_i in zip(lhs, rhs):
             assign_target(ctx, lhs_i, rhs_i)
     else:
