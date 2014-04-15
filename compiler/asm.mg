@@ -173,18 +173,7 @@ class Instruction(opcode: str, *args):
     def __str__(self):
         return self.opcode + ' ' + ','.join(map(str, self.args))
 
-def build():
-    # Just a bunch of random instructions to test out different encodings.
-    # Should probably come up with some end-to-end automatic testing system.
-    # For now, just manually inspecting objdump output...
-    insts = [
-        Label('_test', True),
-        Instruction('mov', Register(0, 64), 0x7ffff000deadbeef),
-        Instruction('ret'),
-        Label('_test2', True),
-        Instruction('mov', Register(0, 64), 0x0123456789abcdef),
-        Instruction('ret'),
-    ]
+def build(insts):
     bytes = []
     labels = []
     global_labels = []
@@ -197,5 +186,53 @@ def build():
             bytes = bytes + inst.to_bytes()
     return [bytes, labels, global_labels]
 
-elf_file = elf.create_elf_file(*build())
+# Just a bunch of random instructions to test out different encodings.
+insts = [
+    Label('_test', True),
+    Instruction('xor', Register(0, 32), Register(0, 32)),
+    Instruction('add', Register(0, 32), Register(1, 32)),
+    Instruction('cmp', Register(0, 32), Register(12, 32)),
+    Instruction('add', Address(3, 8, 3, 0xFFFF), Register(1, 32)),
+    Instruction('add', Register(1, 32), Address(-1, 0, 0, 0xFFFF)),
+    Instruction('add', Address(-1, 0, 0, 0xFFFF), Register(1, 32)),
+    Instruction('add', Address(3, 8, 3, 0), Register(1, 32)),
+    Instruction('add', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
+    Instruction('add', Address(5, 8, 5, 0), Register(1, 32)),
+    Instruction('mov', Address(3, 8, 3, 0xFFFF), Register(1, 32)),
+    Instruction('mov', Register(1, 32), Address(-1, 0, 0, 0xFFFF)),
+    Instruction('mov', Address(-1, 0, 0, 0xFFFF), Register(1, 32)),
+    Instruction('mov', Address(3, 8, 3, 0), Register(1, 32)),
+    Instruction('mov', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
+    Instruction('mov', Address(5, 8, 5, 0), Register(1, 32)),
+    Instruction('mov', Register(1, 32), Register(14, 32)),
+    Instruction('mov', Register(1, 32), Register(7, 32)),
+    Instruction('mov', Register(1, 64), Register(14, 64)),
+    Instruction('add', Register(1, 32), 4),
+    # Our IR can't properly print unsigned integers without a bunch of work,
+    # as they appear in the objdump output. So ignore for now.
+    #        Instruction('add', Register(1, 32), -2),
+    #        Instruction('add', Register(1, 32), -0x200),
+    Instruction('add', Register(1, 32), 0xFFF),
+    Instruction('not', Register(1, 32)),
+    Instruction('neg', Register(1, 32)),
+    Instruction('mul', Register(1, 32)),
+    Instruction('imul', Register(1, 32)),
+    Instruction('div', Register(1, 32)),
+    Instruction('idiv', Register(1, 32)),
+    Instruction('mov', Register(0, 64), 0x7ffff000deadbeef),
+    Instruction('ret'),
+    Label('_test2', True),
+    Instruction('mov', Register(0, 64), 0x0123456789abcdef),
+    Instruction('ret'),
+]
+
+elf_file = elf.create_elf_file(*build(insts))
 write_binary_file('elfout.o', elf_file)
+
+# Print out our interpretation of the instructions, so it can be matched
+# against objdump
+for inst in insts:
+    if isinstance(inst, Label):
+        print(inst.name + ':')
+    else:
+        print('    ' + str(inst))

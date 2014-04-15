@@ -20,6 +20,9 @@ mg_test_dir = 'tests/mg/'
 py_tests = ['core', 'regex', 'lex']
 py_test_dir = 'tests/py'
 
+raw_tests = ['asm']
+raw_test_dir = 'tests/raw'
+
 start = time.time()
 
 # Run mutagen tests
@@ -52,6 +55,19 @@ for test in py_tests:
         print('mutagen output:\n%s' % mg_output.decode('utf-8'))
     else:
         passes += 1
+
+for test in raw_tests:
+    if test_set and test not in test_set:
+        continue
+
+    # Run python script, just check the output code
+    try:
+        path = '%s.py' % (test)
+        output = subprocess.check_output([python, path], cwd=raw_test_dir)
+        passes += 1
+    except Exception:
+        fails += 1
+        print('TEST %s FAILED!' % test)
 
 end = time.time()
 print('%s/%s tests passed. Time: %.2fs' % (passes, passes + fails, end - start))
