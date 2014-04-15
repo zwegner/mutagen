@@ -899,6 +899,15 @@ class BuiltinStr(BuiltinClass):
     def eval_call(self, ctx, args):
         [arg] = args
         return String(arg.str(ctx), info=arg)
+    def islower(obj, ctx, args):
+        [arg] = args
+        return Boolean(arg.value.islower(), info=arg)
+    def lower(obj, ctx, args):
+        [arg] = args
+        return String(arg.value.lower(), info=arg)
+    def isupper(obj, ctx, args):
+        [arg] = args
+        return Boolean(arg.value.isupper(), info=arg)
     def upper(obj, ctx, args):
         [arg] = args
         return String(arg.value.upper(), info=arg)
@@ -917,7 +926,7 @@ class BuiltinStr(BuiltinClass):
         # XXX create list of integers, as we don't yet have a 'bytes' object
         return List(list(Integer(i, info=arg) for i in encoded), info=arg)
     def setup(self):
-        self.add_methods(['upper', 'join', 'encode'])
+        self.add_methods(['islower', 'lower', 'isupper', 'upper', 'join', 'encode'])
 
 StrClass = BuiltinStr('str')
 

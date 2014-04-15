@@ -11,6 +11,11 @@ for escape in ['\x00', '\x20', '\x40', '\x80', '\xFF',
         '\n', '\t', '\b', '\'', '\\']:
     print(escape)
 
+# Test string methods
+for test_case in ['a', 'abc', 'ABC', 'abcXYZ', '123']:
+    for method in [str.islower, str.lower, str.isupper, str.upper]:
+        print(method(test_case))
+
 # Test encoding--use list() to make sure it prints as a list of integers
 print(list('ABCabc!@#$%^&*()'.encode('ascii')))
 print(list('œ∑´®†¥¨ˆøπåß∂ƒ©˙∆˚¬Ω≈ç√∫˜µ'.encode('utf-8')))
