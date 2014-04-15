@@ -10,7 +10,7 @@ def create_string_table(strings):
         table = table + s.encode('ascii') + [0]
     return [table, offsets]
 
-def create_elf_file(code, labels):
+def create_elf_file(code, labels, global_labels):
     section_names = ['.text', '.shstrtab', '.strtab', '.symtab']
     section_types = [1, 3, 3, 2]
     [shstrtab, shstrtab_offsets] = create_string_table(section_names)
@@ -21,15 +21,20 @@ def create_elf_file(code, labels):
     [strtab, strtab_offsets] = create_string_table(strings)
 
     symtab = [0] * 24 # First symbol is reserved
+    n_local_syms = 0
     for [i, [label, address]] in enumerate(labels):
-        symtab = symtab + struct.pack('<IBBHQQ',
-            strtab_offsets[i], # Name offset in string table
-            0, # type/binding (hardcoded to local for now)
-            0, # reserved
-            1, # section index of code section
-            address, # value of symbol (an address)
-            0 # size
-        )
+        for [flag, use_globals] in [[0, False], [0x10, True]]:
+            if (label in global_labels) == use_globals:
+                if not use_globals:
+                    n_local_syms = n_local_syms + 1
+                symtab = symtab + struct.pack('<IBBHQQ',
+                    strtab_offsets[i], # Name offset in string table
+                    flag, # type/binding (for us, specify local or global)
+                    0, # reserved/unused
+                    1, # section index of code section
+                    address, # value of symbol (an address)
+                    0 # size
+                )
 
     sections = [code, shstrtab, strtab, symtab]
 
@@ -62,7 +67,6 @@ def create_elf_file(code, labels):
     elf_data = []
     for [i, [data, section_type]] in enumerate(zip(sections, section_types)):
         if section_type == 2: # .symtab has special handling
-            n_local_syms = len(labels) # no globals for now
             [link, alignment, size, info] = [3, 4, 24, n_local_syms]
         else:
             [link, alignment, size, info] = [0, 1, 0, 0]
