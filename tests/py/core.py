@@ -1,3 +1,5 @@
+from langdeps import *
+
 # Test string operations
 print('a' + 'b' + 'c')
 print('abc' * 0)
@@ -8,6 +10,11 @@ print('abc' * 20)
 for escape in ['\x00', '\x20', '\x40', '\x80', '\xFF',
         '\n', '\t', '\b', '\'', '\\']:
     print(escape)
+
+# Test encoding--use list() to make sure it prints as a list of integers
+print(list('ABCabc!@#$%^&*()'.encode('ascii')))
+print(list('œ∑´®†¥¨ˆøπåß∂ƒ©˙∆˚¬Ω≈ç√∫˜µ'.encode('utf-8')))
+assert_call_fails(str.encode, '\x80', 'ascii') # test bad ascii char
 
 # Test various type stuff
 print(type)

@@ -905,8 +905,19 @@ class BuiltinStr(BuiltinClass):
     def join(obj, ctx, args):
         [sep, args] = args
         return String(sep.value.join(a.value for a in args), info=sep)
+    def encode(obj, ctx, args):
+        [arg, encoding] = args
+        if not isinstance(encoding, String) or encoding.value not in {'ascii',
+                'utf-8'}:
+            obj.error('encoding must be one of "ascii" or "utf-8"', ctx=ctx)
+        try:
+            encoded = arg.value.encode(encoding.value)
+        except UnicodeEncodeError as e:
+            obj.error(str(e), ctx=ctx) # just copy the Python exception message...
+        # XXX create list of integers, as we don't yet have a 'bytes' object
+        return List(list(Integer(i, info=arg) for i in encoded), info=arg)
     def setup(self):
-        self.add_methods(['upper', 'join'])
+        self.add_methods(['upper', 'join', 'encode'])
 
 StrClass = BuiltinStr('str')
 
@@ -966,7 +977,7 @@ class Import(Node):
             ctx.store(self.name, obj)
         else:
             for k, v in self.ctx.syms.items():
-                if self.names == [] or k in self.names:
+                if not self.names or k in self.names:
                     ctx.store(k, v)
         return None_(info=self)
     def repr(self, ctx):
