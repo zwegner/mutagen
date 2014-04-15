@@ -2,6 +2,9 @@ import struct
 
 import elf
 
+class Label(name: str, is_global: bool):
+    pass
+
 class Register(index, size):
     def __str__(self):
         names = ['ip', 'ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di']
@@ -142,7 +145,8 @@ class Instruction(opcode: str, *args):
                         [size_flag, imm_bytes] = [0x2, pack8(src)]
                     else:
                         [size_flag, imm_bytes] = [0, pack32(src)]
-                    return rex(w, 0, 0, dst) + [0x81 | size_flag] + mod_rm_sib(opcode, dst) + imm_bytes
+                    return rex(w, 0, 0, dst) + [0x81 | size_flag] + mod_rm_sib(
+                            opcode, dst) + imm_bytes
 
             # Mov is also a bit different, but can mostly be handled like other ops
             if self.opcode == 'mov':
@@ -173,40 +177,25 @@ def build():
     # Just a bunch of random instructions to test out different encodings.
     # Should probably come up with some end-to-end automatic testing system.
     # For now, just manually inspecting objdump output...
-    insts = [Instruction('xor', Register(0, 32), Register(0, 32)),
-            Instruction('add', Register(0, 32), Register(1, 32)),
-            Instruction('cmp', Register(0, 32), Register(12, 32)),
-            #Instruction('add', Address(3, 8, 3, 0xFFFF), Register(1, 32)),
-            #Instruction('add', Register(1, 32), Address(-1, 0, 0, 0xFFFF)),
-            #Instruction('add', Address(-1, 0, 0, 0xFFFF), Register(1, 32)),
-            #Instruction('add', Address(3, 8, 3, 0), Register(1, 32)),
-            #Instruction('add', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
-            #Instruction('add', Address(5, 8, 5, 0), Register(1, 32)),
-            #Instruction('mov', Address(3, 8, 3, 0xFFFF), Register(1, 32)),
-            #Instruction('mov', Register(1, 32), Address(-1, 0, 0, 0xFFFF)),
-            #Instruction('mov', Address(-1, 0, 0, 0xFFFF), Register(1, 32)),
-            #Instruction('mov', Address(3, 8, 3, 0), Register(1, 32)),
-            #Instruction('mov', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
-            #Instruction('mov', Address(5, 8, 5, 0), Register(1, 32)),
-            Instruction('mov', Register(1, 32), Register(14, 32)),
-            Instruction('mov', Register(1, 32), Register(7, 32)),
-            Instruction('mov', Register(1, 64), Register(14, 64)),
-            Instruction('add', Register(1, 32), 4),
-            Instruction('add', Register(1, 32), -2),
-            Instruction('add', Register(1, 32), -0x200),
-            Instruction('add', Register(1, 32), 0xFFF),
-            Instruction('not', Register(1, 32)),
-            Instruction('neg', Register(1, 32)),
-            Instruction('mul', Register(1, 32)),
-            Instruction('imul', Register(1, 32)),
-            #Instruction('div', Register(1, 32)),
-            #Instruction('idiv', Register(1, 32)),
-            Instruction('ret')]
+    insts = [
+        Label('_test', True),
+        Instruction('mov', Register(0, 64), 0x7ffff000deadbeef),
+        Instruction('ret'),
+        Label('_test2', True),
+        Instruction('mov', Register(0, 64), 0x0123456789abcdef),
+        Instruction('ret'),
+    ]
     bytes = []
+    labels = []
+    global_labels = []
     for inst in insts:
-        bytes = bytes + inst.to_bytes()
-    return bytes
+        if isinstance(inst, Label):
+            labels = labels + [[inst.name, len(bytes)]]
+            if inst.is_global:
+                global_labels = global_labels + [inst.name]
+        else:
+            bytes = bytes + inst.to_bytes()
+    return [bytes, labels, global_labels]
 
-bytes = build()
-elf_file = elf.create_elf_file(bytes, [['_test', 0]])
+elf_file = elf.create_elf_file(*build())
 write_binary_file('elfout.o', elf_file)
