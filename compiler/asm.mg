@@ -1,5 +1,7 @@
 import struct
 
+import elf
+
 class Register(index, size):
     def __str__(self):
         names = ['ip', 'ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di']
@@ -174,18 +176,18 @@ def build():
     insts = [Instruction('xor', Register(0, 32), Register(0, 32)),
             Instruction('add', Register(0, 32), Register(1, 32)),
             Instruction('cmp', Register(0, 32), Register(12, 32)),
-            Instruction('add', Address(3, 8, 3, 0xFFFF), Register(1, 32)),
-            Instruction('add', Register(1, 32), Address(-1, 0, 0, 0xFFFF)),
-            Instruction('add', Address(-1, 0, 0, 0xFFFF), Register(1, 32)),
-            Instruction('add', Address(3, 8, 3, 0), Register(1, 32)),
-            Instruction('add', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
-            Instruction('add', Address(5, 8, 5, 0), Register(1, 32)),
-            Instruction('mov', Address(3, 8, 3, 0xFFFF), Register(1, 32)),
-            Instruction('mov', Register(1, 32), Address(-1, 0, 0, 0xFFFF)),
-            Instruction('mov', Address(-1, 0, 0, 0xFFFF), Register(1, 32)),
-            Instruction('mov', Address(3, 8, 3, 0), Register(1, 32)),
-            Instruction('mov', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
-            Instruction('mov', Address(5, 8, 5, 0), Register(1, 32)),
+            #Instruction('add', Address(3, 8, 3, 0xFFFF), Register(1, 32)),
+            #Instruction('add', Register(1, 32), Address(-1, 0, 0, 0xFFFF)),
+            #Instruction('add', Address(-1, 0, 0, 0xFFFF), Register(1, 32)),
+            #Instruction('add', Address(3, 8, 3, 0), Register(1, 32)),
+            #Instruction('add', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
+            #Instruction('add', Address(5, 8, 5, 0), Register(1, 32)),
+            #Instruction('mov', Address(3, 8, 3, 0xFFFF), Register(1, 32)),
+            #Instruction('mov', Register(1, 32), Address(-1, 0, 0, 0xFFFF)),
+            #Instruction('mov', Address(-1, 0, 0, 0xFFFF), Register(1, 32)),
+            #Instruction('mov', Address(3, 8, 3, 0), Register(1, 32)),
+            #Instruction('mov', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
+            #Instruction('mov', Address(5, 8, 5, 0), Register(1, 32)),
             Instruction('mov', Register(1, 32), Register(14, 32)),
             Instruction('mov', Register(1, 32), Register(7, 32)),
             Instruction('mov', Register(1, 64), Register(14, 64)),
@@ -197,17 +199,14 @@ def build():
             Instruction('neg', Register(1, 32)),
             Instruction('mul', Register(1, 32)),
             Instruction('imul', Register(1, 32)),
-            Instruction('div', Register(1, 32)),
-            Instruction('idiv', Register(1, 32)),
+            #Instruction('div', Register(1, 32)),
+            #Instruction('idiv', Register(1, 32)),
             Instruction('ret')]
     bytes = []
-    for x in insts:
-        bytes = bytes + x.to_bytes()
-    # Bwahaha. Thanks to the winner of the 1984 IOCCC for making me aware of this
-    # intriguing possibility.
-    print('unsigned char main[] = {')
-    print(','.join(map(str, bytes)))
-    print('};')
+    for inst in insts:
+        bytes = bytes + inst.to_bytes()
     return bytes
 
-build()
+bytes = build()
+elf_file = elf.create_elf_file(bytes, [['_test', 0]])
+write_binary_file('elfout.o', elf_file)
