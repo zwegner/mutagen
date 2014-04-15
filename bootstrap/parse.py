@@ -13,7 +13,7 @@ from lexer import tokens
 root_dir = os.path.dirname(sys.path[0])
 stdlib_dir = '%s/stdlib' % root_dir
 
-start = 'stmt_list'
+start = 'stmt_list_or_empty'
 
 precedence = [
     ['right', 'EQUALS'],
@@ -42,6 +42,12 @@ def p_error(p):
         l = l.lexer
     print('%s(%i): %s' % (filename, l.lineno, p), file=sys.stderr)
     sys.exit(1)
+
+def p_stmt_list_or_empty(p):
+    """ stmt_list_or_empty : stmt_list
+                           |
+    """
+    p[0] = p[1] if len(p) == 2 else []
 
 def p_stmt_list(p):
     """ stmt_list : stmt """
