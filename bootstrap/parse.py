@@ -504,8 +504,8 @@ def parse(path, import_builtins=True, ctx=None):
 
     # Do some post-processing, starting with adding builtins
     if import_builtins:
-        path = '%s/__builtins__.mg' % stdlib_dir
-        block = [Import('builtins', [], path, True,
+        builtins_path = '%s/__builtins__.mg' % stdlib_dir
+        block = [Import('builtins', [], builtins_path, True,
             info=builtin_info)] + block
 
     new_block = []
@@ -518,19 +518,19 @@ def parse(path, import_builtins=True, ctx=None):
         if isinstance(expr, Import):
             # Explicit path: use that
             if expr.path:
-                path = expr.path
+                import_path = expr.path
             else:
                 # Normal import: find the file first in
                 # the current directory, then stdlib
                 for cd in [dirname, stdlib_dir]:
-                    path = '%s/%s.mg' % (cd, expr.name)
-                    if os.path.isfile(path):
+                    import_path = '%s/%s.mg' % (cd, expr.name)
+                    if os.path.isfile(import_path):
                         break
                 else:
                     raise Exception('could not find import in path: %s' % expr.name)
 
             expr.ctx = Context(expr.name, None, ctx)
-            expr.stmts = parse(path, import_builtins=not expr.is_builtins,
+            expr.stmts = parse(import_path, import_builtins=not expr.is_builtins,
                     ctx=expr.ctx)
     new_block.extend(block)
 
