@@ -14,7 +14,7 @@ def pack(fmt: str, *args):
         size = spec_table[spec]
         max = 1 << (size * 8 - 1)
         if member < -max or member >= max:
-            error('value out of range for specifier ' + spec + ': ' + member)
+            error('value out of range for specifier ' + spec + ': ' + str(member))
 
         for i in range(size):
             bytes = bytes + [member >> (i * 8) & 255]
