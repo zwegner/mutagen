@@ -9,13 +9,26 @@ def pack(fmt: str, *args):
             'i': 4,
             'q': 8
         }
+        if spec.isupper():
+            spec = spec.lower()
+            signed = False
+        else:
+            signed = True
+
         if spec not in spec_table:
             error('unsupported format specifier character: ' + spec)
         size = spec_table[spec]
-        max = 1 << (size * 8 - 1)
-        if member < -max or member >= max:
+
+        if signed:
+            max = (1 << (size * 8 - 1)) - 1
+            min = -max - 1
+        else:
+            [min, max] = [0, (1 << size * 8) - 1]
+        if member < min or member > max:
             error('value out of range for specifier ' + spec + ': ' + str(member))
 
+        # For now, since Python has infinite-bit integers, we don't need any
+        # special handling for signed/unsigned
         for i in range(size):
             bytes = bytes + [member >> (i * 8) & 255]
 
