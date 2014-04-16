@@ -136,12 +136,9 @@ class Instruction(opcode: str, size: int, *args):
             return arg0_table[self.opcode]
         elif self.opcode in arg1_table:
             opcode = arg1_table[self.opcode]
-            [dst] = self.args
-            if isinstance(dst, Register):
-                return rex(w, 0, 0, dst.index) + [0xF7] + mod_rm_sib(opcode, dst)
-            else:
-                # Need to handle size of address somehow
-                assert False
+            [src] = self.args
+            assert isinstance(src, Register) or isinstance(src, Address)
+            return rex(w, 0, 0, src.index) + [0xF7] + mod_rm_sib(opcode, src)
         elif self.opcode in arg2_table:
             opcode = arg2_table[self.opcode]
             [dst, src] = self.args
@@ -243,6 +240,12 @@ insts = [
     Instruction('imul32', Register(1)),
     Instruction('div32', Register(1)),
     Instruction('idiv32', Register(1)),
+    Instruction('not32', Address(5, 8, 5, 0xFFFF)),
+    Instruction('neg32', Address(5, 8, 5, 0xFFFF)),
+    Instruction('mul32', Address(5, 8, 5, 0xFFFF)),
+    Instruction('imul32', Address(5, 8, 5, 0xFFFF)),
+    Instruction('div32', Address(5, 8, 5, 0xFFFF)),
+    Instruction('idiv32', Address(5, 8, 5, 0xFFFF)),
     Instruction('mov64', Register(0), 0x7ffff000deadbeef),
     Instruction('ret'),
     Label('_test2', True),
