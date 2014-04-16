@@ -40,8 +40,5 @@ for line in dump_output.splitlines():
 lines.append('')
 dump_output = '\n'.join(lines)
 
-# Get rid of trailing whitespace for the asm.mg output too
-raw_output = re.sub('\s+\n', '\n', raw_output)
-
 # Exit codes are reversed from boolean comparisons (0 is successful)
 sys.exit(raw_output != dump_output)

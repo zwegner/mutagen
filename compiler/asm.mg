@@ -5,14 +5,14 @@ import elf
 class Label(name: str, is_global: bool):
     pass
 
-class Register(index, size):
-    def __str__(self):
+class Register(index: int):
+    def str(self, size):
         names = ['ip', 'ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di']
-        if self.size == 32:
+        if size == 32:
             prefix = 'e'
             suffix = 'd'
         else:
-            assert self.size == 64
+            assert size == 64
             prefix = 'r'
             suffix = ''
         if self.index >= 8:
@@ -22,9 +22,9 @@ class Register(index, size):
 
 class Address(base, scale, index, disp):
     def __str__(self):
-        parts = [str(Register(self.base, 64))]
+        parts = [str(Register(self.base).str(64))]
         if self.scale:
-            parts = parts + [str(Register(self.index, 64)) + '*' + str(self.scale)]
+            parts = parts + [str(Register(self.index).str(64)) + '*' + str(self.scale)]
         if self.disp:
             parts = parts + [str(self.disp)]
         return 'DWORD PTR [' + '+'.join(parts) + ']'
@@ -90,7 +90,7 @@ def rex(w, r, x, b):
 def rex_addr(w, r, addr):
     return rex(w, r, addr.index, addr.base)
 
-class Instruction(opcode: str, *args):
+class Instruction(opcode: str, size: int, *args):
     arg0_table = {
         'ret': [0xC3],
     }
@@ -113,7 +113,24 @@ class Instruction(opcode: str, *args):
         'xor': 6,
         'cmp': 7,
     }
+
+    def __init__(opcode: str, *args):
+        # Handle 32/64 bit instruction size. This info is stuck in the opcode
+        # name for now since not all instructions need it.
+        if opcode.endswith('32'):
+            size = 32
+        elif opcode.endswith('64'):
+            size = 64
+        else:
+            # XXX default size--this might need more logic later
+            size = 64
+        opcode = opcode.replace('32', '').replace('64', '')
+        # This dictionary shit really needs to go. Need polymorphism!
+        return {'opcode': opcode, 'size': size, 'args': args}
+
     def to_bytes(self):
+        w = int(self.size == 64)
+
         if self.opcode in arg0_table:
             assert not self.args
             return arg0_table[self.opcode]
@@ -121,7 +138,6 @@ class Instruction(opcode: str, *args):
             opcode = arg1_table[self.opcode]
             [dst] = self.args
             if isinstance(dst, Register):
-                w = int(dst.size == 64)
                 return rex(w, 0, 0, dst.index) + [0xF7] + mod_rm_sib(opcode, dst)
             else:
                 # Need to handle size of address somehow
@@ -133,7 +149,6 @@ class Instruction(opcode: str, *args):
             # Immediates have separate opcodes, so handle them specially here.
             if isinstance(src, int):
                 assert isinstance(dst, Register)
-                w = int(dst.size == 64)
                 if self.opcode == 'mov':
                     if w:
                         imm_bytes = pack64(src)
@@ -161,17 +176,26 @@ class Instruction(opcode: str, *args):
                 [src, dst] = [dst, src]
 
             if isinstance(dst, Register):
-                w = int(dst.size == 64)
                 # op reg, reg
                 assert isinstance(src, Register)
-                assert dst.size == src.size
                 return rex(w, src, 0, dst) + [opcode] + mod_rm_sib(src, dst)
             else:
                 assert isinstance(src, Register)
-                w = int(src.size == 64)
                 return rex_addr(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
     def __str__(self):
-        return self.opcode + ' ' + ','.join(map(str, self.args))
+        if self.args:
+            args = []
+            for arg in self.args:
+                if isinstance(arg, Register):
+                    args = args + [arg.str(self.size)]
+                else:
+                    # XXX handle different address sizes as well as different
+                    # immediate sizes (the latter mainly to convert to unsigned)
+                    args = args + [str(arg)]
+            argstr = ' ' + ','.join(args)
+        else:
+            argstr = ''
+        return self.opcode + argstr
 
 def build(insts):
     bytes = []
@@ -189,40 +213,40 @@ def build(insts):
 # Just a bunch of random instructions to test out different encodings.
 insts = [
     Label('_test', True),
-    Instruction('xor', Register(0, 32), Register(0, 32)),
-    Instruction('add', Register(0, 32), Register(1, 32)),
-    Instruction('cmp', Register(0, 32), Register(12, 32)),
-    Instruction('add', Address(3, 8, 3, 0xFFFF), Register(1, 32)),
-    Instruction('add', Register(1, 32), Address(-1, 0, 0, 0xFFFF)),
-    Instruction('add', Address(-1, 0, 0, 0xFFFF), Register(1, 32)),
-    Instruction('add', Address(3, 8, 3, 0), Register(1, 32)),
-    Instruction('add', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
-    Instruction('add', Address(5, 8, 5, 0), Register(1, 32)),
-    Instruction('mov', Address(3, 8, 3, 0xFFFF), Register(1, 32)),
-    Instruction('mov', Register(1, 32), Address(-1, 0, 0, 0xFFFF)),
-    Instruction('mov', Address(-1, 0, 0, 0xFFFF), Register(1, 32)),
-    Instruction('mov', Address(3, 8, 3, 0), Register(1, 32)),
-    Instruction('mov', Address(5, 8, 5, 0xFFFF), Register(1, 32)),
-    Instruction('mov', Address(5, 8, 5, 0), Register(1, 32)),
-    Instruction('mov', Register(1, 32), Register(14, 32)),
-    Instruction('mov', Register(1, 32), Register(7, 32)),
-    Instruction('mov', Register(1, 64), Register(14, 64)),
-    Instruction('add', Register(1, 32), 4),
+    Instruction('xor32', Register(0), Register(0)),
+    Instruction('add32', Register(0), Register(1)),
+    Instruction('cmp32', Register(0), Register(12)),
+    Instruction('add32', Address(3, 8, 3, 0xFFFF), Register(1)),
+    Instruction('add32', Register(1), Address(-1, 0, 0, 0xFFFF)),
+    Instruction('add32', Address(-1, 0, 0, 0xFFFF), Register(1)),
+    Instruction('add32', Address(3, 8, 3, 0), Register(1)),
+    Instruction('add32', Address(5, 8, 5, 0xFFFF), Register(1)),
+    Instruction('add32', Address(5, 8, 5, 0), Register(1)),
+    Instruction('mov32', Address(3, 8, 3, 0xFFFF), Register(1)),
+    Instruction('mov32', Register(1), Address(-1, 0, 0, 0xFFFF)),
+    Instruction('mov32', Address(-1, 0, 0, 0xFFFF), Register(1)),
+    Instruction('mov32', Address(3, 8, 3, 0), Register(1)),
+    Instruction('mov32', Address(5, 8, 5, 0xFFFF), Register(1)),
+    Instruction('mov32', Address(5, 8, 5, 0), Register(1)),
+    Instruction('mov32', Register(1), Register(14)),
+    Instruction('mov32', Register(1), Register(7)),
+    Instruction('mov64', Register(1), Register(14)),
+    Instruction('add32', Register(1), 4),
     # Our IR can't properly print unsigned integers without a bunch of work,
     # as they appear in the objdump output. So ignore for now.
-    #        Instruction('add', Register(1, 32), -2),
-    #        Instruction('add', Register(1, 32), -0x200),
-    Instruction('add', Register(1, 32), 0xFFF),
-    Instruction('not', Register(1, 32)),
-    Instruction('neg', Register(1, 32)),
-    Instruction('mul', Register(1, 32)),
-    Instruction('imul', Register(1, 32)),
-    Instruction('div', Register(1, 32)),
-    Instruction('idiv', Register(1, 32)),
-    Instruction('mov', Register(0, 64), 0x7ffff000deadbeef),
+    #Instruction('add32', Register(1), -2),
+    #Instruction('add32', Register(1), -0x200),
+    Instruction('add32', Register(1), 0xFFF),
+    Instruction('not32', Register(1)),
+    Instruction('neg32', Register(1)),
+    Instruction('mul32', Register(1)),
+    Instruction('imul32', Register(1)),
+    Instruction('div32', Register(1)),
+    Instruction('idiv32', Register(1)),
+    Instruction('mov64', Register(0), 0x7ffff000deadbeef),
     Instruction('ret'),
     Label('_test2', True),
-    Instruction('mov', Register(0, 64), 0x0123456789abcdef),
+    Instruction('mov64', Register(0), 0x0123456789abcdef),
     Instruction('ret'),
 ]
 
