@@ -911,6 +911,12 @@ class BuiltinStr(BuiltinClass):
     def upper(obj, ctx, args):
         [arg] = args
         return String(arg.value.upper(), info=arg)
+    def endswith(obj, ctx, args):
+        [arg, suffix] = args
+        return Boolean(arg.value.endswith(suffix.value), info=arg)
+    def replace(obj, ctx, args):
+        [arg, pattern, repl] = args
+        return String(arg.value.replace(pattern.value, repl.value), info=arg)
     def join(obj, ctx, args):
         [sep, args] = args
         return String(sep.value.join(a.value for a in args), info=sep)
@@ -926,7 +932,9 @@ class BuiltinStr(BuiltinClass):
         # XXX create list of integers, as we don't yet have a 'bytes' object
         return List(list(Integer(i, info=arg) for i in encoded), info=arg)
     def setup(self):
-        self.add_methods(['islower', 'lower', 'isupper', 'upper', 'join', 'encode'])
+        # Thanks for all this functionality Python!
+        self.add_methods(['islower', 'lower', 'isupper', 'upper', 'endswith',
+            'replace', 'join', 'encode'])
 
 StrClass = BuiltinStr('str')
 
