@@ -147,6 +147,7 @@ def p_expr(p):
     """ expr : list
              | list_comp
              | dict
+             | dict_comp
              | set
              | lambda
              | ident
@@ -207,6 +208,10 @@ def p_dict_items(p):
         p[0] = [[p[1], p[3]]]
     else:
         p[0] = p[1] + [[p[3], p[5]]]
+
+def p_dict_comp(p):
+    """ dict_comp : LBRACE expr COLON expr FOR for_assn IN expr RBRACE """
+    p[0] = DictComprehension(p[2], p[4], p[6], p[8])
 
 def p_dict(p):
     """ dict : LBRACE RBRACE

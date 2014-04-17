@@ -690,6 +690,22 @@ class ListComprehension(Node):
         return '[%s for %s in %s]' % (self.expr.repr(ctx), self.target,
                 self.iter.repr(ctx))
 
+@node('&key_expr, &value_expr, target, &iter')
+class DictComprehension(Node):
+    def eval(self, ctx):
+        iter = self.iter.eval(ctx)
+        # XXX Should we do full scoping analysis and lifted lambdas and such?
+        # Sounds like a pain. I think this might be sufficient anyways.
+        child_ctx = Context('<dict-comp>', ctx, ctx)
+        result = {}
+        for i in iter.iter(ctx):
+            assign_target(child_ctx, self.target, i)
+            result[self.key_expr.eval(child_ctx)] = self.value_expr.eval(child_ctx)
+        return Dict(result, info=self)
+    def repr(self, ctx):
+        return '{%s: %s for %s in %s}' % (self.key_expr.repr(ctx),
+                self.value_expr.repr(ctx), self.target, self.iter.repr(ctx))
+
 @node('&expr, &block')
 class While(Node):
     def eval(self, ctx):
