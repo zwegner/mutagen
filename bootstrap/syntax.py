@@ -384,7 +384,7 @@ class Dict(Node):
     def __getitem__(self, item):
         if item in self.items:
             return self.items[item]
-        self.error('bad arg for getitem: %s' % item)
+        self.error('bad arg for getitem: %s' % item.str(None))
     def __contains__(self, item):
         return Boolean(item in self.items, info=self)
     def len(self, ctx):
@@ -403,7 +403,7 @@ class Object(Node):
         if attr in self.items:
             return self.items[attr]
         return None
-    def base_repr(self, ctx):
+    def base_repr(self):
         return '<%s at %#x>' % (self.get_attr('__class__').name, id(self))
     def __eq__(self, other):
         return Boolean(isinstance(other, Object) and
@@ -420,14 +420,14 @@ class Object(Node):
                 self.repr(ctx), info=self)).value
     def repr(self, ctx):
         return (self.overload(ctx, '__repr__', []) or String(
-                self.base_repr(ctx), info=self)).value
+                self.base_repr(), info=self)).value
     def iter(self, ctx):
         return self.dispatch(ctx, '__iter__', [])
     def overload(self, ctx, attr, args):
         # Operator overloading
         cls = self.get_attr('__class__')
         op = cls.get_attr(attr)
-        if op is not None:
+        if op is not None and ctx is not None:
             return op.eval_call(ctx, [self] + args)
         return None
     def dispatch(self, ctx, attr, args):
