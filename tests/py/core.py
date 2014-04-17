@@ -34,3 +34,13 @@ print([0] * 0)
 print([0] * 1)
 print([0] * 20)
 print([0, 1, 2] * 20)
+
+# Test list and dict comprehensions, making sure scoping is handled properly
+x = 99
+y = True
+print([x * y for y in range(4)])
+print({y: x for y in range(4)})
+print([[x * y for y in range(4)] for x in range(4)])
+print([{x * y: x + y for y in range(4)} for x in range(4)])
+print(x)
+print(y)
