@@ -145,6 +145,7 @@ def p_expr_list(p):
 
 def p_expr(p):
     """ expr : list
+             | list_comp
              | dict
              | set
              | lambda
@@ -194,9 +195,13 @@ def p_list(p):
     else:
         p[0] = List(p[2], info=get_info(p, 1))
 
-def p_dict_list(p):
-    """ dict_list : expr COLON expr
-                  | dict_list COMMA expr COLON expr
+def p_list_comp(p):
+    """ list_comp : LBRACKET expr FOR for_assn IN expr RBRACKET """
+    p[0] = ListComprehension(p[2], p[4], p[6])
+
+def p_dict_items(p):
+    """ dict_items : expr COLON expr
+                   | dict_items COMMA expr COLON expr
     """
     if len(p) == 4:
         p[0] = [[p[1], p[3]]]
@@ -205,8 +210,8 @@ def p_dict_list(p):
 
 def p_dict(p):
     """ dict : LBRACE RBRACE
-             | LBRACE dict_list RBRACE
-             | LBRACE dict_list COMMA RBRACE
+             | LBRACE dict_items RBRACE
+             | LBRACE dict_items COMMA RBRACE
     """
     if len(p) == 3:
         p[0] = Dict({}, info=get_info(p, 1))
