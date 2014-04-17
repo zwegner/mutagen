@@ -385,6 +385,11 @@ class Dict(Node):
         if item in self.items:
             return self.items[item]
         self.error('bad arg for getitem: %s' % item.str(None))
+    def __iter__(self):
+        # XXX having key-value iteration is probably nicer than Python's
+        # key iteration, but should we break compatibility? Think about this!
+        for k, v in self.items.items():
+            yield List([k, v], info=self)
     def __contains__(self, item):
         return Boolean(item in self.items, info=self)
     def len(self, ctx):

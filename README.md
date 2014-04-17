@@ -113,6 +113,17 @@ import module from 'path/to/module.mg'
 for [i, x] in enumerate(data):
     pass
 ```
+* Dictionary iteration iterates over key-value pairs instead of keys as in Python. This might change in the future if any particularly compelling rationale for key-only iteration arises.
+
+```python
+d = {'a': 1, 'b': 2}
+for [k, v] in d:
+    print(k, v)
+
+# Outputs:
+# a 1
+# b 2
+```
 * `lambda` is just a synonym for a `def` without a function identifier, not a limited expression as in Python. Thus, if used in an expression, it will usually require braces instead of indentation, semicolons as statement delimiters, and an explicit return statement:
 
 ```python

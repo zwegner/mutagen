@@ -1,3 +1,14 @@
+# Test dictionary iteration. This test needs all keys/values to have
+# commutative operations, so just use ints. Note that dictionary iteration
+# is different from Python so we have to compare against hardcoded results.
+test_dict = {-1: 9, -3: 17, -5: 49}
+[key_sum, value_sum] = [0, 0]
+for [k, v] in test_dict:
+    key_sum = key_sum + k
+    value_sum = value_sum + v
+assert key_sum == -9
+assert value_sum == 75
+
 # Test that scoping works properly for assignments and for loops, that is,
 # both of them should put their targets in the set of locals.
 def test_scoping():
