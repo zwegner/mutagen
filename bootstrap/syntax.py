@@ -74,6 +74,8 @@ class Node:
         return self.repr(ctx)
     def repr(self, ctx):
         self.error('__repr__ unimplemented for %s' % type(self), ctx=ctx)
+    def get_attr(self, ctx, attr):
+        self.error('__getattr__ unimplemented for %s' % type(self), ctx=ctx)
     def iter(self, ctx):
         return iter(self)
     def overload(self, ctx, attr, args):
@@ -245,7 +247,7 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
 
 @node()
 class None_(Node):
-    def get_attr(self, attr):
+    def get_attr(self, ctx, attr):
         if attr == '__class__':
             return NoneClass
         return None
@@ -267,7 +269,7 @@ class Identifier(Node):
 
 @node('value', compare=True, base_type=str, ops=['add'])
 class String(Node):
-    def get_attr(self, attr):
+    def get_attr(self, ctx, attr):
         if attr == '__class__':
             return StrClass
         return None
@@ -306,7 +308,7 @@ class Integer(Node):
         self.value = int(self.value)
     def eval(self, ctx):
         return self
-    def get_attr(self, attr):
+    def get_attr(self, ctx, attr):
         if attr == '__class__':
             return IntClass
         return None
@@ -323,7 +325,7 @@ class Boolean(Node):
         self.value = bool(self.value)
     def eval(self, ctx):
         return self
-    def get_attr(self, attr):
+    def get_attr(self, ctx, attr):
         if attr == '__class__':
             return BoolClass
         return None
@@ -404,12 +406,12 @@ class Object(Node):
     def eval(self, ctx):
         return Object({k.eval(ctx): v.eval(ctx) for k, v
             in self.items.items()}, info=self)
-    def get_attr(self, attr):
+    def get_attr(self, ctx, attr):
         if attr in self.items:
             return self.items[attr]
         return None
     def base_repr(self):
-        return '<%s at %#x>' % (self.get_attr('__class__').name, id(self))
+        return '<%s at %#x>' % (self.get_attr(None, '__class__').name, id(self))
     def __eq__(self, other):
         return Boolean(isinstance(other, Object) and
                 self.items == other.items, info=self)
@@ -430,13 +432,13 @@ class Object(Node):
         return self.dispatch(ctx, '__iter__', [])
     def overload(self, ctx, attr, args):
         # Operator overloading
-        cls = self.get_attr('__class__')
-        op = cls.get_attr(attr)
+        cls = self.get_attr(ctx, '__class__')
+        op = cls.get_attr(ctx, attr)
         if op is not None and ctx is not None:
             return op.eval_call(ctx, [self] + args)
         return None
     def dispatch(self, ctx, attr, args):
-        cls = self.get_attr('__class__')
+        cls = self.get_attr(ctx, '__class__')
         return self.overload(ctx, attr, args) or self.error(
                 '%s unimplemented for %s' % (attr, cls.repr(ctx)), ctx=ctx)
 
@@ -513,11 +515,11 @@ class BinaryOp(Node):
 class GetAttr(Node):
     def eval(self, ctx):
         obj = self.obj.eval(ctx)
-        item = obj.get_attr(self.attr)
+        item = obj.get_attr(ctx, self.attr)
         # If the attribute doesn't exist, create a bound method with the attribute
         # from the object's class, assuming it exists.
         if item is None:
-            method = obj.get_attr('__class__').get_attr(self.attr)
+            method = obj.get_attr(ctx, '__class__').get_attr(ctx, self.attr)
             if method is None:
                 self.error('object of type %s has no attribute %s' %
                         (type(obj).__name__, self.attr), ctx=ctx)
@@ -751,7 +753,7 @@ class VarArg(Node):
         return '*%s' % self.expr.repr(ctx)
 
 def check_obj_type(self, msg_type, ctx, obj, type):
-    obj_type = obj.get_attr('__class__')
+    obj_type = obj.get_attr(ctx, '__class__')
     if obj_type is not type:
         self.error('bad %s type %s, expected %s' % (msg_type,
             obj_type.repr(ctx), type.repr(ctx)), ctx=ctx)
@@ -885,7 +887,7 @@ class Class(Node):
         self.cls = Object(items, info=self)
         return self
     def eval_call(self, ctx, args):
-        init = self.cls.get_attr('__init__')
+        init = self.cls.get_attr(ctx, '__init__')
         if init is None:
             attrs = {String(k, info=self): v.eval(ctx) for k, v in
                     self.params.bind(self, ctx, args)}
@@ -899,8 +901,8 @@ class Class(Node):
         return Object(attrs, info=self)
     def repr(self, ctx):
         return "<class '%s'>" % self.name
-    def get_attr(self, attr):
-        return self.cls.get_attr(attr)
+    def get_attr(self, ctx, attr):
+        return self.cls.get_attr(ctx, attr)
     def __eq__(self, other):
         return Boolean(self is other, info=self)
     def __hash__(self):
