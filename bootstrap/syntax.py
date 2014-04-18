@@ -103,8 +103,8 @@ class Node:
                     node = next(subtree_gen)
             except StopIteration:
                 break
-            if isinstance(node, (Assignment, For)):
-                stores.update(get_target_stores(node.target))
+            if isinstance(node, Target):
+                stores.update(node.get_stores())
             elif isinstance(node, Identifier):
                 loads.add(node.name)
             elif isinstance(node, Function):
@@ -545,32 +545,38 @@ class Assert(Node):
     def repr(self, ctx):
         return 'assert %s' % self.expr.repr(ctx)
 
-def assign_target(ctx, lhs, rhs):
-    if isinstance(lhs, str):
-        ctx.store(lhs, rhs)
-    elif isinstance(lhs, list):
-        if len(lhs) != rhs.len(ctx):
-            rhs.error('too %s values to unpack' %
-                   ('few' if len(lhs) > rhs.len(ctx) else 'many'), ctx=ctx)
-        for lhs_i, rhs_i in zip(lhs, rhs):
-            assign_target(ctx, lhs_i, rhs_i)
-    else:
-        assert False
+@node('target')
+class Target(Node):
+    def assign_values(self, ctx, rhs):
+        return Target._assign_values(ctx, self.target, rhs)
+    def _assign_values(ctx, lhs, rhs):
+        if isinstance(lhs, str):
+            ctx.store(lhs, rhs)
+        elif isinstance(lhs, list):
+            if len(lhs) != rhs.len(ctx):
+                rhs.error('too %s values to unpack' %
+                       ('few' if len(lhs) > rhs.len(ctx) else 'many'), ctx=ctx)
+            for lhs_i, rhs_i in zip(lhs, rhs):
+                Target._assign_values(ctx, lhs_i, rhs_i)
+        else:
+            assert False
 
-def get_target_stores(target):
-    if isinstance(target, str):
-        return {target}
-    assert isinstance(target, list)
-    stores = set()
-    for t in target:
-        stores |= get_target_stores(t)
-    return stores
+    def get_stores(self):
+        return Target._get_stores(self.target)
+    def _get_stores(target):
+        if isinstance(target, str):
+            return {target}
+        assert isinstance(target, list)
+        stores = set()
+        for t in target:
+            stores |= Target._get_stores(t)
+        return stores
 
-@node('target, &rhs')
+@node('&target, &rhs')
 class Assignment(Node):
     def eval(self, ctx):
         value = self.rhs.eval(ctx)
-        assign_target(ctx, self.target, value)
+        self.target.assign_values(ctx, value)
         return value
     def repr(self, ctx):
         return '%s = %s' % (self.target, self.rhs.repr(ctx))
@@ -649,13 +655,13 @@ class IfElse(Node):
             else_block = '\nelse%s' % self.else_block.repr(ctx)
         return 'if %s%s%s' % (self.expr.repr(ctx), self.if_block.repr(ctx), else_block)
 
-@node('target, &expr, &block')
+@node('&target, &expr, &block')
 class For(Node):
     def eval(self, ctx):
         expr = self.expr.eval(ctx)
         for i in expr.iter(ctx):
             try:
-                assign_target(ctx, self.target, i)
+                self.target.assign_values(ctx, i)
                 self.block.eval(ctx)
             except BreakExc:
                 break
@@ -666,7 +672,7 @@ class For(Node):
         expr = self.expr.eval(ctx)
         for i in expr.iter(ctx):
             try:
-                ctx.store(self.target, i)
+                self.target.assign_values(ctx, i)
                 yield from self.block.eval_gen(ctx)
             except BreakExc:
                 break
@@ -676,32 +682,34 @@ class For(Node):
         return 'for %s in %s%s' % (self.target, self.expr.repr(ctx),
                 self.block.repr(ctx))
 
-@node('&expr, target, &iter')
+@node('&expr, &target, &iter')
 class ListComprehension(Node):
     def eval(self, ctx):
         iter = self.iter.eval(ctx)
         # XXX Should we do full scoping analysis and lifted lambdas and such?
-        # Sounds like a pain. I think this might be sufficient anyways.
+        # After some thought, this is sufficient with the current imperative
+        # backend, where expressions are always evaluated in-order.
         child_ctx = Context('<list-comp>', ctx, ctx)
         result = []
         for i in iter.iter(ctx):
-            assign_target(child_ctx, self.target, i)
+            self.target.assign_values(child_ctx, i)
             result.append(self.expr.eval(child_ctx))
         return List(result, info=self)
     def repr(self, ctx):
         return '[%s for %s in %s]' % (self.expr.repr(ctx), self.target,
                 self.iter.repr(ctx))
 
-@node('&key_expr, &value_expr, target, &iter')
+@node('&key_expr, &value_expr, &target, &iter')
 class DictComprehension(Node):
     def eval(self, ctx):
         iter = self.iter.eval(ctx)
         # XXX Should we do full scoping analysis and lifted lambdas and such?
-        # Sounds like a pain. I think this might be sufficient anyways.
+        # After some thought, this is sufficient with the current imperative
+        # backend, where expressions are always evaluated in-order.
         child_ctx = Context('<dict-comp>', ctx, ctx)
         result = {}
         for i in iter.iter(ctx):
-            assign_target(child_ctx, self.target, i)
+            self.target.assign_values(child_ctx, i)
             result[self.key_expr.eval(child_ctx)] = self.value_expr.eval(child_ctx)
         return Dict(result, info=self)
     def repr(self, ctx):
@@ -917,7 +925,7 @@ class BuiltinClass(Class):
         stmts = []
         for name in methods:
             fn = getattr(self.__class__, name)
-            stmts.append(Assignment(name, BuiltinFunction(name, fn,
+            stmts.append(Assignment(Target(name, info=self), BuiltinFunction(name, fn,
                 info=builtin_info)))
         self.block = Block(stmts, info=builtin_info)
 

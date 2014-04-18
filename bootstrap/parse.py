@@ -310,13 +310,14 @@ def p_assert(p):
 
 def p_assignment(p):
     """ assn : expr EQUALS expr """
+    # Please god, die in a fire
     def deconstruct_lhs(lhs):
         if isinstance(lhs, Identifier):
             return lhs.name
         elif isinstance(lhs, List):
             return [deconstruct_lhs(i) for i in lhs]
         lhs.error('invalid lhs for assignment')
-    p[0] = Assignment(deconstruct_lhs(p[1]), p[3])
+    p[0] = Assignment(Target(deconstruct_lhs(p[1]), info=get_info(p, 1)), p[3])
 
 def p_break(p):
     """ break : BREAK """
@@ -371,8 +372,8 @@ def p_else(p):
 # We don't use <expr> as the assignment does, since 'expr in expr' is a
 # containment test, but that also could match 'for expr in expr'... icky!
 def p_for_assn_list(p):
-    """ for_assn_list : for_assn
-                      | for_assn_list COMMA for_assn
+    """ for_assn_list : for_assn_base
+                      | for_assn_list COMMA for_assn_base
     """
     if len(p) == 2:
         p[0] = [p[1]]
@@ -380,13 +381,17 @@ def p_for_assn_list(p):
         p[0] = p[1] + [p[3]]
 
 def p_for_assn(p):
-    """ for_assn : IDENTIFIER
-                 | LBRACKET for_assn_list RBRACKET
+    """ for_assn_base : IDENTIFIER
+                      | LBRACKET for_assn_list RBRACKET
     """
     if len(p) == 2:
         p[0] = p[1]
     else:
         p[0] = p[2]
+
+def p_for_assn_target(p):
+    """ for_assn : for_assn_base """
+    p[0] = Target(p[1], info=get_info(p, 1))
 
 def p_for(p):
     """ for_stmt : FOR for_assn IN expr block """
@@ -449,7 +454,8 @@ def p_return_type(p):
 
 def p_def(p):
     """ def_stmt : DEF IDENTIFIER params return_type block """
-    p[0] = Assignment(p[2], Function(current_ctx, p[2], p[3], p[4], p[5], info=get_info(p, 1)))
+    p[0] = Assignment(Target(p[2], info=get_info(p, 2)),
+            Function(current_ctx, p[2], p[3], p[4], p[5], info=get_info(p, 1)))
 
 def p_lambda(p):
     """ lambda : LAMBDA params return_type block """
@@ -457,7 +463,8 @@ def p_lambda(p):
 
 def p_class(p):
     """ class_stmt : CLASS IDENTIFIER params block """
-    p[0] = Assignment(p[2], Class(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
+    p[0] = Assignment(Target(p[2], info=get_info(p, 2)),
+            Class(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
 
 # Union parameters have custom parse rules so that they can support inline
 # class definitions.
@@ -486,8 +493,8 @@ def p_union_param_list(p):
 
 def p_union(p):
     """ union_stmt : UNION IDENTIFIER LPAREN union_param_list RPAREN block """
-    p[0] = Assignment(p[2], Union(current_ctx, p[2], Params(p[4], None,
-        info=get_info(p, 1)), p[6], info=get_info(p, 1)))
+    p[0] = Assignment(Target(p[2], info=get_info(p, 2)), Union(current_ctx, p[2],
+        Params(p[4], None, info=get_info(p, 1)), p[6], info=get_info(p, 1)))
 
 parser = yacc.yacc(write_tables=0, debug=0)
 
@@ -521,7 +528,7 @@ def parse(path, import_builtins=True, ctx=None):
     new_block = []
 
     for k, v in mg_builtins.builtins.items():
-        new_block.append(Assignment(k, v))
+        new_block.append(Assignment(Target(k, info=builtin_info), v))
 
     # Recursively parse imports
     for expr in block:

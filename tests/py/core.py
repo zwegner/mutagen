@@ -42,5 +42,10 @@ print([x * y for y in range(4)])
 print({y: x for y in range(4)})
 print([[x * y for y in range(4)] for x in range(4)])
 print([{x * y: x + y for y in range(4)} for x in range(4)])
+print({xxx: xxx for xxx in range(4)})
+def with_new_scope():
+    print(x) # Make sure to access global scope... wacky bug
+    print({yyy: yyy for yyy in range(4)})
+with_new_scope()
 print(x)
 print(y)
