@@ -80,12 +80,5 @@ def str_split_lines(text):
 def str_starts_with(a, b):
     return slice(a, 0, len(b)) == b
 
-# XXX need a real class
-def list(items):
-    l = []
-    for i in items:
-        l = l + [i]
-    return l
-
 def isinstance(obj, cls):
     return type(obj) == cls

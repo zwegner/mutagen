@@ -352,6 +352,10 @@ class List(Node):
             except IndexError:
                 self.error('list index out of range: %s' % item.value)
         self.error('bad arg for getitem: %s' % item)
+    def get_attr(self, ctx, attr):
+        if attr == '__class__':
+            return ListClass
+        return None
     def __eq__(self, other):
         return Boolean(isinstance(other, List) and
                 self.items == other.items, info=self)
@@ -929,13 +933,6 @@ class BuiltinClass(Class):
                 info=builtin_info)))
         self.block = Block(stmts, info=builtin_info)
 
-class BuiltinType(BuiltinClass):
-    def eval_call(self, ctx, args):
-        [arg] = args
-        return GetAttr(arg, '__class__').eval(ctx)
-
-TypeClass = BuiltinType('type')
-
 class BuiltinNone(BuiltinClass):
     def eval_call(self, ctx, args):
         self.error('NoneType is not callable')
@@ -1003,6 +1000,20 @@ class BuiltinBool(BuiltinClass):
         return Boolean(arg.bool(ctx), info=arg)
 
 BoolClass = BuiltinBool('bool')
+
+class BuiltinList(BuiltinClass):
+    def eval_call(self, ctx, args):
+        [arg] = args
+        return List(list(arg), info=arg)
+
+ListClass = BuiltinList('list')
+
+class BuiltinType(BuiltinClass):
+    def eval_call(self, ctx, args):
+        [arg] = args
+        return GetAttr(arg, '__class__').eval(ctx)
+
+TypeClass = BuiltinType('type')
 
 @node('&params')
 class UnionInlineClass(Node):

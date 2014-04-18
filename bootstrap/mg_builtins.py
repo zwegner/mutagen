@@ -78,6 +78,7 @@ def mgb_assert_call_fails(ctx, fn, *args):
 builtins['str'] = StrClass
 builtins['int'] = IntClass
 builtins['bool'] = BoolClass
+builtins['list'] = ListClass
 builtins['type'] = TypeClass
 
 __all__ = builtins
