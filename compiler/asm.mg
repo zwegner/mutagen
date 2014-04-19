@@ -4,7 +4,7 @@ import elf
 
 class Label(name: str, is_global: bool):
     def __str__(self):
-        return '<' + self.name + '>'
+        return '<{}>'.format(self.name)
 
 # XXX includes the bytes of the full instruction, as it's slightly more
 # convenient. Not sure how to do this more cleanly...
@@ -12,7 +12,7 @@ class Relocation(label: Label, code_offset: int, size: int, bytes):
     pass
 
 class Register(index: int):
-    def str(self, size):
+    def to_str(self, size):
         names = ['ip', 'ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di']
         if size == 32:
             prefix = 'e'
@@ -22,18 +22,19 @@ class Register(index: int):
             prefix = 'r'
             suffix = ''
         if self.index >= 8:
-            return 'r' + str(self.index) + suffix
+            return 'r{}{}'.format(self.index, suffix)
         else:
             return prefix + names[self.index + 1]
 
 class Address(base, scale, index, disp):
     def __str__(self):
-        parts = [str(Register(self.base).str(64))]
+        parts = [Register(self.base).to_str(64)]
         if self.scale:
-            parts = parts + [str(Register(self.index).str(64)) + '*' + str(self.scale)]
+            parts = parts + ['{}*{}'.format(Register(self.index).to_str(64),
+                self.scale)]
         if self.disp:
-            parts = parts + [str(self.disp)]
-        return 'DWORD PTR [' + '+'.join(parts) + ']'
+            parts = parts + [self.disp]
+        return 'DWORD PTR [{}]'.format('+'.join(map(str, parts)))
 
 def fits_8bit(imm):
     return -128 <= imm and imm <= 127
@@ -119,6 +120,7 @@ class Instruction(opcode: str, size: int, *args):
         'xor': 6,
         'cmp': 7,
     }
+
     all_conds = [
         ['o'],
         ['no'],
@@ -137,13 +139,8 @@ class Instruction(opcode: str, size: int, *args):
         ['le', 'ng'],
         ['g', 'nle'],
     ]
-
-    cond_table = {}
-    cond_canon = {}
-    for [i, conds] in enumerate(all_conds):
-        for cond in conds:
-            cond_table = cond_table + {cond: i}
-            cond_canon = cond_canon + {cond: conds[0]}
+    cond_table = {cond: i for [i, conds] in enumerate(all_conds) for cond in conds}
+    cond_canon = {cond: conds[0] for conds in all_conds for cond in conds}
 
     jump_table = {'j' + cond: 0x80 | code for [cond, code] in cond_table}
     jump_canon = {'j' + cond: 'j' + canon for [cond, canon] in cond_canon}
@@ -233,7 +230,7 @@ class Instruction(opcode: str, size: int, *args):
             args = []
             for arg in self.args:
                 if isinstance(arg, Register):
-                    args = args + [arg.str(self.size)]
+                    args = args + [arg.to_str(self.size)]
                 else:
                     # XXX handle different address sizes as well as different
                     # immediate sizes (the latter mainly to convert to unsigned)
@@ -320,16 +317,16 @@ insts = [
     Instruction('imul32', Address(5, 8, 5, 0xFFFF)),
     Instruction('div32', Address(5, 8, 5, 0xFFFF)),
     Instruction('idiv32', Address(5, 8, 5, 0xFFFF)),
-    Instruction('mov64', Register(0), 0x7ffff000deadbeef),
+    Instruction('mov64', Register(0), 0x7FFFF000DEADBEEF),
     Instruction('ret'),
     Label('_test3', True),
-    Instruction('mov64', Register(0), 0x0123456789abcdef),
+    Instruction('mov64', Register(0), 0x0123456789ABCDEF),
     Instruction('ret'),
     Label('_jump_test', True),
 ]
 # Make sure all of the condition codes are tested, to test canonicalization
-for [cond, code] in Instruction.cond_table:
-    insts = insts + [Instruction('j' + cond, Label('_jump_test', True))]
+for [cond, code] in Instruction.jump_table:
+    insts = insts + [Instruction(cond, Label('_jump_test', True))]
 
 elf_file = elf.create_elf_file(*build(insts))
 write_binary_file('elfout.o', elf_file)
@@ -338,6 +335,6 @@ write_binary_file('elfout.o', elf_file)
 # against objdump
 for inst in insts:
     if isinstance(inst, Label):
-        print(inst.name + ':')
+        print('{}:'.format(inst.name))
     else:
-        print('    ' + str(inst))
+        print('    {}'.format(inst))
