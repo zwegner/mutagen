@@ -25,8 +25,6 @@ for line in dump_output.splitlines():
             ['\\s+', ' '], # multiple whitespace
             ['\\s+$', ''], # trailing whitespace
             ['movabs', 'mov'], # instruction munging
-            ['je', 'jz'],
-            ['jne', 'jnz'],
             [' [0-9a-f]+ (<[_0-9A-Za-z]+>)', ' \\1'], # remove raw address of labels
             ['0x[0-9a-f]+', lambda m: str(int(m.group(0), 16))], # hex->dec
             ['\\+0]', ']']]: # get rid of 0 disp from RBP/R13 base

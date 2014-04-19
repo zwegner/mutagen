@@ -119,26 +119,34 @@ class Instruction(opcode: str, size: int, *args):
         'xor': 6,
         'cmp': 7,
     }
-    # Not complete, but probably more flags than we'll care about for a long time
-    cond_table = {
-        'a': 0x7,
-        'ae': 0x3,
-        'b': 0x2,
-        'be': 0x6,
-        'e': 0x4,
-        'g': 0xF,
-        'ge': 0xD,
-        'l': 0xC,
-        'le': 0xE,
-        'ne': 0x5,
-        'no': 0x1,
-        'ns': 0x9,
-        'nz': 0x5,
-        'o': 0x0,
-        's': 0x8,
-        'z': 0x4,
-    }
+    all_conds = [
+        ['o'],
+        ['no'],
+        ['b', 'c', 'nae'],
+        ['ae', 'nb', 'nc'],
+        ['e', 'z'],
+        ['ne', 'nz'],
+        ['be', 'na'],
+        ['a', 'nbe'],
+        ['s'],
+        ['ns'],
+        ['p', 'pe'],
+        ['np', 'po'],
+        ['l', 'nge'],
+        ['ge', 'nl'],
+        ['le', 'ng'],
+        ['g', 'nle'],
+    ]
+
+    cond_table = {}
+    cond_canon = {}
+    for [i, conds] in enumerate(all_conds):
+        for cond in conds:
+            cond_table = cond_table + {cond: i}
+            cond_canon = cond_canon + {cond: conds[0]}
+
     jump_table = {'j' + cond: 0x80 | code for [cond, code] in cond_table}
+    jump_canon = {'j' + cond: 'j' + canon for [cond, canon] in cond_canon}
 
     def __init__(opcode: str, *args):
         # Handle 32/64 bit instruction size. This info is stuck in the opcode
@@ -151,6 +159,11 @@ class Instruction(opcode: str, size: int, *args):
             # XXX default size--this might need more logic later
             size = 64
         opcode = opcode.replace('32', '').replace('64', '')
+
+        # Canonicalize instruction names that have multiple names
+        if opcode in jump_canon:
+            opcode = jump_canon[opcode]
+
         # This dictionary shit really needs to go. Need polymorphism!
         return {'opcode': opcode, 'size': size, 'args': args}
 
@@ -279,6 +292,7 @@ insts = [
     Instruction('mov32', Address(3, 8, 3, 0xFFFF), Register(1)),
     Instruction('mov32', Register(1), Address(-1, 0, 0, 0xFFFF)),
     Instruction('mov32', Address(-1, 0, 0, 0xFFFF), Register(1)),
+    # Test backward/forward jumps
     Instruction('jz', Label('_test', True)),
     Instruction('ja', Label('_test2', True)),
     Instruction('mov32', Address(3, 8, 3, 0), Register(1)),
@@ -296,15 +310,6 @@ insts = [
     Instruction('add32', Register(1), 0xFFF),
     Instruction('not32', Register(1)),
     Instruction('neg32', Register(1)),
-    Instruction('jz', Label('_test', False)),
-    Instruction('js', Label('_test3', False)),
-    Instruction('jnz', Label('_test3', False)),
-    Instruction('jns', Label('_test3', False)),
-    Instruction('jo', Label('_test3', False)),
-    Instruction('jl', Label('_test3', False)),
-    Instruction('jle', Label('_test3', False)),
-    Instruction('jg', Label('_test3', False)),
-    Instruction('jge', Label('_test3', False)),
     Instruction('mul32', Register(1)),
     Instruction('imul32', Register(1)),
     Instruction('div32', Register(1)),
@@ -320,7 +325,11 @@ insts = [
     Label('_test3', True),
     Instruction('mov64', Register(0), 0x0123456789abcdef),
     Instruction('ret'),
+    Label('_jump_test', True),
 ]
+# Make sure all of the condition codes are tested, to test canonicalization
+for [cond, code] in Instruction.cond_table:
+    insts = insts + [Instruction('j' + cond, Label('_jump_test', True))]
 
 elf_file = elf.create_elf_file(*build(insts))
 write_binary_file('elfout.o', elf_file)
