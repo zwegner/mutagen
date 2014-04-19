@@ -930,13 +930,13 @@ builtin_info = Info('__builtins__', 0)
 
 class BuiltinClass(Class):
     def __init__(self, name):
-        super().__init__(None, name, Params([], None, info=builtin_info), Block([], info=builtin_info))
-    def add_methods(self, methods):
+        super().__init__(None, name, Params([], None, info=builtin_info), None)
+        methods = set(dir(type(self))) - set(dir(BuiltinClass))
         stmts = []
         for name in methods:
             fn = getattr(self.__class__, name)
-            stmts.append(Assignment(Target(name, info=self), BuiltinFunction(name, fn,
-                info=builtin_info)))
+            stmts.append(Assignment(Target(name, info=self),
+                BuiltinFunction(name, fn, info=builtin_info)))
         self.block = Block(stmts, info=builtin_info)
 
 class BuiltinNone(BuiltinClass):
@@ -981,10 +981,12 @@ class BuiltinStr(BuiltinClass):
             obj.error(str(e), ctx=ctx) # just copy the Python exception message...
         # XXX create list of integers, as we don't yet have a 'bytes' object
         return List(list(Integer(i, info=arg) for i in encoded), info=arg)
-    def setup(self):
-        # Thanks for all this functionality Python!
-        self.add_methods(['islower', 'lower', 'isupper', 'upper', 'endswith',
-            'replace', 'join', 'encode'])
+    def format(obj, ctx, args):
+        [fmt, *args] = args
+        if not isinstance(fmt, String):
+            obj.error('encoding must be one of "ascii" or "utf-8"', ctx=ctx)
+        args = [arg.str(ctx) for arg in args]
+        return String(fmt.value.format(*args), info=fmt)
 
 StrClass = BuiltinStr('str')
 
