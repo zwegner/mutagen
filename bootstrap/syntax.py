@@ -398,6 +398,12 @@ class Dict(Node):
             yield List([k, v], info=self)
     def __contains__(self, item):
         return Boolean(item in self.items, info=self)
+    def __add__(self, other):
+        if not isinstance(other, Dict):
+            self.error('bad type for dict.add: %s' % type(other))
+        result = self.items.copy()
+        result.update(other.items)
+        return Dict(result, info=self)
     def len(self, ctx):
         return len(self.items)
     def __eq__(self, other):
