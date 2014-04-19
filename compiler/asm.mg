@@ -3,6 +3,12 @@ import struct
 import elf
 
 class Label(name: str, is_global: bool):
+    def __str__(self):
+        return '<' + self.name + '>'
+
+# XXX includes the bytes of the full instruction, as it's slightly more
+# convenient. Not sure how to do this more cleanly...
+class Relocation(label: Label, code_offset: int, size: int, bytes):
     pass
 
 class Register(index: int):
@@ -113,6 +119,26 @@ class Instruction(opcode: str, size: int, *args):
         'xor': 6,
         'cmp': 7,
     }
+    # Not complete, but probably more flags than we'll care about for a long time
+    cond_table = {
+        'a': 0x7,
+        'ae': 0x3,
+        'b': 0x2,
+        'be': 0x6,
+        'e': 0x4,
+        'g': 0xF,
+        'ge': 0xD,
+        'l': 0xC,
+        'le': 0xE,
+        'ne': 0x5,
+        'no': 0x1,
+        'ns': 0x9,
+        'nz': 0x5,
+        'o': 0x0,
+        's': 0x8,
+        'z': 0x4,
+    }
+    jump_table = {'j' + cond: 0x80 | code for [cond, code] in cond_table}
 
     def __init__(opcode: str, *args):
         # Handle 32/64 bit instruction size. This info is stuck in the opcode
@@ -179,6 +205,16 @@ class Instruction(opcode: str, size: int, *args):
             else:
                 assert isinstance(src, Register)
                 return rex_addr(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
+        elif self.opcode in jump_table:
+            opcode = jump_table[self.opcode]
+            [dst] = self.args
+            assert isinstance(dst, Label)
+            # XXX Since we don't know how far or in what direction we're jumping,
+            # punt and use the 32-bit displacement and fill it with zeroes. We'll
+            # fill all the offsets in later.
+            bytes = [0x0F, opcode, 0, 0, 0, 0]
+            return Relocation(dst, 2, 4, bytes)
+
     def __str__(self):
         if self.args:
             args = []
@@ -198,13 +234,34 @@ def build(insts):
     bytes = []
     labels = []
     global_labels = []
+    relocations = []
     for inst in insts:
         if isinstance(inst, Label):
             labels = labels + [[inst.name, len(bytes)]]
             if inst.is_global:
                 global_labels = global_labels + [inst.name]
         else:
-            bytes = bytes + inst.to_bytes()
+            b = inst.to_bytes()
+            if isinstance(b, Relocation):
+                relocations = relocations + [[b, len(bytes) + b.code_offset]]
+                b = b.bytes
+            bytes = bytes + b
+
+    # Fill in relocations
+    if relocations:
+        # XXX this is basically the dict() constructor
+        label_dict = {name: offset for [name, offset] in labels}
+        new_bytes = []
+        last_offset = 0
+        for [rel, offset] in relocations:
+            new_bytes = new_bytes + slice(bytes, last_offset, offset)
+            # XXX only 4-byte for now
+            assert rel.size == 4
+            disp = label_dict[rel.label.name] - offset - rel.size
+            new_bytes = new_bytes + pack32(disp)
+            last_offset = offset + rel.size
+        bytes = new_bytes + slice(bytes, last_offset, len(bytes))
+
     return [bytes, labels, global_labels]
 
 # Just a bunch of random instructions to test out different encodings.
@@ -222,6 +279,8 @@ insts = [
     Instruction('mov32', Address(3, 8, 3, 0xFFFF), Register(1)),
     Instruction('mov32', Register(1), Address(-1, 0, 0, 0xFFFF)),
     Instruction('mov32', Address(-1, 0, 0, 0xFFFF), Register(1)),
+    Instruction('jz', Label('_test', True)),
+    Instruction('ja', Label('_test2', True)),
     Instruction('mov32', Address(3, 8, 3, 0), Register(1)),
     Instruction('mov32', Address(5, 8, 5, 0xFFFF), Register(1)),
     Instruction('mov32', Address(5, 8, 5, 0), Register(1)),
@@ -229,6 +288,7 @@ insts = [
     Instruction('mov32', Register(1), Register(7)),
     Instruction('mov64', Register(1), Register(14)),
     Instruction('add32', Register(1), 4),
+    Label('_test2', True),
     # Our IR can't properly print unsigned integers without a bunch of work,
     # as they appear in the objdump output. So ignore for now.
     #Instruction('add32', Register(1), -2),
@@ -236,6 +296,15 @@ insts = [
     Instruction('add32', Register(1), 0xFFF),
     Instruction('not32', Register(1)),
     Instruction('neg32', Register(1)),
+    Instruction('jz', Label('_test', False)),
+    Instruction('js', Label('_test3', False)),
+    Instruction('jnz', Label('_test3', False)),
+    Instruction('jns', Label('_test3', False)),
+    Instruction('jo', Label('_test3', False)),
+    Instruction('jl', Label('_test3', False)),
+    Instruction('jle', Label('_test3', False)),
+    Instruction('jg', Label('_test3', False)),
+    Instruction('jge', Label('_test3', False)),
     Instruction('mul32', Register(1)),
     Instruction('imul32', Register(1)),
     Instruction('div32', Register(1)),
@@ -248,7 +317,7 @@ insts = [
     Instruction('idiv32', Address(5, 8, 5, 0xFFFF)),
     Instruction('mov64', Register(0), 0x7ffff000deadbeef),
     Instruction('ret'),
-    Label('_test2', True),
+    Label('_test3', True),
     Instruction('mov64', Register(0), 0x0123456789abcdef),
     Instruction('ret'),
 ]

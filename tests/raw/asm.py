@@ -21,12 +21,15 @@ with tempfile.TemporaryDirectory() as tmp_dir:
 lines = []
 for line in dump_output.splitlines():
     for [sub, rep] in [
-            [r'#.*', ''], # comments (specify rip+disp locations)
-            [r'\s+', ' '], # multiple whitespace
-            [r'\s+$', ''], # trailing whitespace
+            ['#.*', ''], # comments (specify rip+disp locations)
+            ['\\s+', ' '], # multiple whitespace
+            ['\\s+$', ''], # trailing whitespace
             ['movabs', 'mov'], # instruction munging
+            ['je', 'jz'],
+            ['jne', 'jnz'],
+            [' [0-9a-f]+ (<[_0-9A-Za-z]+>)', ' \\1'], # remove raw address of labels
             ['0x[0-9a-f]+', lambda m: str(int(m.group(0), 16))], # hex->dec
-            [r'\+0]', ']']]: # get rid of 0 disp from RBP/R13 base
+            ['\\+0]', ']']]: # get rid of 0 disp from RBP/R13 base
         line = re.sub(sub, rep, line)
     # Check for a label line
     m = re.search(r'^[0-9a-f]+ <([_0-9A-Za-z]+)>:$', line)
@@ -34,7 +37,7 @@ for line in dump_output.splitlines():
         lines.append(m.group(1) + ':')
     else:
         # Check for instructions
-        m = re.search(r'^ *[0-9a-f]+:\s*([0-9A-Za-z,+*\[\] ]+)$', line)
+        m = re.search(r'^ *[0-9a-f]+:\s*([_0-9A-Za-z,+*\[\]<> ]+)$', line)
         if m:
             lines.append('    ' + m.group(1))
 lines.append('')
