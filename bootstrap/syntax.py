@@ -692,36 +692,44 @@ class For(Node):
         return 'for %s in %s%s' % (self.target, self.expr.repr(ctx),
                 self.block.repr(ctx))
 
-@node('&expr, &target, &iter')
-class ListComprehension(Node):
-    def eval(self, ctx):
-        iter = self.iter.eval(ctx)
+@node('&target, &expr')
+class CompIter(Node):
+    pass
+
+class Comprehension(Node):
+    def get_states(self, ctx):
+        def iter_states(ctx, iters):
+            [comp_iter, *iters] = iters
+            for values in comp_iter.expr.eval(ctx).iter(ctx):
+                comp_iter.target.assign_values(child_ctx, values)
+                if iters:
+                    yield from iter_states(child_ctx, iters)
+                else:
+                    yield child_ctx
+
         # XXX Should we do full scoping analysis and lifted lambdas and such?
         # After some thought, this is sufficient with the current imperative
         # backend, where expressions are always evaluated in-order.
-        child_ctx = Context('<list-comp>', ctx, ctx)
-        result = []
-        for i in iter.iter(ctx):
-            self.target.assign_values(child_ctx, i)
-            result.append(self.expr.eval(child_ctx))
-        return List(result, info=self)
+        # Clean this shit up though
+        child_ctx = Context('<comprehension>', ctx.global_ctx, ctx)
+        child_ctx.syms.update(ctx.syms)
+
+        yield from iter_states(child_ctx, self.comp_iters)
+
+@node('&expr, *comp_iters')
+class ListComprehension(Comprehension):
+    def eval(self, ctx):
+        return List([self.expr.eval(child_ctx) for child_ctx in
+            self.get_states(ctx)], info=self)
     def repr(self, ctx):
         return '[%s for %s in %s]' % (self.expr.repr(ctx), self.target,
                 self.iter.repr(ctx))
 
-@node('&key_expr, &value_expr, &target, &iter')
-class DictComprehension(Node):
+@node('&key_expr, &value_expr, *comp_iters')
+class DictComprehension(Comprehension):
     def eval(self, ctx):
-        iter = self.iter.eval(ctx)
-        # XXX Should we do full scoping analysis and lifted lambdas and such?
-        # After some thought, this is sufficient with the current imperative
-        # backend, where expressions are always evaluated in-order.
-        child_ctx = Context('<dict-comp>', ctx, ctx)
-        result = {}
-        for i in iter.iter(ctx):
-            self.target.assign_values(child_ctx, i)
-            result[self.key_expr.eval(child_ctx)] = self.value_expr.eval(child_ctx)
-        return Dict(result, info=self)
+        return Dict({self.key_expr.eval(child_ctx): self.value_expr.eval(child_ctx)
+            for child_ctx in self.get_states(ctx)}, info=self)
     def repr(self, ctx):
         return '{%s: %s for %s in %s}' % (self.key_expr.repr(ctx),
                 self.value_expr.repr(ctx), self.target, self.iter.repr(ctx))

@@ -196,10 +196,6 @@ def p_list(p):
     else:
         p[0] = List(p[2], info=get_info(p, 1))
 
-def p_list_comp(p):
-    """ list_comp : LBRACKET expr FOR for_assn IN expr RBRACKET """
-    p[0] = ListComprehension(p[2], p[4], p[6])
-
 def p_dict_items(p):
     """ dict_items : expr COLON expr
                    | dict_items COMMA expr COLON expr
@@ -209,9 +205,26 @@ def p_dict_items(p):
     else:
         p[0] = p[1] + [[p[3], p[5]]]
 
+def p_comprehension(p):
+    """ comp_iter : FOR for_assn IN expr """
+    p[0] = CompIter(p[2], p[4])
+
+def p_comp_list(p):
+    """ comp_list : comp_iter
+                  | comp_list comp_iter
+    """
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1] + [p[2]]
+
+def p_list_comp(p):
+    """ list_comp : LBRACKET expr comp_list RBRACKET """
+    p[0] = ListComprehension(p[2], p[3])
+
 def p_dict_comp(p):
-    """ dict_comp : LBRACE expr COLON expr FOR for_assn IN expr RBRACE """
-    p[0] = DictComprehension(p[2], p[4], p[6], p[8])
+    """ dict_comp : LBRACE expr COLON expr comp_list RBRACE """
+    p[0] = DictComprehension(p[2], p[4], p[5])
 
 def p_dict(p):
     """ dict : LBRACE RBRACE
