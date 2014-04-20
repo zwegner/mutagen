@@ -14,27 +14,31 @@ class Relocation(label: Label, code_offset: int, size: int, bytes):
 class Register(index: int):
     def to_str(self, size):
         names = ['ip', 'ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di']
-        if size == 32:
-            prefix = 'e'
-            suffix = 'd'
-        else:
-            assert size == 64
-            prefix = 'r'
-            suffix = ''
+        [prefix, suffix] = {
+            8: ['', 'l'],
+            16: ['', 'w'],
+            32: ['e', 'd'],
+            64: ['r', ''],
+        }[size]
         if self.index >= 8:
             return 'r{}{}'.format(self.index, suffix)
         else:
+            if size == 8:
+                if self.index & 4:
+                    return names[self.index + 1] + 'l'
+                return names[self.index + 1][0] + 'l'
             return prefix + names[self.index + 1]
 
 class Address(base, scale, index, disp):
-    def __str__(self):
+    def to_str(self, size):
+        size_str = {8: 'BYTE', 16: 'WORD', 32: 'DWORD', 64: 'QWORD'}[size]
         parts = [Register(self.base).to_str(64)]
         if self.scale:
             parts = parts + ['{}*{}'.format(Register(self.index).to_str(64),
                 self.scale)]
         if self.disp:
             parts = parts + [self.disp]
-        return 'DWORD PTR [{}]'.format('+'.join(map(str, parts)))
+        return '{} PTR [{}]'.format(size_str, '+'.join(map(str, parts)))
 
 def fits_8bit(imm):
     return -128 <= imm and imm <= 127
@@ -148,13 +152,18 @@ class Instruction(opcode: str, size: int, *args):
     def __init__(opcode: str, *args):
         # Handle 32/64 bit instruction size. This info is stuck in the opcode
         # name for now since not all instructions need it.
-        if opcode.endswith('32'):
+        if opcode.endswith('8'):
+            size = 8
+        elif opcode.endswith('16'):
+            size = 16
+        elif opcode.endswith('32'):
             size = 32
         elif opcode.endswith('64'):
             size = 64
         else:
             # XXX default size--this might need more logic later
             size = 64
+        opcode = opcode.replace('8', '').replace('16', '')
         opcode = opcode.replace('32', '').replace('64', '')
 
         # Canonicalize instruction names that have multiple names
@@ -229,11 +238,10 @@ class Instruction(opcode: str, size: int, *args):
         if self.args:
             args = []
             for arg in self.args:
-                if isinstance(arg, Register):
+                if isinstance(arg, Register) or isinstance(arg, Address):
                     args = args + [arg.to_str(self.size)]
                 else:
-                    # XXX handle different address sizes as well as different
-                    # immediate sizes (the latter mainly to convert to unsigned)
+                    # XXX handle different immediate sizes (to convert to unsigned)
                     args = args + [str(arg)]
             argstr = ' ' + ','.join(args)
         else:
