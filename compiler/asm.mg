@@ -144,10 +144,13 @@ class Instruction(opcode: str, size: int, *args):
         ['g', 'nle'],
     ]
     cond_table = {cond: i for [i, conds] in enumerate(all_conds) for cond in conds}
-    cond_canon = {cond: conds[0] for conds in all_conds for cond in conds}
 
     jump_table = {'j' + cond: 0x80 | code for [cond, code] in cond_table}
-    jump_canon = {'j' + cond: 'j' + canon for [cond, canon] in cond_canon}
+    setcc_table = {'set' + cond: 0x90 | code for [cond, code] in cond_table}
+
+    cond_canon = {cond: conds[0] for conds in all_conds for cond in conds}
+    canon_table = {prefix + cond: prefix + canon for prefix in ['j', 'set']
+            for [cond, canon] in cond_canon}
 
     def __init__(opcode: str, *args):
         # Handle 32/64 bit instruction size. This info is stuck in the opcode
@@ -167,8 +170,8 @@ class Instruction(opcode: str, size: int, *args):
         opcode = opcode.replace('32', '').replace('64', '')
 
         # Canonicalize instruction names that have multiple names
-        if opcode in jump_canon:
-            opcode = jump_canon[opcode]
+        if opcode in canon_table:
+            opcode = canon_table[opcode]
 
         # This dictionary shit really needs to go. Need polymorphism!
         return {'opcode': opcode, 'size': size, 'args': args}
@@ -233,6 +236,16 @@ class Instruction(opcode: str, size: int, *args):
             # fill all the offsets in later.
             bytes = [0x0F, opcode, 0, 0, 0, 0]
             return Relocation(dst, 2, 4, bytes)
+        elif self.opcode in setcc_table:
+            opcode = setcc_table[self.opcode]
+            [dst] = self.args
+            # XXX HACK: ah/bh etc. are used instead of sil etc. unless there's a REX
+            if isinstance(dst, Register) and dst.index & 0xC == 4:
+                prefix = [0x40]
+            else:
+                prefix = []
+            return prefix + [0x0F, opcode] + mod_rm_sib(0, dst)
+        assert False
 
     def __str__(self):
         if self.args:
@@ -335,6 +348,10 @@ insts = [
 # Make sure all of the condition codes are tested, to test canonicalization
 for [cond, code] in Instruction.jump_table:
     insts = insts + [Instruction(cond, Label('_jump_test', True))]
+# Same for setcc r/m
+for [cond, code] in Instruction.setcc_table:
+    insts = insts + [Instruction(cond + '8', Register(6)),
+            Instruction(cond + '8', Address(3, 4, 5, 0xFF))]
 
 elf_file = elf.create_elf_file(*build(insts))
 write_binary_file('elfout.o', elf_file)
