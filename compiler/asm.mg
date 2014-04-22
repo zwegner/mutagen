@@ -62,7 +62,7 @@ def mod_rm_sib(reg, rm):
     sib_bytes = []
     disp_bytes = []
     if isinstance(rm, Register):
-        mod = 0xC0
+        mod = 3
         base = rm.index
     else:
         addr = rm
@@ -83,12 +83,12 @@ def mod_rm_sib(reg, rm):
         elif not addr.disp and addr.base & 7 != 5:
             mod = 0
         elif fits_8bit(addr.disp):
-            mod = 0x40
+            mod = 1
             disp_bytes = pack8(addr.disp)
         else:
-            mod = 0x80
+            mod = 2
             disp_bytes = pack32(addr.disp)
-    return [mod | (reg & 7) << 3 | base & 7] + sib_bytes + disp_bytes
+    return [mod << 6 | (reg & 7) << 3 | base & 7] + sib_bytes + disp_bytes
 
 def rex(w, r, x, b):
     if isinstance(r, Register):
@@ -103,11 +103,14 @@ def rex(w, r, x, b):
     return []
 
 def rex_addr(w, r, addr):
-    return rex(w, r, addr.index, addr.base)
+    if isinstance(addr, Address):
+        return rex(w, r, addr.index, addr.base)
+    return rex(w, r, 0, addr)
 
 class Instruction(opcode: str, size: int, *args):
     arg0_table = {
         'ret': [0xC3],
+        'nop': [0x90],
     }
     arg1_table = {
         'not': 2,
@@ -190,7 +193,7 @@ class Instruction(opcode: str, size: int, *args):
             opcode = arg1_table[self.opcode]
             [src] = self.args
             assert isinstance(src, Register) or isinstance(src, Address)
-            return rex(w, 0, 0, src.index) + [0xF7] + mod_rm_sib(opcode, src)
+            return rex_addr(w, 0, src) + [0xF7] + mod_rm_sib(opcode, src)
         elif self.opcode in arg2_table:
             opcode = arg2_table[self.opcode]
             [dst, src] = self.args
@@ -224,17 +227,16 @@ class Instruction(opcode: str, size: int, *args):
                 opcode = opcode | 0x2
                 [src, dst] = [dst, src]
 
-            if isinstance(dst, Register):
-                # op reg, reg
-                assert isinstance(src, Register)
-                return rex(w, src, 0, dst) + [opcode] + mod_rm_sib(src, dst)
-            else:
-                assert isinstance(src, Register)
-                return rex_addr(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
+            assert isinstance(src, Register)
+            return rex_addr(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
         elif self.opcode == 'lea':
             [dst, src] = self.args
             assert isinstance(dst, Register) and isinstance(src, Address)
             return rex_addr(w, dst, src) + [0x8D] + mod_rm_sib(dst, src)
+        elif self.opcode == 'test':
+            [src1, src2] = self.args
+            if isinstance(src1, Register):
+                return rex_addr(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
         elif self.opcode in jump_table:
             opcode = jump_table[self.opcode]
             [dst] = self.args
@@ -354,6 +356,7 @@ insts = [
     Instruction('ret'),
     Label('_test3', True),
     Instruction('mov64', Register(0), 0x0123456789ABCDEF),
+    Instruction('nop'),
     Instruction('ret'),
     Label('_jump_test', True),
 ]
@@ -372,6 +375,15 @@ for size in [32, 64]:
     for dst in range(16):
         insts = insts + [Instruction('lea{}'.format(size),
             Register(dst), Address(3, 4, 5, 0xFF))]
+
+# Test test. omglol
+for size in [32, 64]:
+    for dst in range(16):
+        insts = insts + [Instruction('test{}'.format(size), Register(dst),
+            Register(dst))]
+        # XXX WTF? objdump seems to reverse the arguments of test when the second
+        # is an address...
+        #                Instruction('test{}'.format(size), Register(dst), Address(-1, 0, 0, 0xFFFF))
 
 elf_file = elf.create_elf_file(*build(insts))
 write_binary_file('elfout.o', elf_file)
