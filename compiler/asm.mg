@@ -30,15 +30,19 @@ class Register(index: int):
             return prefix + names[self.index + 1]
 
 class Address(base, scale, index, disp):
-    def to_str(self, size):
-        size_str = {8: 'BYTE', 16: 'WORD', 32: 'DWORD', 64: 'QWORD'}[size]
+    def to_str(self, use_size_prefix, size):
+        if use_size_prefix:
+            size_str = {8: 'BYTE', 16: 'WORD', 32: 'DWORD', 64: 'QWORD'}[size]
+            size_str = size_str + ' PTR '
+        else:
+            size_str = ''
         parts = [Register(self.base).to_str(64)]
         if self.scale:
             parts = parts + ['{}*{}'.format(Register(self.index).to_str(64),
                 self.scale)]
         if self.disp:
             parts = parts + [self.disp]
-        return '{} PTR [{}]'.format(size_str, '+'.join(map(str, parts)))
+        return '{}[{}]'.format(size_str, '+'.join(map(str, parts)))
 
 def fits_8bit(imm):
     return -128 <= imm and imm <= 127
@@ -227,6 +231,10 @@ class Instruction(opcode: str, size: int, *args):
             else:
                 assert isinstance(src, Register)
                 return rex_addr(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
+        elif self.opcode == 'lea':
+            [dst, src] = self.args
+            assert isinstance(dst, Register) and isinstance(src, Address)
+            return rex_addr(w, dst, src) + [0x8D] + mod_rm_sib(dst, src)
         elif self.opcode in jump_table:
             opcode = jump_table[self.opcode]
             [dst] = self.args
@@ -251,8 +259,12 @@ class Instruction(opcode: str, size: int, *args):
         if self.args:
             args = []
             for arg in self.args:
-                if isinstance(arg, Register) or isinstance(arg, Address):
+                if isinstance(arg, Register):
                     args = args + [arg.to_str(self.size)]
+                elif isinstance(arg, Address):
+                    # lea doesn't need a size since it's only the address...
+                    use_size_prefix = self.opcode != 'lea'
+                    args = args + [arg.to_str(use_size_prefix, self.size)]
                 else:
                     # XXX handle different immediate sizes (to convert to unsigned)
                     args = args + [str(arg)]
@@ -345,13 +357,21 @@ insts = [
     Instruction('ret'),
     Label('_jump_test', True),
 ]
+
 # Make sure all of the condition codes are tested, to test canonicalization
 for [cond, code] in Instruction.jump_table:
     insts = insts + [Instruction(cond, Label('_jump_test', True))]
+
 # Same for setcc r/m
 for [cond, code] in Instruction.setcc_table:
     insts = insts + [Instruction(cond + '8', Register(6)),
             Instruction(cond + '8', Address(3, 4, 5, 0xFF))]
+
+# Test lea
+for size in [32, 64]:
+    for dst in range(16):
+        insts = insts + [Instruction('lea{}'.format(size),
+            Register(dst), Address(3, 4, 5, 0xFF))]
 
 elf_file = elf.create_elf_file(*build(insts))
 write_binary_file('elfout.o', elf_file)
