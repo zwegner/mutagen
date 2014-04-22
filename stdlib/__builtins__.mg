@@ -39,6 +39,18 @@ def enumerate(gen):
         yield [i, item]
         i = i + 1
 
+def any(gen):
+    for item in gen:
+        if item:
+            return True
+    return False
+
+def all(gen):
+    for item in gen:
+        if not item:
+            return False
+    return True
+
 def zip(*iterables):
     # HACK: the iterables are eagerly evaluated, so this takes up too much
     # memory/time.

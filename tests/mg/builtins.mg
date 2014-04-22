@@ -59,3 +59,12 @@ for [i, x] in enumerate(strs):
         else:
             assert not str_starts_with(x, y)
         assert not str_starts_with(x, other)
+
+assert not any([])
+assert not any(range(1))
+assert any(range(2))
+assert not any([None])
+assert all([])
+assert not all(range(1))
+assert not all(range(2))
+assert all([1, True, [0]])
