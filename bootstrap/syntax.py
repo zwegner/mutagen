@@ -8,6 +8,19 @@ inv_str_escapes = [
     ['\b', '\\x08'], # HACK
 ]
 
+# Utility functions
+def get_type_name(ctx, obj):
+    if isinstance(obj, Object):
+        return obj.get_attr(ctx, '__class__').get_attr(ctx, '__name__').str(ctx)
+    return type(obj).__name__
+
+def check_obj_type(self, msg_type, ctx, obj, type):
+    obj_type = obj.get_attr(ctx, '__class__')
+    if obj_type is not type:
+        self.error('bad %s type %s, expected %s' % (msg_type,
+            obj_type.get_attr(ctx, '__name__').str(ctx),
+            type.get_attr(ctx, '__name__').str(ctx)), ctx=ctx)
+
 class Context:
     def __init__(self, name, global_ctx, parent):
         self.name = name
@@ -69,13 +82,13 @@ class Node:
     def bool(self, ctx):
         return self.len(ctx) > 0
     def len(self, ctx):
-        self.error('__len__ unimplemented for %s' % type(self), ctx=ctx)
+        self.error('__len__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
     def str(self, ctx):
         return self.repr(ctx)
     def repr(self, ctx):
-        self.error('__repr__ unimplemented for %s' % type(self), ctx=ctx)
+        self.error('__repr__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
     def get_attr(self, ctx, attr):
-        self.error('__getattr__ unimplemented for %s' % type(self), ctx=ctx)
+        self.error('__getattr__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
     def iter(self, ctx):
         return iter(self)
     def overload(self, ctx, attr, args):
@@ -231,7 +244,7 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
                 def operator(self, other, op=op, op_fn=op_fn, full_op=full_op):
                     if not isinstance(other, node):
                         self.error('bad operand type for %s.%s: %s' % (
-                            base_type.__name__, op, type(other).__name__))
+                            base_type.__name__, op, get_type_name(None, other)))
                     # I'd like to hoist this outside of this function, but Boolean
                     # isn't defined yet.
                     result_type = Boolean if op in ['ge', 'gt', 'le', 'lt'] else node
@@ -296,7 +309,7 @@ class String(Node):
         self.error('bad arg for getitem: %s' % item)
     def __mul__(self, other):
         if not isinstance(other, Integer):
-            self.error('bad type for str.mul: %s' % type(other))
+            self.error('bad type for str.mul: %s' % get_type_name(None, other))
         return String(self.value * other.value, info=self)
     def len(self, ctx):
         return len(self.value)
@@ -516,7 +529,7 @@ class BinaryOp(Node):
             return overloaded
         elif not hasattr(lhs, operator):
             self.error('object of type %s cannot handle operator %s' % (
-                type(lhs).__name__, operator), ctx=ctx)
+                get_type_name(ctx, lhs), operator), ctx=ctx)
         return getattr(lhs, operator)(rhs)
     def repr(self, ctx):
         return '(%s %s %s)' % (self.lhs.repr(ctx), self.type, self.rhs.repr(ctx))
@@ -532,7 +545,7 @@ class GetAttr(Node):
             method = obj.get_attr(ctx, '__class__').get_attr(ctx, self.attr)
             if method is None:
                 self.error('object of type %s has no attribute %s' %
-                        (type(obj).__name__, self.attr), ctx=ctx)
+                        (get_type_name(ctx, obj), self.attr), ctx=ctx)
             item = BoundFunction(method, [obj])
         return item
     def repr(self, ctx):
@@ -778,12 +791,6 @@ class VarArg(Node):
     def repr(self, ctx):
         return '*%s' % self.expr.repr(ctx)
 
-def check_obj_type(self, msg_type, ctx, obj, type):
-    obj_type = obj.get_attr(ctx, '__class__')
-    if obj_type is not type:
-        self.error('bad %s type %s, expected %s' % (msg_type,
-            obj_type.repr(ctx), type.repr(ctx)), ctx=ctx)
-
 # XXX types need to be edges
 @node('params, star_params')
 class Params(Node):
@@ -908,7 +915,7 @@ class Class(Node):
         self.block.eval(child_ctx)
         items = {String(k, info=self): v.eval(ctx) for k, v
             in child_ctx.syms.items()}
-        items[String('name', info=self)] = String(self.name, info=self)
+        items[String('__name__', info=self)] = String(self.name, info=self)
         items[String('__class__', info=self)] = TypeClass
         self.cls = Object(items, info=self)
         return self
