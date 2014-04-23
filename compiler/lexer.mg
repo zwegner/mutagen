@@ -68,7 +68,7 @@ token_map = [
     ['STAR',            '\\*'],
     ['WHITESPACE',      '[ \t]+'],
     ['IDENTIFIER',      '[a-zA-Z_][a-zA-Z0-9_]*', t_identifier],
-    ['INTEGER',         '-?((0x[0-9a-fA-F]*)|([0-9]+))', t_integer],
+    ['INTEGER',         '((0x[0-9a-fA-F]*)|([0-9]+))', t_integer],
     ['COMMENT',         '#.*', tokenize.ignore_token_fn],
     ['STRING',          '\'((\\\\.)|[^\\\\\'])*\'', t_string],
 ]
