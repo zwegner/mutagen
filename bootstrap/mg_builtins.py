@@ -79,6 +79,7 @@ builtins['str'] = StrClass
 builtins['int'] = IntClass
 builtins['bool'] = BoolClass
 builtins['list'] = ListClass
+builtins['dict'] = DictClass
 builtins['type'] = TypeClass
 
 __all__ = builtins

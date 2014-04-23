@@ -408,6 +408,10 @@ class Dict(Node):
         if item in self.items:
             return self.items[item]
         self.error('bad arg for getitem: %s' % item.str(None))
+    def get_attr(self, ctx, attr):
+        if attr == '__class__':
+            return DictClass
+        return None
     def __iter__(self):
         # XXX having key-value iteration is probably nicer than Python's
         # key iteration, but should we break compatibility? Think about this!
@@ -1039,6 +1043,13 @@ class BuiltinList(BuiltinClass):
         return List(list(arg), info=arg)
 
 ListClass = BuiltinList('list')
+
+class BuiltinDict(BuiltinClass):
+    def eval_call(self, ctx, args):
+        [arg] = args
+        return Dict(dict(arg), info=arg)
+
+DictClass = BuiltinDict('dict')
 
 class BuiltinType(BuiltinClass):
     def eval_call(self, ctx, args):
