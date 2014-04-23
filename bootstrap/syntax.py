@@ -9,17 +9,21 @@ inv_str_escapes = [
 ]
 
 # Utility functions
+def get_class_name(ctx, cls):
+    if isinstance(cls, Class):
+        return cls.get_attr(ctx, '__name__').str(ctx)
+    return type(cls).__name__
+
 def get_type_name(ctx, obj):
     if isinstance(obj, Object):
-        return obj.get_attr(ctx, '__class__').get_attr(ctx, '__name__').str(ctx)
+        return get_class_name(obj.get_attr(ctx, '__class__'))
     return type(obj).__name__
 
 def check_obj_type(self, msg_type, ctx, obj, type):
     obj_type = obj.get_attr(ctx, '__class__')
     if obj_type is not type:
         self.error('bad %s type %s, expected %s' % (msg_type,
-            obj_type.get_attr(ctx, '__name__').str(ctx),
-            type.get_attr(ctx, '__name__').str(ctx)), ctx=ctx)
+            get_class_name(ctx, obj_type), get_class_name(ctx, type)), ctx=ctx)
 
 class Context:
     def __init__(self, name, global_ctx, parent):
@@ -571,29 +575,32 @@ class Assert(Node):
 @node('target')
 class Target(Node):
     def assign_values(self, ctx, rhs):
-        return Target._assign_values(ctx, self.target, rhs)
-    def _assign_values(ctx, lhs, rhs):
-        if isinstance(lhs, str):
-            ctx.store(lhs, rhs)
-        elif isinstance(lhs, list):
-            if len(lhs) != rhs.len(ctx):
-                rhs.error('too %s values to unpack' %
-                       ('few' if len(lhs) > rhs.len(ctx) else 'many'), ctx=ctx)
-            for lhs_i, rhs_i in zip(lhs, rhs):
-                Target._assign_values(ctx, lhs_i, rhs_i)
-        else:
-            assert False
+        def _assign_values(ctx, lhs, rhs):
+            if isinstance(lhs, str):
+                ctx.store(lhs, rhs)
+            elif isinstance(lhs, list):
+                if len(lhs) != rhs.len(ctx):
+                    rhs.error('too %s values to unpack' %
+                           ('few' if len(lhs) > rhs.len(ctx) else 'many'), ctx=ctx)
+                for lhs_i, rhs_i in zip(lhs, rhs):
+                    _assign_values(ctx, lhs_i, rhs_i)
+            else:
+                assert False
+        return _assign_values(ctx, self.target, rhs)
 
     def get_stores(self):
-        return Target._get_stores(self.target)
-    def _get_stores(target):
-        if isinstance(target, str):
-            return {target}
-        assert isinstance(target, list)
-        stores = set()
-        for t in target:
-            stores |= Target._get_stores(t)
-        return stores
+        def _get_stores(target):
+            if isinstance(target, str):
+                return {target}
+            assert isinstance(target, list)
+            stores = set()
+            for t in target:
+                stores |= _get_stores(t)
+            return stores
+        return _get_stores(self.target)
+
+    def repr(self, ctx):
+        return str(self.target)
 
 @node('&target, &rhs')
 class Assignment(Node):
@@ -602,7 +609,7 @@ class Assignment(Node):
         self.target.assign_values(ctx, value)
         return value
     def repr(self, ctx):
-        return '%s = %s' % (self.target, self.rhs.repr(ctx))
+        return '%s = %s' % (self.target.repr(ctx), self.rhs.repr(ctx))
 
 # Exception for backing up the eval stack on break/continue/return
 class BreakExc(Exception):
@@ -702,7 +709,7 @@ class For(Node):
             except ContinueExc:
                 continue
     def repr(self, ctx):
-        return 'for %s in %s%s' % (self.target, self.expr.repr(ctx),
+        return 'for %s in %s%s' % (self.target.repr(ctx), self.expr.repr(ctx),
                 self.block.repr(ctx))
 
 @node('&target, &expr')
@@ -735,7 +742,7 @@ class ListComprehension(Comprehension):
         return List([self.expr.eval(child_ctx) for child_ctx in
             self.get_states(ctx)], info=self)
     def repr(self, ctx):
-        return '[%s for %s in %s]' % (self.expr.repr(ctx), self.target,
+        return '[%s for %s in %s]' % (self.expr.repr(ctx), self.target.repr(ctx),
                 self.iter.repr(ctx))
 
 @node('&key_expr, &value_expr, *comp_iters')
@@ -745,7 +752,8 @@ class DictComprehension(Comprehension):
             for child_ctx in self.get_states(ctx)}, info=self)
     def repr(self, ctx):
         return '{%s: %s for %s in %s}' % (self.key_expr.repr(ctx),
-                self.value_expr.repr(ctx), self.target, self.iter.repr(ctx))
+                self.value_expr.repr(ctx), self.target.repr(ctx),
+                self.iter.repr(ctx))
 
 @node('&expr, &block')
 class While(Node):
