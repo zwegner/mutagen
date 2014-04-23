@@ -919,13 +919,14 @@ class BuiltinFunction(Node):
 @node('ctx, name, &params, &block')
 class Class(Node):
     def eval(self, ctx):
-        child_ctx = Context(self.name, self.ctx, ctx)
-        self.block.eval(child_ctx)
-        items = {String(k, info=self): v.eval(ctx) for k, v
-            in child_ctx.syms.items()}
-        items[String('__name__', info=self)] = String(self.name, info=self)
-        items[String('__class__', info=self)] = TypeClass
-        self.cls = Object(items, info=self)
+        if not hasattr(self, 'cls'):
+            child_ctx = Context(self.name, self.ctx, ctx)
+            self.block.eval(child_ctx)
+            items = {String(k, info=self): v.eval(ctx) for k, v
+                in child_ctx.syms.items()}
+            items[String('__name__', info=self)] = String(self.name, info=self)
+            items[String('__class__', info=self)] = TypeClass
+            self.cls = Object(items, info=self)
         return self
     def eval_call(self, ctx, args):
         init = self.cls.get_attr(ctx, '__init__')
