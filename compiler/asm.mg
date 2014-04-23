@@ -294,8 +294,7 @@ def build(insts):
 
     # Fill in relocations
     if relocations:
-        # XXX this is basically the dict() constructor
-        label_dict = {name: offset for [name, offset] in labels}
+        label_dict = dict(labels)
         new_bytes = []
         last_offset = 0
         for [rel, offset] in relocations:
