@@ -240,9 +240,15 @@ class Instruction(opcode: str, size: int, *args):
             [dst] = self.args
             assert isinstance(dst, Label)
             # XXX Since we don't know how far or in what direction we're jumping,
-            # punt and use the 32-bit displacement and fill it with zeroes. We'll
-            # fill all the offsets in later.
+            # punt and use disp32. We'll fill the offset in later.
             return [0x0F, opcode, Relocation(dst, 4)]
+        elif self.opcode in ['jmp', 'call']:
+            [dst] = self.args
+            [opcode, sub_opcode] = {'jmp': [0xE9, 4], 'call': [0xE8, 2]}[self.opcode]
+            if isinstance(dst, Label):
+                return [opcode, Relocation(dst, 4)]
+            else:
+                return [0xFF] + mod_rm_sib(sub_opcode, dst)
         elif self.opcode in setcc_table:
             opcode = setcc_table[self.opcode]
             [dst] = self.args
@@ -353,6 +359,10 @@ insts = [
     Instruction('ret'),
     Label('_test3', True),
     Instruction('mov64', Register(0), 0x0123456789ABCDEF),
+    Instruction('jmp', Label('_test', True)),
+    Instruction('call', Label('_test', True)),
+    Instruction('jmp', Register(5)),
+    Instruction('call', Register(5)),
     Instruction('nop'),
     Instruction('ret'),
     Label('_jump_test', True),
