@@ -16,7 +16,7 @@ def get_class_name(ctx, cls):
 
 def get_type_name(ctx, obj):
     if isinstance(obj, Object):
-        return get_class_name(obj.get_attr(ctx, '__class__'))
+        return get_class_name(ctx, obj.get_attr(ctx, '__class__'))
     return type(obj).__name__
 
 def check_obj_type(self, msg_type, ctx, obj, type):
@@ -1054,7 +1054,11 @@ DictClass = BuiltinDict('dict')
 class BuiltinType(BuiltinClass):
     def eval_call(self, ctx, args):
         [arg] = args
-        return GetAttr(arg, '__class__').eval(ctx)
+        item = arg.get_attr(ctx, '__class__')
+        if item is None:
+            self.error('object of type %s not currently part of type system' %
+                    get_type_name(ctx, arg), ctx=ctx)
+        return item
 
 TypeClass = BuiltinType('type')
 
