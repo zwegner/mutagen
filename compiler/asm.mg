@@ -6,9 +6,7 @@ class Label(name: str, is_global: bool):
     def __str__(self):
         return '<{}>'.format(self.name)
 
-# XXX includes the bytes of the full instruction, as it's slightly more
-# convenient. Not sure how to do this more cleanly...
-class Relocation(label: Label, code_offset: int, size: int, bytes):
+class Relocation(label: Label, size: int):
     pass
 
 class Register(index: int):
@@ -244,8 +242,7 @@ class Instruction(opcode: str, size: int, *args):
             # XXX Since we don't know how far or in what direction we're jumping,
             # punt and use the 32-bit displacement and fill it with zeroes. We'll
             # fill all the offsets in later.
-            bytes = [0x0F, opcode, 0, 0, 0, 0]
-            return Relocation(dst, 2, 4, bytes)
+            return [0x0F, opcode, Relocation(dst, 4)]
         elif self.opcode in setcc_table:
             opcode = setcc_table[self.opcode]
             [dst] = self.args
@@ -286,11 +283,12 @@ def build(insts):
             if inst.is_global:
                 global_labels = global_labels + [inst.name]
         else:
-            b = inst.to_bytes()
-            if isinstance(b, Relocation):
-                relocations = relocations + [[b, len(bytes) + b.code_offset]]
-                b = b.bytes
-            bytes = bytes + b
+            for byte in inst.to_bytes():
+                if isinstance(byte, Relocation):
+                    relocations = relocations + [[byte, len(bytes)]]
+                    bytes = bytes + [0] * byte.size
+                else:
+                    bytes = bytes + [byte]
 
     # Fill in relocations
     if relocations:
