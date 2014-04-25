@@ -335,6 +335,8 @@ class Integer(Node):
         return self.value != 0
     def __neg__(self, ctx):
         return Integer(-self.value, info=self)
+    def __invert__(self, ctx):
+        return Integer(~self.value, info=self)
 
 @node('value', compare=True, base_type=bool)
 class Boolean(Node):
@@ -490,6 +492,8 @@ class UnaryOp(Node):
             return Boolean(not rhs.bool(ctx), info=self)
         elif self.type == '-':
             return rhs.__neg__(ctx)
+        elif self.type == '~':
+            return rhs.__invert__(ctx)
         assert False
     def repr(self, ctx):
         return '(%s %s)' % (self.type, self.rhs.repr(ctx))

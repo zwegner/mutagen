@@ -28,6 +28,7 @@ precedence = [
     ['left', 'SHIFT_RIGHT', 'SHIFT_LEFT'],
     ['left', 'PLUS', 'MINUS'],
     ['left', 'STAR', 'FLOORDIV', 'MODULO'],
+    ['left', 'UNARY_MINUS', 'INVERSE'],
     ['left', 'LBRACKET', 'LPAREN', 'LBRACE'],
     ['left', 'PERIOD'],
 ]
@@ -249,7 +250,8 @@ def p_none(p):
 
 def p_unary_op(p):
     """ unop : NOT expr
-             | MINUS expr
+             | MINUS expr %prec UNARY_MINUS
+             | INVERSE expr
     """
     p[0] = UnaryOp(p[1], p[2])
 

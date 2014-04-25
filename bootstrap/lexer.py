@@ -26,12 +26,11 @@ token_map = {
     'FLOORDIV':        r'//',
     'GREATER':         r'>',
     'GREATER_EQUALS':  r'>=',
-    'SHIFT_RIGHT':     r'>>',
+    'INVERSE':         r'~',
     'LBRACE':          r'{',
     'LBRACKET':        r'\[',
     'LESS':            r'<',
     'LESS_EQUALS':     r'<=',
-    'SHIFT_LEFT':      r'<<',
     'LPAREN':          r'\(',
     'MINUS':           r'-',
     'MODULO':          r'%',
@@ -43,6 +42,8 @@ token_map = {
     'RBRACKET':        r']',
     'RPAREN':          r'\)',
     'SEMICOLON':       r';',
+    'SHIFT_LEFT':      r'<<',
+    'SHIFT_RIGHT':     r'>>',
     'STAR':            r'\*',
 }
 
