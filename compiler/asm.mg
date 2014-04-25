@@ -13,7 +13,7 @@ class Register(index: int):
     def to_str(self, size):
         names = ['ip', 'ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di']
         [prefix, suffix] = {
-            8: ['', 'l'],
+            8: ['', 'b'],
             16: ['', 'w'],
             32: ['e', 'd'],
             64: ['r', ''],
@@ -27,7 +27,7 @@ class Register(index: int):
                 return names[self.index + 1][0] + 'l'
             return prefix + names[self.index + 1]
 
-class Address(base, scale, index, disp):
+class Address(base: int, scale: int, index: int, disp: int):
     def to_str(self, use_size_prefix, size):
         if use_size_prefix:
             size_str = {8: 'BYTE', 16: 'WORD', 32: 'DWORD', 64: 'QWORD'}[size]
@@ -252,9 +252,9 @@ class Instruction(opcode: str, size: int, *args):
             assert isinstance(dst, Register) and isinstance(src, Address)
             return rex(w, dst, src) + [0x8D] + mod_rm_sib(dst, src)
         elif self.opcode == 'test':
-            [src1, src2] = self.args
-            if isinstance(src1, Register):
-                return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
+            # Test has backwards arguments, weird
+            [src2, src1] = self.args
+            return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
         elif self.opcode in bmi_table:
             [m, p, opcode] = bmi_table[self.opcode]
             [dst, src1, src2] = self.args
@@ -272,7 +272,7 @@ class Instruction(opcode: str, size: int, *args):
             if isinstance(dst, Label):
                 return [opcode, Relocation(dst, 4)]
             else:
-                return [0xFF] + mod_rm_sib(sub_opcode, dst)
+                return rex(0, 0, dst) + [0xFF] + mod_rm_sib(sub_opcode, dst)
         elif self.opcode in setcc_table:
             opcode = setcc_table[self.opcode]
             [dst] = self.args
@@ -280,7 +280,7 @@ class Instruction(opcode: str, size: int, *args):
             if isinstance(dst, Register) and dst.index & 0xC == 4:
                 prefix = [0x40]
             else:
-                prefix = []
+                prefix = rex(0, 0, dst)
             return prefix + [0x0F, opcode] + mod_rm_sib(0, dst)
         assert False
 
