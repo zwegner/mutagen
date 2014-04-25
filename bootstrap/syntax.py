@@ -319,7 +319,7 @@ class String(Node):
         return len(self.value)
 
 @node('value', compare=True, base_type=int, ops=['add', 'sub', 'mul',
-    'floordiv', 'mod', 'lshift', 'rshift', 'and', 'or'])
+    'floordiv', 'mod', 'lshift', 'rshift', 'and', 'or', 'xor'])
 class Integer(Node):
     def setup(self):
         self.value = int(self.value)
