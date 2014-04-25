@@ -88,22 +88,28 @@ def mod_rm_sib(reg, rm):
             disp_bytes = pack32(addr.disp)
     return [mod << 6 | (reg & 7) << 3 | base & 7] + sib_bytes + disp_bytes
 
-def rex(w, r, x, b):
+def ex_transform(r, addr):
+    if isinstance(addr, Address):
+        [x, b] = [addr.index, addr.base]
+    else:
+        [x, b] = [0, addr]
+
     if isinstance(r, Register):
         r = r.index
     if isinstance(x, Register):
         x = x.index
     if isinstance(b, Register):
         b = b.index
+
+    return [r, x, b]
+
+def rex(w, r, addr):
+    [r, x, b] = ex_transform(r, addr)
     value = w << 3 | (r & 8) >> 1 | (x & 8) >> 2 | (b & 8) >> 3
     if value:
         return [0x40 | value]
     return []
 
-def rex_addr(w, r, addr):
-    if isinstance(addr, Address):
-        return rex(w, r, addr.index, addr.base)
-    return rex(w, r, 0, addr)
 
 class Instruction(opcode: str, size: int, *args):
     arg0_table = {
@@ -191,7 +197,7 @@ class Instruction(opcode: str, size: int, *args):
             opcode = arg1_table[self.opcode]
             [src] = self.args
             assert isinstance(src, Register) or isinstance(src, Address)
-            return rex_addr(w, 0, src) + [0xF7] + mod_rm_sib(opcode, src)
+            return rex(w, 0, src) + [0xF7] + mod_rm_sib(opcode, src)
         elif self.opcode in arg2_table:
             opcode = arg2_table[self.opcode]
             [dst, src] = self.args
@@ -204,13 +210,13 @@ class Instruction(opcode: str, size: int, *args):
                         imm_bytes = pack64(src)
                     else:
                         imm_bytes = pack32(src)
-                    return rex(w, 0, 0, dst) + [0xB8 | dst.index & 7] + imm_bytes
+                    return rex(w, 0, dst) + [0xB8 | dst.index & 7] + imm_bytes
                 else:
                     if fits_8bit(src):
                         [size_flag, imm_bytes] = [0x2, pack8(src)]
                     else:
                         [size_flag, imm_bytes] = [0, pack32(src)]
-                    return rex(w, 0, 0, dst) + [0x81 | size_flag] + mod_rm_sib(
+                    return rex(w, 0, dst) + [0x81 | size_flag] + mod_rm_sib(
                             opcode, dst) + imm_bytes
 
             # Mov is also a bit different, but can mostly be handled like other ops
@@ -226,15 +232,15 @@ class Instruction(opcode: str, size: int, *args):
                 [src, dst] = [dst, src]
 
             assert isinstance(src, Register)
-            return rex_addr(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
+            return rex(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
         elif self.opcode == 'lea':
             [dst, src] = self.args
             assert isinstance(dst, Register) and isinstance(src, Address)
-            return rex_addr(w, dst, src) + [0x8D] + mod_rm_sib(dst, src)
+            return rex(w, dst, src) + [0x8D] + mod_rm_sib(dst, src)
         elif self.opcode == 'test':
             [src1, src2] = self.args
             if isinstance(src1, Register):
-                return rex_addr(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
+                return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
         elif self.opcode in jump_table:
             opcode = jump_table[self.opcode]
             [dst] = self.args
