@@ -336,91 +336,99 @@ def build(insts):
 
     return [bytes, labels, global_labels]
 
-# Just a bunch of random instructions to test out different encodings.
-insts = [
-    Label('_test', True),
-    Instruction('xor32', Register(0), Register(0)),
-    Instruction('add32', Register(0), Register(1)),
-    Instruction('cmp32', Register(0), Register(12)),
-    Instruction('add32', Address(3, 8, 3, 0xFFFF), Register(1)),
-    Instruction('add32', Register(1), Address(-1, 0, 0, 0xFFFF)),
-    Instruction('add32', Address(-1, 0, 0, 0xFFFF), Register(1)),
-    Instruction('add32', Address(3, 8, 3, 0), Register(1)),
-    Instruction('add32', Address(5, 8, 5, 0xFFFF), Register(1)),
-    Instruction('add32', Address(5, 8, 5, 0), Register(1)),
-    Instruction('mov32', Address(3, 8, 3, 0xFFFF), Register(1)),
-    Instruction('mov32', Register(1), Address(-1, 0, 0, 0xFFFF)),
-    Instruction('mov32', Address(-1, 0, 0, 0xFFFF), Register(1)),
-    # Test backward/forward jumps
-    Instruction('jz', Label('_test', True)),
-    Instruction('ja', Label('_test2', True)),
-    Instruction('mov32', Address(3, 8, 3, 0), Register(1)),
-    Instruction('mov32', Address(5, 8, 5, 0xFFFF), Register(1)),
-    Instruction('mov32', Address(5, 8, 5, 0), Register(1)),
-    Instruction('mov32', Register(1), Register(14)),
-    Instruction('mov32', Register(1), Register(7)),
-    Instruction('mov64', Register(1), Register(14)),
-    Instruction('add32', Register(1), 4),
-    Label('_test2', True),
-    # Our IR can't properly print unsigned integers without a bunch of work,
-    # as they appear in the objdump output. So ignore for now.
-    #Instruction('add32', Register(1), -2),
-    #Instruction('add32', Register(1), -0x200),
-    Instruction('add32', Register(1), 0xFFF),
-    Instruction('not32', Register(1)),
-    Instruction('neg32', Register(1)),
-    Instruction('mul32', Register(1)),
-    Instruction('imul32', Register(1)),
-    Instruction('div32', Register(1)),
-    Instruction('idiv32', Register(1)),
-    Instruction('not32', Address(5, 8, 5, 0xFFFF)),
-    Instruction('neg32', Address(5, 8, 5, 0xFFFF)),
-    Instruction('mul32', Address(5, 8, 5, 0xFFFF)),
-    Instruction('imul32', Address(5, 8, 5, 0xFFFF)),
-    Instruction('div32', Address(5, 8, 5, 0xFFFF)),
-    Instruction('idiv32', Address(5, 8, 5, 0xFFFF)),
-    Instruction('mov64', Register(0), 0x7FFFF000DEADBEEF),
-    Instruction('ret'),
-    Label('_test3', True),
-    Instruction('mov64', Register(0), 0x0123456789ABCDEF),
-    Instruction('jmp', Label('_test', True)),
-    Instruction('call', Label('_test', True)),
-    Instruction('jmp', Register(5)),
-    Instruction('call', Register(5)),
-    Instruction('nop'),
-    Instruction('ret'),
-    Label('_jump_test', True),
-]
+regs = [Register(i) for i in range(16)]
+bases = list(range(-1, 16))
+scales = [1, 2, 4, 8]
+indices = list(range(4)) + list(range(5, 16)) # index can't be RSP
+# Our IR can't properly print unsigned integers without a bunch of work,
+# as they appear in the objdump output. So no negative numbers for now.
+imms = [0, 1, 0xFF, 0x100, 0xFFFFFF]
+labels = [Label(l, False) for l in ['_start', '_end']]
 
-# Test lea
-for size in [32, 64]:
-    for dst in range(16):
-        insts = insts + [Instruction('lea{}'.format(size),
-            Register(dst), Address(3, 4, 5, 0xFF))]
+# Create a big list of possible instructions with possible operands
+inst_specs = []
 
-# Test BMI instructions
+for [inst, _] in Instruction.arg0_table:
+    inst_specs = inst_specs + [[inst]]
+
 for size in [32, 64]:
-    for inst in ['sarx', 'shlx', 'shrx']:
-        insts = insts + [Instruction('{}{}'.format(inst, size),
-            Register(3), Register(11), Register(14))]
+    for [inst, _] in Instruction.arg1_table:
+        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'ra']]
+
+    for [inst, _] in Instruction.arg2_table:
+        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'rai']]
+        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'a', 'r']]
+
+    for [inst, _] in Instruction.bmi_table:
+        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'ra', 'r']]
+
+    inst_specs = inst_specs + [['lea{}'.format(size), 'r', 'a']]
+    inst_specs = inst_specs + [['test{}'.format(size), 'ra', 'r']]
 
 # Make sure all of the condition codes are tested, to test canonicalization
 for [cond, code] in Instruction.jump_table:
-    insts = insts + [Instruction(cond, Label('_jump_test', True))]
+    inst_specs = inst_specs + [[cond, 'l']]
 
-# Same for setcc r/m
 for [cond, code] in Instruction.setcc_table:
-    insts = insts + [Instruction(cond + '8', Register(6)),
-            Instruction(cond + '8', Address(3, 4, 5, 0xFF))]
+    inst_specs = inst_specs + [[cond + '8', 'ra']]
 
-# Test test. omglol
-for size in [32, 64]:
-    for dst in range(16):
-        insts = insts + [Instruction('test{}'.format(size), Register(dst),
-            Register(dst))]
-        # XXX WTF? objdump seems to reverse the arguments of test when the second
-        # is an address...
-        #                Instruction('test{}'.format(size), Register(dst), Address(-1, 0, 0, 0xFFFF))
+for inst in ['jmp', 'call']:
+    inst_specs = inst_specs + [[inst, 'rl']]
+
+# RKISS algorithm
+def gen_rand_64(n):
+    def rol(x, y):
+        return (x << y) | (x >> 64 - y)
+    def int64(x):
+        return x & (1 << 64) - 1
+
+    rand_state = [0x8C84A911159F4017, 0x062C0B602809C02E, 0xA48B831518DEA5D7,
+            0x55AB3636D17F3AD3]
+    for i in range(n):
+        [a, b, c, d] = rand_state
+        e = a - rol(b, 7)
+        a = b ^ rol(c, 13)
+        b = c + rol(d, 37)
+        c = d + e
+        d = e + a
+        rand_state = [int64(a), int64(b), int64(c), int64(d)]
+        yield int64(d)
+
+def rand_select(l, i):
+    return [l[i % len(l)], i // len(l)]
+
+# Generate a bunch of random instructions. Should make sure this hits every
+# instruction somehow (random.shuffle?). This is also a good case for figuring
+# out some way to thread a stream of random numbers through for every place
+# that needs one.
+insts = [Label('_start', True)]
+for rand in gen_rand_64(1000):
+    [inst_spec, rand] = rand_select(inst_specs, rand)
+    args = []
+    for arg_spec in slice(inst_spec, 1, len(inst_spec)):
+        [arg_type, rand] = rand_select(arg_spec, rand)
+        if arg_type == 'r':
+            [arg, rand] = rand_select(regs, rand)
+        elif arg_type == 'a':
+            [base, rand] = rand_select(bases, rand)
+            if base == -1:
+                [scale, index] = [0, 0]
+            else:
+                [scale, rand] = rand_select(scales, rand)
+                [index, rand] = rand_select(indices, rand)
+            [disp, rand] = rand_select(imms, rand)
+            arg = Address(base, scale, index, disp)
+        elif arg_type == 'i':
+            [arg, rand] = rand_select(imms, rand)
+        elif arg_type == 'l':
+            [arg, rand] = rand_select(labels, rand)
+        else:
+            assert False
+        args = args + [arg]
+    insts = insts + [Instruction(inst_spec[0], *args)]
+
+# Add the end label, plus an extra instruction, so objdump still prints it
+insts = insts + [Label('_end', True), Instruction('ret')]
 
 elf_file = elf.create_elf_file(*build(insts))
 write_binary_file('elfout.o', elf_file)
