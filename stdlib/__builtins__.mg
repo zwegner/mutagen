@@ -27,11 +27,22 @@ def reversed(iterable):
         i = i - 1
         yield iterable[i]
 
-def range(end):
-    i = 0
-    while i < end:
+def range(*args):
+    [start, step] = [0, 1]
+    if len(args) == 1:
+        [end] = args
+    elif len(args) == 2:
+        [start, end] = args
+    elif len(args) == 3:
+        [start, end, step] = args
+    else:
+        error('bad arguments to range()')
+    if step == 0:
+        error('step argument to range() must be nonzero')
+    i = start
+    while (step > 0 and i < end) or (step < 0 and i > end):
         yield i
-        i = i + 1
+        i = i + step
 
 def enumerate(gen):
     i = 0

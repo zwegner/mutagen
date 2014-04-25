@@ -18,8 +18,16 @@ for [input, result] in [[False, False], [0, False], [9, True], ['0', True], ['',
     assert bool(input) == result
 
 # Test range
+assert list(range(-4)) == []
 assert list(range(0)) == []
 assert list(range(4)) == [0, 1, 2, 3]
+assert list(range(-4, -2)) == [-4, -3]
+assert list(range(-2, 2)) == [-2, -1, 0, 1]
+assert list(range(5, 8)) == [5, 6, 7]
+assert list(range(0, -5, -2)) == [0, -2, -4]
+assert list(range(3, 6, 1)) == [3, 4, 5]
+assert list(range(-4, 4, 3)) == [-4, -1, 2]
+assert_call_fails(list, range(0, 0, 0))
 
 # Test enumerate
 assert list(enumerate('abc')) == [[0, 'a'], [1, 'b'], [2, 'c']]
