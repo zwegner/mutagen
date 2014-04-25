@@ -41,5 +41,14 @@ for line in dump_output.splitlines():
 lines.append('')
 dump_output = '\n'.join(lines)
 
-# Exit codes are reversed from boolean comparisons (0 is successful)
-sys.exit(raw_output != dump_output)
+if raw_output != dump_output:
+    with tempfile.NamedTemporaryFile() as f1:
+        f1.write(raw_output.encode('ascii'))
+        f1.flush()
+        with tempfile.NamedTemporaryFile() as f2:
+            f2.write(dump_output.encode('ascii'))
+            f2.flush()
+            subprocess.call(['diff', f1.name, f2.name])
+    sys.exit(1)
+else:
+    sys.exit(0)
