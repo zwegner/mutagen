@@ -110,6 +110,15 @@ def rex(w, r, addr):
         return [0x40 | value]
     return []
 
+def vex(w, r, addr, m, v, l, p):
+    [r, x, b] = ex_transform(r, addr)
+    if isinstance(v, Register):
+        v = v.index
+    base = (~v & 15) << 3 | l << 2 | p
+    if w or r or x or m != 1:
+        return [0xC4, (~r & 8) << 4 | (~x & 8) << 3 | (~b & 8) << 2 | m,
+                w << 7 | base]
+    return [0xC4, (~r & 8) << 4 | base]
 
 class Instruction(opcode: str, size: int, *args):
     arg0_table = {
@@ -134,6 +143,11 @@ class Instruction(opcode: str, size: int, *args):
         'sub': 5,
         'xor': 6,
         'cmp': 7,
+    }
+    bmi_table = {
+        'sarx': [2, 2, 0xF7],
+        'shlx': [2, 1, 0xF7],
+        'shrx': [2, 3, 0xF7],
     }
 
     all_conds = [
@@ -241,6 +255,10 @@ class Instruction(opcode: str, size: int, *args):
             [src1, src2] = self.args
             if isinstance(src1, Register):
                 return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
+        elif self.opcode in bmi_table:
+            [m, p, opcode] = bmi_table[self.opcode]
+            [dst, src1, src2] = self.args
+            return vex(w, dst, src1, m, src2, 0, p) + [opcode] + mod_rm_sib(dst, src1)
         elif self.opcode in jump_table:
             opcode = jump_table[self.opcode]
             [dst] = self.args
@@ -374,6 +392,18 @@ insts = [
     Label('_jump_test', True),
 ]
 
+# Test lea
+for size in [32, 64]:
+    for dst in range(16):
+        insts = insts + [Instruction('lea{}'.format(size),
+            Register(dst), Address(3, 4, 5, 0xFF))]
+
+# Test BMI instructions
+for size in [32, 64]:
+    for inst in ['sarx', 'shlx', 'shrx']:
+        insts = insts + [Instruction('{}{}'.format(inst, size),
+            Register(3), Register(11), Register(14))]
+
 # Make sure all of the condition codes are tested, to test canonicalization
 for [cond, code] in Instruction.jump_table:
     insts = insts + [Instruction(cond, Label('_jump_test', True))]
@@ -382,12 +412,6 @@ for [cond, code] in Instruction.jump_table:
 for [cond, code] in Instruction.setcc_table:
     insts = insts + [Instruction(cond + '8', Register(6)),
             Instruction(cond + '8', Address(3, 4, 5, 0xFF))]
-
-# Test lea
-for size in [32, 64]:
-    for dst in range(16):
-        insts = insts + [Instruction('lea{}'.format(size),
-            Register(dst), Address(3, 4, 5, 0xFF))]
 
 # Test test. omglol
 for size in [32, 64]:
