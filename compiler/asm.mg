@@ -151,10 +151,17 @@ class Instruction(opcode: str, size: int, *args):
         'tzcnt': 0xBC,
     }
     bmi_arg3_table = {
-        'sarx': [2, 2, 0xF7],
-        'shlx': [2, 1, 0xF7],
-        'shrx': [2, 3, 0xF7],
+        'andn':  [2, 0, 0xF2],
+        'bextr': [2, 0, 0xF7],
+        'bzhi':  [2, 0, 0xF5],
+        'mulx':  [2, 3, 0xF6],
+        'pdep':  [2, 3, 0xF5],
+        'pext':  [2, 2, 0xF5],
+        'sarx':  [2, 2, 0xF7],
+        'shlx':  [2, 1, 0xF7],
+        'shrx':  [2, 3, 0xF7],
     }
+    bmi_arg3_reversed = ['andn', 'mulx', 'pdep', 'pext']
 
     all_conds = [
         ['o'],
@@ -268,6 +275,8 @@ class Instruction(opcode: str, size: int, *args):
         elif self.opcode in bmi_arg3_table:
             [m, p, opcode] = bmi_arg3_table[self.opcode]
             [dst, src1, src2] = self.args
+            if self.opcode in bmi_arg3_reversed:
+                [src2, src1] = [src1, src2]
             return vex(w, dst, src1, m, src2, 0, p) + [opcode] + mod_rm_sib(dst, src1)
         elif self.opcode in jump_table:
             opcode = jump_table[self.opcode]
@@ -373,7 +382,10 @@ for size in [32, 64]:
         inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'ra']]
 
     for [inst, _] in Instruction.bmi_arg3_table:
-        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'ra', 'r']]
+        [src1, src2] = ['ra', 'r']
+        if inst in Instruction.bmi_arg3_reversed:
+            [src2, src1] = [src1, src2]
+        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', src1, src2]]
 
     inst_specs = inst_specs + [['lea{}'.format(size), 'r', 'a']]
     inst_specs = inst_specs + [['test{}'.format(size), 'ra', 'r']]
