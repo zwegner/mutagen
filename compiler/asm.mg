@@ -144,7 +144,13 @@ class Instruction(opcode: str, size: int, *args):
         'xor': 6,
         'cmp': 7,
     }
-    bmi_table = {
+
+    bmi_arg2_table = {
+        'lzcnt': 0xBD,
+        'popcnt': 0xB8,
+        'tzcnt': 0xBC,
+    }
+    bmi_arg3_table = {
         'sarx': [2, 2, 0xF7],
         'shlx': [2, 1, 0xF7],
         'shrx': [2, 3, 0xF7],
@@ -255,8 +261,12 @@ class Instruction(opcode: str, size: int, *args):
             # Test has backwards arguments, weird
             [src2, src1] = self.args
             return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
-        elif self.opcode in bmi_table:
-            [m, p, opcode] = bmi_table[self.opcode]
+        elif self.opcode in bmi_arg2_table:
+            opcode = bmi_arg2_table[self.opcode]
+            [dst, src] = self.args
+            return [0xF3] + rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
+        elif self.opcode in bmi_arg3_table:
+            [m, p, opcode] = bmi_arg3_table[self.opcode]
             [dst, src1, src2] = self.args
             return vex(w, dst, src1, m, src2, 0, p) + [opcode] + mod_rm_sib(dst, src1)
         elif self.opcode in jump_table:
@@ -359,7 +369,10 @@ for size in [32, 64]:
         inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'rai']]
         inst_specs = inst_specs + [['{}{}'.format(inst, size), 'a', 'r']]
 
-    for [inst, _] in Instruction.bmi_table:
+    for [inst, _] in Instruction.bmi_arg2_table:
+        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'ra']]
+
+    for [inst, _] in Instruction.bmi_arg3_table:
         inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'ra', 'r']]
 
     inst_specs = inst_specs + [['lea{}'.format(size), 'r', 'a']]
