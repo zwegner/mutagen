@@ -56,12 +56,23 @@ def mgb_repr(ctx, arg):
 def mgb_error(ctx, msg):
     msg.error(msg.value, ctx=ctx)
 
-@mg_builtin([Node, Integer, Integer])
-def mgb_slice(ctx, seq, start, end):
+@mg_builtin(None)
+def mgb_slice(ctx, seq, *args):
+    args = [a.value if a is not None and not isinstance(a, None_) else None
+            for a in args]
+    [start, stop, step] = [None, None, None]
+    if len(args) == 1:
+        [stop] = args
+    elif len(args) == 2:
+        [start, stop] = args
+    elif len(args) == 3:
+        [start, stop, step] = args
+    else:
+        seq.error('expected 1-3 arguments to slice, got %s' % len(args), ctx=ctx)
     if isinstance(seq, String):
-        return String(seq.value[start.value:end.value], info=seq)
+        return String(seq.value[start:stop:step], info=seq)
     elif isinstance(seq, List):
-        return List(seq.items[start.value:end.value], info=seq)
+        return List(seq.items[start:stop:step], info=seq)
     return seq.error('slice on unsliceable type %s' % type(seq).__name__, ctx=ctx)
 
 # XXX remove this, just temporarily added to test stuff that should fail.

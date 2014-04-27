@@ -42,8 +42,8 @@ class Tokenizer:
                 if not best_match[0]:
                     error('Error: '+repr(i))
 
-                match = slice(i, 0, best_match[1])
-                i = slice(i, best_match[1], len(i))
+                match = slice(i, best_match[1])
+                i = slice(i, best_match[1], None)
                 token = best_token.fn(Token(best_token.name, match))
                 if token != None:
                     yield token
