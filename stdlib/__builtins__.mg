@@ -102,3 +102,28 @@ def str_split_lines(text):
 
 def isinstance(obj, cls):
     return type(obj) == cls
+
+class set:
+    def __init__(*items):
+        if len(items) == 0:
+            items = []
+        else:
+            [items] = items
+        set_items = []
+        for i in items:
+            if i not in set_items:
+                set_items = set_items + [i]
+        return {'items': set_items}
+    def __contains__(self, item):
+        return item in self.items
+    def __or__(self, other):
+        return set(self.items + other.items)
+    def __iter__(self):
+        for item in self.items:
+            yield item
+    def __len__(self):
+        return len(self.items)
+    def __repr__(self):
+        if not self.items:
+            return 'set()'
+        return '{{{}}}'.format(', '.join(map(str, self.items)))
