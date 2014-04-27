@@ -1055,6 +1055,12 @@ class BuiltinDict(BuiltinClass):
     def eval_call(self, ctx, args):
         [arg] = args
         return Dict(dict(arg), info=arg)
+    def keys(obj, ctx, args):
+        [arg] = args
+        return List(list(arg.items.keys()), info=arg)
+    def values(obj, ctx, args):
+        [arg] = args
+        return List(list(arg.items.values()), info=arg)
 
 DictClass = BuiltinDict('dict')
 
