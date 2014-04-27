@@ -144,6 +144,15 @@ class Instruction(opcode: str, size: int, *args):
         'xor': 6,
         'cmp': 7,
     }
+    shift_table = {
+        'rol': 0,
+        'ror': 1,
+        'rcl': 2,
+        'rcr': 3,
+        'shl': 4,
+        'shr': 5,
+        'sar': 7,
+    }
 
     bmi_arg2_table = {
         'lzcnt': 0xBD,
@@ -260,6 +269,22 @@ class Instruction(opcode: str, size: int, *args):
 
             assert isinstance(src, Register)
             return rex(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
+        elif self.opcode in shift_table:
+            sub_opcode = shift_table[self.opcode]
+            [dst, src] = self.args
+            suffix = []
+            if isinstance(src, int):
+                if src == 1:
+                    opcode = 0xD1
+                else:
+                    opcode = 0xC1
+                    suffix = pack8(src & 63)
+            else:
+                assert isinstance(src, Register)
+                # Only CL
+                assert src.index == 1
+                opcode = 0xD3
+            return rex(w, 0, dst) + [opcode] + mod_rm_sib(sub_opcode, dst) + suffix
         elif self.opcode == 'lea':
             [dst, src] = self.args
             assert isinstance(dst, Register) and isinstance(src, Address)
@@ -314,6 +339,8 @@ class Instruction(opcode: str, size: int, *args):
                     use_size_prefix = self.opcode != 'lea'
                     args = args + [arg.to_str(use_size_prefix, self.size)]
                 else:
+                    if self.opcode in shift_table:
+                        arg = arg & 63
                     # XXX handle different immediate sizes (to convert to unsigned)
                     args = args + [str(arg)]
             argstr = ' ' + ','.join(args)
@@ -361,7 +388,7 @@ scales = [1, 2, 4, 8]
 indices = list(range(4)) + list(range(5, 16)) # index can't be RSP
 # Our IR can't properly print unsigned integers without a bunch of work,
 # as they appear in the objdump output. So no negative numbers for now.
-imms = [0, 1, 0xFF, 0x100, 0xFFFFFF]
+imms = [0, 1, 7, 37, 0xFF, 0x100, 0xFFFFFF]
 labels = [Label(l, False) for l in ['_start', '_end']]
 
 # Create a big list of possible instructions with possible operands
@@ -375,8 +402,15 @@ for size in [32, 64]:
         inst_specs = inst_specs + [['{}{}'.format(inst, size), 'ra']]
 
     for [inst, _] in Instruction.arg2_table:
-        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'rai']]
-        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'a', 'r']]
+        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'rai'],
+                ['{}{}'.format(inst, size), 'a', 'r']]
+
+    for [inst, _] in Instruction.shift_table:
+        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'ra', 'i'],
+            # Printing shifts by CL is a pain in the ass, since it can
+            # use two different register sizes
+            # ['{}{}'.format(inst, size), 'ra', Register(1)]
+        ]
 
     for [inst, _] in Instruction.bmi_arg2_table:
         inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'ra']]
