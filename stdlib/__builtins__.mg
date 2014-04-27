@@ -103,6 +103,7 @@ def str_split_lines(text):
 def isinstance(obj, cls):
     return type(obj) == cls
 
+# This shit's slow
 class set:
     def __init__(*items):
         if len(items) == 0:
@@ -118,6 +119,12 @@ class set:
         return item in self.items
     def __or__(self, other):
         return set(self.items + other.items)
+    def __sub__(self, other):
+        new_items = []
+        for item in self.items:
+            if item not in other:
+                new_items = new_items + [item]
+        return set(new_items)
     def __iter__(self):
         for item in self.items:
             yield item
