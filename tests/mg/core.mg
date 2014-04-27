@@ -91,7 +91,7 @@ assert isinstance(t.x, TestA)
 assert not isinstance(t.x, TestB)
 assert not isinstance(t.y, TestA)
 assert isinstance(t.y, TestB)
-assert str_starts_with(str(t), '<TestClass at ')
+assert str(t).startswith('<TestClass at ')
 
 assert isinstance(type(t), type)
 assert isinstance(type(type(t)), type)
@@ -105,8 +105,8 @@ assert isinstance(x, TestUnion.x)
 assert not isinstance(x, TestUnion.y)
 assert isinstance(y, TestUnion.y)
 assert not isinstance(y, TestUnion.x)
-assert str_starts_with(str(x), '<TestUnion.x at ')
-assert str_starts_with(str(y), '<TestUnion.y at ')
+assert str(x).startswith('<TestUnion.x at ')
+assert str(y).startswith('<TestUnion.y at ')
 # Need better isinstance
 #assert isinstance(x, TestUnion)
 
@@ -122,8 +122,8 @@ assert isinstance(b, TestNestedUnion.b)
 assert isinstance(b.x, TestUnion.x)
 assert isinstance(b.y, TestUnion.y)
 assert not isinstance(b, TestNestedUnion.a)
-assert str_starts_with(str(a), '<TestNestedUnion.a at ')
-assert str_starts_with(str(b), '<TestNestedUnion.b at ')
+assert str(a).startswith('<TestNestedUnion.a at ')
+assert str(b).startswith('<TestNestedUnion.b at ')
 assert {TestNestedUnion.b(x, y): TestNestedUnion.a(x)}[b] == a
 
 union Bool(false, true):

@@ -57,16 +57,16 @@ str_joined = 'abc/def/ghi'
 assert '/'.join(str_list) == str_joined
 assert str_split(str_joined, '/') == str_list
 
-# Test str_starts_with
+# Test str.startswith
 strs = ['', 'a', 'ab', 'abc']
 other = '!a'
 for [i, x] in enumerate(strs):
     for [j, y] in enumerate(strs):
         if j <= i:
-            assert str_starts_with(x, y)
+            assert x.startswith(y)
         else:
-            assert not str_starts_with(x, y)
-        assert not str_starts_with(x, other)
+            assert not x.startswith(y)
+        assert not x.startswith(other)
 
 assert not any([])
 assert not any(range(1))

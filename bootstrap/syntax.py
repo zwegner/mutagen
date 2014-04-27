@@ -993,6 +993,9 @@ class BuiltinStr(BuiltinClass):
     def upper(obj, ctx, args):
         [arg] = args
         return String(arg.value.upper(), info=arg)
+    def startswith(obj, ctx, args):
+        [arg, suffix] = args
+        return Boolean(arg.value.startswith(suffix.value), info=arg)
     def endswith(obj, ctx, args):
         [arg, suffix] = args
         return Boolean(arg.value.endswith(suffix.value), info=arg)

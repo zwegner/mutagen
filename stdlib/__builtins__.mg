@@ -100,8 +100,5 @@ def str_split(text, delim):
 def str_split_lines(text):
     return str_split(text, '\n')
 
-def str_starts_with(a, b):
-    return slice(a, 0, len(b)) == b
-
 def isinstance(obj, cls):
     return type(obj) == cls
