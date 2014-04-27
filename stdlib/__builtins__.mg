@@ -125,6 +125,9 @@ class set:
             if item not in other:
                 new_items = new_items + [item]
         return set(new_items)
+    def pop(self):
+        # Return one item, and the set without the item
+        return [set(slice(self.items, 1, None)), self.items[0]]
     def __iter__(self):
         for item in self.items:
             yield item
