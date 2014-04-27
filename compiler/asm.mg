@@ -285,6 +285,19 @@ class Instruction(opcode: str, size: int, *args):
                 assert src.index == 1
                 opcode = 0xD3
             return rex(w, 0, dst) + [opcode] + mod_rm_sib(sub_opcode, dst) + suffix
+        elif self.opcode == 'push':
+            [src] = self.args
+            if isinstance(src, int):
+                if fits_8bit(src):
+                    return [0x6A] + pack8(src)
+                return [0x68] + pack32(src)
+            else:
+                assert isinstance(src, Register)
+                return rex(0, 0, src) + [0x50 | (src.index & 7)]
+        elif self.opcode == 'pop':
+            [src] = self.args
+            assert isinstance(src, Register)
+            return rex(0, 0, src) + [0x58 | (src.index & 7)]
         elif self.opcode == 'lea':
             [dst, src] = self.args
             assert isinstance(dst, Register) and isinstance(src, Address)
@@ -421,6 +434,8 @@ for size in [32, 64]:
             [src2, src1] = [src1, src2]
         inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', src1, src2]]
 
+    inst_specs = inst_specs + [['push'.format(size), 'ri']]
+    inst_specs = inst_specs + [['pop'.format(size), 'r']]
     inst_specs = inst_specs + [['lea{}'.format(size), 'r', 'a']]
     inst_specs = inst_specs + [['test{}'.format(size), 'ra', 'r']]
 
