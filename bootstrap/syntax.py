@@ -537,7 +537,7 @@ class BinaryOp(Node):
         operator = '__%s__' % operator
 
         overloaded = lhs.overload(ctx, operator, [rhs])
-        if overloaded:
+        if overloaded is not None:
             return overloaded
         elif not hasattr(lhs, operator):
             self.error('object of type %s cannot handle operator %s' % (
