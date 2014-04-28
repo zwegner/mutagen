@@ -295,9 +295,9 @@ class Instruction(opcode: str, size: int, *args):
                 assert isinstance(src, Register)
                 return rex(0, 0, src) + [0x50 | (src.index & 7)]
         elif self.opcode == 'pop':
-            [src] = self.args
-            assert isinstance(src, Register)
-            return rex(0, 0, src) + [0x58 | (src.index & 7)]
+            [dst] = self.args
+            assert isinstance(dst, Register)
+            return rex(0, 0, dst) + [0x58 | (dst.index & 7)]
         elif self.opcode == 'lea':
             [dst, src] = self.args
             assert isinstance(dst, Register) and isinstance(src, Address)
@@ -318,18 +318,18 @@ class Instruction(opcode: str, size: int, *args):
             return vex(w, dst, src1, m, src2, 0, p) + [opcode] + mod_rm_sib(dst, src1)
         elif self.opcode in jump_table:
             opcode = jump_table[self.opcode]
-            [dst] = self.args
-            assert isinstance(dst, Label)
+            [src] = self.args
+            assert isinstance(src, Label)
             # XXX Since we don't know how far or in what direction we're jumping,
             # punt and use disp32. We'll fill the offset in later.
-            return [0x0F, opcode, Relocation(dst, 4)]
+            return [0x0F, opcode, Relocation(src, 4)]
         elif self.opcode in ['jmp', 'call']:
-            [dst] = self.args
+            [src] = self.args
             [opcode, sub_opcode] = {'jmp': [0xE9, 4], 'call': [0xE8, 2]}[self.opcode]
-            if isinstance(dst, Label):
-                return [opcode, Relocation(dst, 4)]
+            if isinstance(src, Label):
+                return [opcode, Relocation(src, 4)]
             else:
-                return rex(0, 0, dst) + [0xFF] + mod_rm_sib(sub_opcode, dst)
+                return rex(0, 0, src) + [0xFF] + mod_rm_sib(sub_opcode, src)
         elif self.opcode in setcc_table:
             opcode = setcc_table[self.opcode]
             [dst] = self.args
@@ -391,7 +391,7 @@ def build(insts):
             disp = label_dict[rel.label.name] - offset - rel.size
             new_bytes = new_bytes + pack32(disp)
             last_offset = offset + rel.size
-        bytes = new_bytes + slice(bytes, last_offset, len(bytes))
+        bytes = new_bytes + slice(bytes, last_offset, None)
 
     return [bytes, labels, global_labels]
 
@@ -407,28 +407,28 @@ labels = [Label(l, False) for l in ['_start', '_end']]
 # Create a big list of possible instructions with possible operands
 inst_specs = []
 
-for [inst, _] in Instruction.arg0_table:
+for inst in Instruction.arg0_table.keys():
     inst_specs = inst_specs + [[inst]]
 
 for size in [32, 64]:
-    for [inst, _] in Instruction.arg1_table:
+    for inst in Instruction.arg1_table.keys():
         inst_specs = inst_specs + [['{}{}'.format(inst, size), 'ra']]
 
-    for [inst, _] in Instruction.arg2_table:
+    for inst in Instruction.arg2_table.keys():
         inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'rai'],
                 ['{}{}'.format(inst, size), 'a', 'r']]
 
-    for [inst, _] in Instruction.shift_table:
+    for inst in Instruction.shift_table.keys():
         inst_specs = inst_specs + [['{}{}'.format(inst, size), 'ra', 'i'],
             # Printing shifts by CL is a pain in the ass, since it can
             # use two different register sizes
             # ['{}{}'.format(inst, size), 'ra', Register(1)]
         ]
 
-    for [inst, _] in Instruction.bmi_arg2_table:
+    for inst in Instruction.bmi_arg2_table.keys():
         inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'ra']]
 
-    for [inst, _] in Instruction.bmi_arg3_table:
+    for inst in Instruction.bmi_arg3_table.keys():
         [src1, src2] = ['ra', 'r']
         if inst in Instruction.bmi_arg3_reversed:
             [src2, src1] = [src1, src2]
@@ -479,7 +479,7 @@ insts = [Label('_start', True)]
 for rand in gen_rand_64(1000):
     [inst_spec, rand] = rand_select(inst_specs, rand)
     args = []
-    for arg_spec in slice(inst_spec, 1, len(inst_spec)):
+    for arg_spec in slice(inst_spec, 1, None):
         [arg_type, rand] = rand_select(arg_spec, rand)
         if arg_type == 'r':
             [arg, rand] = rand_select(regs, rand)
