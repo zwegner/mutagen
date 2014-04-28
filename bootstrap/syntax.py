@@ -722,7 +722,8 @@ class For(Node):
 
 @node('&target, &expr')
 class CompIter(Node):
-    pass
+    def repr(self, ctx):
+        return 'for %s in %s' % (self.target.repr(ctx), self.expr.repr(ctx))
 
 class Comprehension(Node):
     def get_states(self, ctx):
@@ -750,8 +751,8 @@ class ListComprehension(Comprehension):
         return List([self.expr.eval(child_ctx) for child_ctx in
             self.get_states(ctx)], info=self)
     def repr(self, ctx):
-        return '[%s for %s in %s]' % (self.expr.repr(ctx), self.target.repr(ctx),
-                self.iter.repr(ctx))
+        return '[%s %s]' % (self.expr.repr(ctx),
+                ' '.join(comp.repr(ctx) for comp in self.comp_iters))
 
 @node('&key_expr, &value_expr, *comp_iters')
 class DictComprehension(Comprehension):
@@ -759,9 +760,9 @@ class DictComprehension(Comprehension):
         return Dict({self.key_expr.eval(child_ctx): self.value_expr.eval(child_ctx)
             for child_ctx in self.get_states(ctx)}, info=self)
     def repr(self, ctx):
-        return '{%s: %s for %s in %s}' % (self.key_expr.repr(ctx),
-                self.value_expr.repr(ctx), self.target.repr(ctx),
-                self.iter.repr(ctx))
+        return '{%s: %s %s}' % (self.key_expr.repr(ctx),
+                self.value_expr.repr(ctx),
+                ' '.join(comp.repr(ctx) for comp in self.comp_iters))
 
 @node('&expr, &block')
 class While(Node):
