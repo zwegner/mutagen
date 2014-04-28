@@ -199,6 +199,10 @@ class Instruction(opcode: str, size: int, *args):
     canon_table = {prefix + cond: prefix + canon for prefix in ['j', 'set']
             for [cond, canon] in cond_canon}
 
+    destructive_ops = set(arg2_table.keys() + shift_table.keys() +
+            bmi_arg2_table.keys() + bmi_arg3_table.keys() + setcc_table.keys() +
+            ['lea', 'pop'])
+
     def __init__(opcode: str, *args):
         # Handle 32/64 bit instruction size. This info is stuck in the opcode
         # name for now since not all instructions need it.
@@ -213,6 +217,13 @@ class Instruction(opcode: str, size: int, *args):
         else:
             # XXX default size--this might need more logic later
             size = 64
+
+        opcode = normalize_opcode(opcode)
+
+        # This dictionary shit really needs to go. Need polymorphism!
+        return {'opcode': opcode, 'size': size, 'args': args}
+
+    def normalize_opcode(opcode):
         opcode = opcode.replace('8', '').replace('16', '')
         opcode = opcode.replace('32', '').replace('64', '')
 
@@ -220,8 +231,7 @@ class Instruction(opcode: str, size: int, *args):
         if opcode in canon_table:
             opcode = canon_table[opcode]
 
-        # This dictionary shit really needs to go. Need polymorphism!
-        return {'opcode': opcode, 'size': size, 'args': args}
+        return opcode
 
     def to_bytes(self):
         w = int(self.size == 64)
@@ -360,6 +370,10 @@ class Instruction(opcode: str, size: int, *args):
         else:
             argstr = ''
         return self.opcode + argstr
+
+def is_destructive(opcode):
+    opcode = Instruction.normalize_opcode(opcode)
+    return opcode in Instruction.destructive_ops
 
 def build(insts):
     bytes = []
