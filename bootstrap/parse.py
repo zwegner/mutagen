@@ -94,14 +94,25 @@ def p_delims(p):
     """
     p[0] = None
 
+def p_ident_list(p):
+    """ ident_list : IDENTIFIER
+                   | ident_list COMMA IDENTIFIER
+    """
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1] + [p[3]]
+
 def p_import(p):
     """ import : IMPORT IDENTIFIER
                | FROM IDENTIFIER IMPORT STAR
+               | FROM IDENTIFIER IMPORT ident_list
     """
     if len(p) == 3:
         p[0] = Import(p[2], None, None, False, info=get_info(p, 1))
     else:
-        p[0] = Import(p[2], [], None, False, info=get_info(p, 1))
+        names = [] if p[4] == '*' else p[4]
+        p[0] = Import(p[2], names, None, False, info=get_info(p, 1))
 
 def p_import_from(p):
     """ import : IMPORT IDENTIFIER FROM STRING """
