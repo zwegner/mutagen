@@ -517,10 +517,14 @@ def p_union_param_list(p):
     else:
         p[0] = p[1] + [p[3]]
 
+def p_union_params(p):
+    """ union_params : LPAREN union_param_list RPAREN """
+    p[0] = Params(p[2], None, info=get_info(p, 1))
+
 def p_union(p):
-    """ union_stmt : UNION IDENTIFIER LPAREN union_param_list RPAREN block """
-    p[0] = Assignment(Target(p[2], info=get_info(p, 2)), Union(current_ctx, p[2],
-        Params(p[4], None, info=get_info(p, 1)), p[6], info=get_info(p, 1)))
+    """ union_stmt : UNION IDENTIFIER union_params block """
+    p[0] = Assignment(Target(p[2], info=get_info(p, 2)),
+        Union(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
 
 parser = yacc.yacc(write_tables=0, debug=0)
 
