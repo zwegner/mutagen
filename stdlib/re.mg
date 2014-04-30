@@ -38,7 +38,7 @@ class MatchSeq(left, right):
     def match(self, s):
         [r, l] = self.left.match(s)
         if r:
-            [r, i] = self.right.match(slice(s, l))
+            [r, i] = self.right.match(slice(s, l, None))
             l = l + i
         return [r, l]
 
@@ -59,7 +59,7 @@ class MatchRep(regex, min):
         while r:
             l = l + i
             count = count + 1
-            [r, i] = self.regex.match(slice(s, l))
+            [r, i] = self.regex.match(slice(s, l, None))
         return [count >= self.min, l]
 
 # Null regex: matches nothing.
