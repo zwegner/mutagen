@@ -105,18 +105,20 @@ def p_ident_list(p):
 
 def p_import(p):
     """ import : IMPORT IDENTIFIER
-               | FROM IDENTIFIER IMPORT STAR
                | FROM IDENTIFIER IMPORT ident_list
+               | FROM IDENTIFIER IMPORT STAR
+               | IMPORT IDENTIFIER FROM STRING
     """
-    if len(p) == 3:
-        p[0] = Import(p[2], None, None, False, info=get_info(p, 1))
-    else:
-        names = [] if p[4] == '*' else p[4]
-        p[0] = Import(p[2], names, None, False, info=get_info(p, 1))
-
-def p_import_from(p):
-    """ import : IMPORT IDENTIFIER FROM STRING """
-    p[0] = Import(p[2], None, p[4], False, info=get_info(p, 1))
+    names = path = None
+    if len(p) == 5:
+        if p[1] == 'from':
+            names = p[4] if p[4] != '*' else []
+        else:
+            path = p[4]
+    imp = Import([], p[2], names, path, False, info=get_info(p, 1))
+    all_imports.append(imp)
+    target = names or p[2]
+    p[0] = Scope(imp)
 
 def p_simple_stmt(p):
     """ simple_stmt : expr
@@ -231,11 +233,11 @@ def p_comp_list(p):
 
 def p_list_comp(p):
     """ list_comp : LBRACKET expr comp_list RBRACKET """
-    p[0] = ListComprehension(p[2], p[3])
+    p[0] = Scope(ListComprehension(p[2], p[3]))
 
 def p_dict_comp(p):
     """ dict_comp : LBRACE expr COLON expr comp_list RBRACE """
-    p[0] = DictComprehension(p[2], p[4], p[5])
+    p[0] = Scope(DictComprehension(p[2], p[4], p[5]))
 
 def p_dict(p):
     """ dict : LBRACE RBRACE
@@ -480,24 +482,25 @@ def p_return_type(p):
 def p_def(p):
     """ def_stmt : DEF IDENTIFIER params return_type block """
     p[0] = Assignment(Target(p[2], info=get_info(p, 2)),
-            Function(current_ctx, p[2], p[3], p[4], p[5], info=get_info(p, 1)))
+            Scope(Function(p[2], p[3], p[4], p[5], info=get_info(p, 1))))
 
 def p_lambda(p):
     """ lambda : LAMBDA params return_type block """
-    p[0] = Function(current_ctx, 'lambda', p[2], p[3], p[4], info=get_info(p, 1))
+    p[0] = Scope(Function('lambda', p[2], p[3], p[4], info=get_info(p, 1)))
 
 def p_class(p):
     """ class_stmt : CLASS IDENTIFIER params block """
     p[0] = Assignment(Target(p[2], info=get_info(p, 2)),
-            Class(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
+            Scope(Class(p[2], p[3], p[4], info=get_info(p, 1))))
 
 parser = yacc.yacc(write_tables=0, debug=0)
 
+all_imports = None
 module_cache = {}
 current_ctx = None
 
 def parse(path, import_builtins=True, ctx=None):
-    global current_ctx, filename
+    global all_imports, current_ctx, filename
     # Check if we've parsed this before. We do a check for recursive imports here too.
     if path in module_cache:
         if module_cache[path] is None:
@@ -506,6 +509,7 @@ def parse(path, import_builtins=True, ctx=None):
     module_cache[path] = None
 
     # Parse the file
+    all_imports = []
     current_ctx = ctx
     filename = path
     dirname = os.path.dirname(path)
@@ -517,33 +521,37 @@ def parse(path, import_builtins=True, ctx=None):
     # Do some post-processing, starting with adding builtins
     if import_builtins:
         builtins_path = '%s/__builtins__.mg' % stdlib_dir
-        block = [Import('builtins', [], builtins_path, True,
-            info=builtin_info)] + block
+        imp = Import([], 'builtins', [], builtins_path, True, info=builtin_info)
+        all_imports.append(imp)
+        block = [Scope(imp)] + block
 
     new_block = []
 
     for k, v in mg_builtins.builtins.items():
         new_block.append(Assignment(Target(k, info=builtin_info), v))
 
-    # Recursively parse imports
-    for expr in block:
-        if isinstance(expr, Import):
-            # Explicit path: use that
-            if expr.path:
-                import_path = expr.path
-            else:
-                # Normal import: find the file first in
-                # the current directory, then stdlib
-                for cd in [dirname, stdlib_dir]:
-                    import_path = '%s/%s.mg' % (cd, expr.name)
-                    if os.path.isfile(import_path):
-                        break
-                else:
-                    raise Exception('could not find import in path: %s' % expr.name)
+    # Recursively parse imports. Be sure to copy the all_imports since
+    # we'll be clearing and modifying it in each child parsing pass.
+    for imp in all_imports[:]:
+        # Explicit path: use that
+        if imp.path:
+            import_paths = [imp.path, '%s/%s' % (dirname, imp.path)]
+        else:
+            import_paths = ['%s/%s.mg' % (cd, imp.name)
+                for cd in [dirname, stdlib_dir]]
+        # Normal import: find the file first in
+        # the current directory, then stdlib
+        for import_path in import_paths:
+            if os.path.isfile(import_path):
+                break
+        else:
+            print('checking paths: %s' % import_paths, file=sys.stderr)
+            raise Exception('could not find import in path: %s' % imp.name)
 
-            expr.ctx = Context(expr.name, None, ctx)
-            expr.stmts = parse(import_path, import_builtins=not expr.is_builtins,
-                    ctx=expr.ctx)
+        imp.parent_ctx = Context(imp.name, None, ctx)
+        imp.stmts = parse(import_path, import_builtins=not imp.is_builtins,
+                ctx=imp.parent_ctx)
+
     new_block.extend(block)
 
     # Be sure and return a duplicate of the list...
@@ -553,7 +561,7 @@ def parse(path, import_builtins=True, ctx=None):
 def interpret(path):
     ctx = Context('__main__', None, None)
     block = parse(path, ctx=ctx)
-    block = ctx.initialize(block)
+    preprocess_program(ctx, block)
     try:
         for expr in block:
             expr.eval(ctx)

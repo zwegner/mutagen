@@ -1,3 +1,5 @@
+import copy
+
 filename = 'filename'
 
 # This is a list, since order matters--backslashes must come first!
@@ -25,31 +27,31 @@ def check_obj_type(self, msg_type, ctx, obj, type):
         self.error('bad %s type %s, expected %s' % (msg_type,
             get_class_name(ctx, obj_type), get_class_name(ctx, type)), ctx=ctx)
 
+def preprocess_program(ctx, block):
+    # Analyze nested functions
+    for expr in block:
+        for node in expr.iterate_tree():
+            if isinstance(node, Scope):
+                node.analyze_scoping(ctx)
+
 class Context:
-    def __init__(self, name, global_ctx, parent):
+    def __init__(self, name, parent_ctx, callsite_ctx):
         self.name = name
         self.current_node = None
-        self.global_ctx = global_ctx
-        self.parent = parent
+        self.parent_ctx = parent_ctx
+        self.callsite_ctx = callsite_ctx
         self.syms = {}
     def store(self, name, value):
         self.syms[name] = value
     def load(self, node, name):
         if name in self.syms:
             return self.syms[name]
-        if self.global_ctx and name in self.global_ctx.syms:
-            return self.global_ctx.syms[name]
+        if self.parent_ctx and name in self.parent_ctx.syms:
+            return self.parent_ctx.syms[name]
         node.error('identifier %s not found' % name, ctx=self)
-    # XXX Should this be here? What should it be named?
-    def initialize(self, block):
-        # Analyze nested functions
-        self.lifted_lambdas = []
-        for expr in block:
-            expr.lift_lambdas(self)
-        return self.lifted_lambdas + block
     def get_stack_trace(self):
-        if self.parent:
-            result = self.parent.get_stack_trace()
+        if self.callsite_ctx:
+            result = self.callsite_ctx.get_stack_trace()
         else:
             result = []
         if self.current_node:
@@ -97,51 +99,6 @@ class Node:
         return iter(self)
     def overload(self, ctx, attr, args):
         return None
-    # Lift any nested functions
-    def lift_lambdas(self, ctx):
-        # Keep track of all the stores/loads in this function
-        # HACK
-        if isinstance(self, Function):
-            stores = set(self.params)
-        else:
-            stores = set()
-        loads = set()
-
-        # Python coroutines are such a drag to use man. send() also yields
-        # another value, so the control flow is crazy. At least it's possible...
-        subtree_gen = iter(self.iterate_subtree())
-        returned_node = None
-        while True:
-            try:
-                if returned_node:
-                    node = returned_node
-                    returned_node = None
-                else:
-                    node = next(subtree_gen)
-            except StopIteration:
-                break
-            if isinstance(node, Target):
-                stores.update(node.get_stores())
-            elif isinstance(node, Identifier):
-                loads.add(node.name)
-            elif isinstance(node, Function):
-                # Find extra args by looking for variables that are read but
-                # not written to in the nested function, but are written to here
-                nested_locals, nested_globals = node.lift_lambdas(ctx)
-                loads |= nested_globals
-
-                extra_args = list(sorted(nested_globals))
-                if extra_args:
-                    node.params.add_extra_args(extra_args)
-
-                    ctx.lifted_lambdas.append(node)
-                    try:
-                        returned_node = subtree_gen.send(
-                                LiftedLambda(node, extra_args))
-                    except StopIteration:
-                        break
-
-        return stores, loads - stores
 
 ARG_REG, ARG_EDGE, ARG_EDGE_LIST = list(range(3))
 arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
@@ -185,34 +142,24 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
             if hasattr(self, 'setup'):
                 self.setup()
 
-        # A generator that iterates through the AST below this node.
-        # It breaks the iteration at nested function barriers, since
-        # those represent a new scope and are handled specially when
-        # this generator is used. This generator also accepts values
-        # as a coroutine, which are used as replacements in the AST.
-        # This allows us to do easy AST rewriting, but relies on the
-        # AST actually being a tree.
-        def iterate_subtree(self, include_self=False):
-            if include_self:
-                replacement = yield self
-                if replacement is not None:
-                    return replacement
-                # HACK?
-                if isinstance(self, Function):
-                    return
+        # A generator that iterates through the AST from this node. It breaks
+        # the iteration at scope barriers, since those are generally handled
+        # differently whenever this is used.
+        def iterate_tree(self):
+            yield self
+            if not isinstance(self, Scope):
+                yield from self.iterate_subtree()
+
+        # Again, but just the subtree(s) below the node.
+        def iterate_subtree(self):
             for (arg_type, arg_name) in args:
                 if arg_type == ARG_EDGE:
                     edge = getattr(self, arg_name)
-                    replacement = yield from edge.iterate_subtree(include_self=True)
-                    if replacement is not None:
-                        setattr(self, arg_name, replacement)
+                    yield from edge.iterate_tree()
                 elif arg_type == ARG_EDGE_LIST:
                     edge_list = getattr(self, arg_name)
-                    for i, edge in enumerate(edge_list):
-                        replacement = yield from edge.iterate_subtree(include_self=True)
-                        if replacement is not None:
-                            # XXX assumes list
-                            edge_list[i] = replacement
+                    for edge in edge_list:
+                        yield from edge.iterate_tree()
 
         # If the compare flag is set, we delegate the comparison to the
         # Python object in the 'value' attribute
@@ -257,6 +204,7 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
                 setattr(node, full_op, operator)
 
         node.__init__ = __init__
+        node.iterate_tree = iterate_tree
         node.iterate_subtree = iterate_subtree
         return node
 
@@ -726,30 +674,27 @@ class CompIter(Node):
         return 'for %s in %s' % (self.target.repr(ctx), self.expr.repr(ctx))
 
 class Comprehension(Node):
-    def get_states(self, ctx):
-        def iter_states(ctx, iters):
+    def setup(self):
+        self.name = '<comprehension>'
+    def specialize(self, parent_ctx, ctx):
+        return self
+    def get_states(self):
+        def iter_states(iters):
             [comp_iter, *iters] = iters
-            for values in comp_iter.expr.eval(ctx).iter(ctx):
-                comp_iter.target.assign_values(child_ctx, values)
+            for values in comp_iter.expr.eval(self.ctx).iter(self.ctx):
+                comp_iter.target.assign_values(self.ctx, values)
                 if iters:
-                    yield from iter_states(child_ctx, iters)
+                    yield from iter_states(iters)
                 else:
-                    yield child_ctx
+                    yield self.ctx
 
-        # XXX Should we do full scoping analysis and lifted lambdas and such?
-        # After some thought, this is sufficient with the current imperative
-        # backend, where expressions are always evaluated in-order.
-        # Clean this shit up though
-        child_ctx = Context('<comprehension>', ctx.global_ctx, ctx)
-        child_ctx.syms.update(ctx.syms)
-
-        yield from iter_states(child_ctx, self.comp_iters)
+        yield from iter_states(self.comp_iters)
 
 @node('&expr, *comp_iters')
 class ListComprehension(Comprehension):
     def eval(self, ctx):
         return List([self.expr.eval(child_ctx) for child_ctx in
-            self.get_states(ctx)], info=self)
+            self.get_states()], info=self)
     def repr(self, ctx):
         return '[%s %s]' % (self.expr.repr(ctx),
                 ' '.join(comp.repr(ctx) for comp in self.comp_iters))
@@ -758,7 +703,7 @@ class ListComprehension(Comprehension):
 class DictComprehension(Comprehension):
     def eval(self, ctx):
         return Dict({self.key_expr.eval(child_ctx): self.value_expr.eval(child_ctx)
-            for child_ctx in self.get_states(ctx)}, info=self)
+            for child_ctx in self.get_states()}, info=self)
     def repr(self, ctx):
         return '{%s: %s %s}' % (self.key_expr.repr(ctx),
                 self.value_expr.repr(ctx),
@@ -813,6 +758,9 @@ class VarArg(Node):
 class Params(Node):
     def setup(self):
         self.params, self.types = [[p[i] for p in self.params] for i in range(2)]
+    def specialize(self, ctx):
+        self.type_evals = [t and t.eval(ctx) for t in self.types]
+        return self
     def bind(self, obj, ctx, args):
         if self.star_params:
             if len(args) < len(self.params):
@@ -828,19 +776,16 @@ class Params(Node):
 
         # Check argument types
         args = []
-        for p, t, a in zip(self.params, self.types, pos_args):
+        for p, t, a in zip(self.params, self.type_evals, pos_args):
             if t is not None:
-                check_obj_type(self, 'argument', ctx, a, t.eval(ctx))
+                check_obj_type(self, 'argument', ctx, a, t)
             args += [(p, a)]
         if self.star_params:
             args += [(self.star_params, var_args)]
         return args
-    def add_extra_args(self, args):
-        self.params = args + self.params
-        self.types = [None] * len(args) + self.types
     def repr(self, ctx):
         params = []
-        for p, t in zip(self.params, self.types):
+        for p, t in zip(self.params, self.type_evals):
             if t is not None:
                 params.append('%s: %s' % (p, t.str(ctx)))
             else:
@@ -855,20 +800,54 @@ class Params(Node):
     def iterate_with_types(self):
         # XXX not implemented
         assert not self.star_params
-        yield from zip(self.params, self.types)
+        yield from zip(self.params, self.type_evals)
 
-@node('&fn, extra_args')
-class LiftedLambda(Node):
+@node('&expr')
+class Scope(Node):
     def eval(self, ctx):
-        # Load the args once when the lambda is evaluated first (not called)
-        arg_values = [ctx.load(self, a) for a in self.extra_args]
-        return BoundFunction(self.fn, arg_values)
+        # When scopes are evaluated, we finally have the values of any extra
+        # symbols (globals/nonlocals) that need to be passed into the scope,
+        # so specialize the expression in question by duplicating it, setting
+        # up a context with the current values of said symbols, and making
+        # the context available to the object. Objects may also need to do
+        # further specialization at this point (e.g. evaluating types of params)
+        child_ctx = Context(self.expr.name, None, ctx)
+        if not isinstance(self.expr, Import):
+            for a in self.extra_args:
+                child_ctx.store(a, ctx.load(self, a))
+        new_expr = copy.copy(self.expr)
+        new_expr.ctx = child_ctx
+        return new_expr.specialize(ctx, child_ctx).eval(ctx)
     def repr(self, ctx):
-        return '<lifted-lambda %s(%s)>' % (self.fn.name, ', '.join(s for s in
-            self.extra_args))
+        return 'scope (%s): %s' % (self.extra_args, self.expr.repr(ctx))
+    def analyze_scoping(self, ctx):
+        # Keep track of all the stores/loads in this function
+        # HACK
+        if isinstance(self.expr, Function):
+            stores = set(self.expr.params)
+        else:
+            stores = set()
+        loads = set()
+
+        for node in self.iterate_subtree():
+            if isinstance(node, Target):
+                stores.update(node.get_stores())
+            elif isinstance(node, Identifier):
+                loads.add(node.name)
+
+            elif isinstance(node, Scope):
+                # Find extra args by looking for variables that are read but
+                # not written to in the nested function, but are written to here
+                nested_globals = node.analyze_scoping(ctx)
+                loads |= nested_globals
+
+        glob = loads - stores
+        self.extra_args = list(sorted(glob))
+
+        return glob
 
 # XXX return_type should be an edge
-@node('ctx, name, &params, return_type, &block')
+@node('name, &params, return_type, &block')
 class Function(Node):
     def setup(self):
         # Check if this is a generator and not a function
@@ -877,12 +856,12 @@ class Function(Node):
             if any(isinstance(node, Return) for node in self.iterate_subtree()):
                 self.error('Cannot use return in a generator')
             self.is_generator = True
-    def eval(self, ctx):
-        # Be sure to evaluate the return type expression in the context
-        # of the function declaration, and only once
-        # XXX evaluate params
+    def specialize(self, parent_ctx, ctx):
+        # Be sure to evaluate the parameter and return type expressions in
+        # the context of the function declaration, and only once
+        self.params = copy.copy(self.params).specialize(parent_ctx)
         if self.return_type:
-            self.rt_eval = self.return_type.eval(ctx)
+            self.rt_eval = self.return_type.eval(parent_ctx)
         return self
     def eval_call(self, ctx, args):
         child_ctx = Context(self.name, self.ctx, ctx)
@@ -920,13 +899,17 @@ class Generator(Node):
 @node('name, fn')
 class BuiltinFunction(Node):
     def eval_call(self, ctx, args):
-        child_ctx = Context(self.name, None, ctx)
-        return self.fn(self, child_ctx, args)
+        return self.fn(self, ctx, args)
     def repr(self, ctx):
         return '<builtin %s>' % self.name
 
-@node('ctx, name, &params, &block')
+@node('name, &params, &block')
 class Class(Node):
+    def specialize(self, parent_ctx, ctx):
+        # Be sure to evaluate the parameter type expressions in
+        # the context of the function declaration, and only once
+        self.params = self.params.specialize(parent_ctx)
+        return self
     def eval(self, ctx):
         if not hasattr(self, 'cls'):
             child_ctx = Context(self.name, self.ctx, ctx)
@@ -963,7 +946,8 @@ builtin_info = Info('__builtins__', 0)
 
 class BuiltinClass(Class):
     def __init__(self, name):
-        super().__init__(None, name, Params([], None, info=builtin_info), None)
+        super().__init__(name, Params([], None, info=builtin_info), None)
+        self.ctx = None
         methods = set(dir(type(self))) - set(dir(BuiltinClass))
         stmts = []
         for name in methods:
@@ -1076,22 +1060,31 @@ class BuiltinType(BuiltinClass):
 
 TypeClass = BuiltinType('type')
 
-@node('name, names, path, is_builtins')
+@node('*stmts, name, names, path, is_builtins')
 class Import(Node):
+    def specialize(self, parent_ctx, ctx):
+        # XXX Store off the parent context. When imports are evaluated, we
+        # have to fill in the imported value in the importing context. And
+        # because of "from module import *", we can't determine at parse time
+        # what symbols actually get set! So we cheat and just write directly
+        # into the context from which we're being imported.
+        self.parent_ctx = parent_ctx
+        return self
     def eval(self, ctx):
         for expr in self.stmts:
             expr.eval(self.ctx)
         if self.names is None:
             obj = Object({String(k, info=self): v for k, v
                 in self.ctx.syms.items()}, info=self)
-            ctx.store(self.name, obj)
+            self.parent_ctx.store(self.name, obj)
         else:
             for k, v in self.ctx.syms.items():
                 if not self.names or k in self.names:
-                    ctx.store(k, v)
+                    self.parent_ctx.store(k, v)
         return None_(info=self)
     def repr(self, ctx):
+        stmts = '\n'.join(stmt.repr(ctx) for stmt in self.stmts)
         if self.names is not None:
             names = '*' if not self.names else ', '.join(self.names)
             return 'from %s import %s' % (self.name, names)
-        return 'import %s' % self.name
+        return 'import %s {\n%s\n}' % (self.name, stmts)
