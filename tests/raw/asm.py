@@ -12,7 +12,7 @@ with tempfile.TemporaryDirectory() as tmp_dir:
     os.chdir(tmp_dir)
 
     raw_output = subprocess.check_output(['%s/bootstrap/parse.py' % root_dir,
-        '%s/compiler/asm.mg' % root_dir]).decode('ascii')
+        '%s/tests/raw/test_asm.mg' % root_dir]).decode('ascii')
 
     dump_output = subprocess.check_output(['gobjdump', '--no-show-raw-insn',
         '-Mintel', '-D', 'elfout.o']).decode('ascii')
