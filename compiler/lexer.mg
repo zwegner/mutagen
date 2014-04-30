@@ -8,6 +8,32 @@ str_escapes = {
     '\'': '\'',
 }
 
+keywords = [
+    'False',
+    'None',
+    'True',
+    'and',
+    'assert',
+    'break',
+    'class',
+    'continue',
+    'def',
+    'elif',
+    'else',
+    'for',
+    'from',
+    'if',
+    'import',
+    'in',
+    'lambda',
+    'not',
+    'or',
+    'pass',
+    'return',
+    'while',
+    'yield',
+]
+
 # Special token-transforming functions
 def t_identifier(t):
     r = t
@@ -72,32 +98,6 @@ token_map = [
     ['INTEGER',         '((0x[0-9a-fA-F]*)|([0-9]+))', t_integer],
     ['COMMENT',         '#.*', tokenize.ignore_token_fn],
     ['STRING',          '\'((\\\\.)|[^\\\\\'])*\'', t_string],
-]
-
-keywords = [
-    'False',
-    'None',
-    'True',
-    'and',
-    'assert',
-    'break',
-    'class',
-    'continue',
-    'def',
-    'elif',
-    'else',
-    'for',
-    'from',
-    'if',
-    'import',
-    'in',
-    'lambda',
-    'not',
-    'or',
-    'pass',
-    'return',
-    'while',
-    'yield',
 ]
 
 def process_newlines(tokens):
