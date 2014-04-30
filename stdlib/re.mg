@@ -67,7 +67,8 @@ class MatchNull:
     def match(self, s):
         return [True, 0]
 
-def parse_item(string, c):
+# XXX recursion
+def parse_item(pg, string, c):
     # Backslash: escape next char
     if string[c] == '\\':
         c = c + 1
@@ -102,7 +103,7 @@ def parse_item(string, c):
     # Parentheses: group a number of items together
     elif string[c] == '(':
         c = c + 1
-        [item, c] = parse_group(string, c)
+        [item, c] = pg(pg, string, c)
         if string[c] != ')':
             error('regex parsing error')
     # Special characters
@@ -113,10 +114,11 @@ def parse_item(string, c):
         item = MatchChar(string[c])
     return [item, c + 1]
 
-def parse_group(string, c):
+# XXX recursion
+def parse_group(pg, string, c):
     result = None
     while c < len(string) and string[c] != ')':
-        [item, c] = parse_item(string, c)
+        [item, c] = parse_item(pg, string, c)
         # Parse repeaters/connectors
         if c < len(string):
             if string[c] == '*':
@@ -133,7 +135,7 @@ def parse_group(string, c):
                     c = c + 1
                     if c >= len(string):
                         error('regex parsing error')
-                    [alt, c] = parse_item(string, c)
+                    [alt, c] = parse_item(pg, string, c)
                     item = MatchAlt(item, alt)
         if result == None:
             result = item
@@ -142,7 +144,7 @@ def parse_group(string, c):
     return [result, c]
 
 def parse(string):
-    [result, c] = parse_group(string, 0)
+    [result, c] = parse_group(parse_group, string, 0)
     if c < len(string):
         error('regex parsing error')
     return result

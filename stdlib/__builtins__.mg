@@ -2,6 +2,33 @@
 ## Mutagen builtin functions ###################################################
 ################################################################################
 
+def reversed(iterable):
+    i = len(iterable)
+    while i > 0:
+        i = i - 1
+        yield iterable[i]
+
+def zip(*iterables):
+    # HACK: the iterables are eagerly evaluated, so this takes up too much
+    # memory/time.
+    # HACK?: can't use map here, since it calls zip...
+    iters = []
+    for iterable in iterables:
+        iters = iters + [list(iterable)]
+
+    i = 0
+    done = len(iters) == 0
+    while not done:
+        item = []
+        for iterable in iters:
+            if i >= len(iterable):
+                done = True
+                break
+            item = item + [iterable[i]]
+        if not done:
+            yield item
+            i = i + 1
+
 def reduce(fn, start, iter):
     for i in iter:
         start = fn(start, i)
@@ -20,12 +47,6 @@ def foldr(fn, list, nil):
 def map(fn, *lists):
     for args in zip(*lists):
         yield fn(*args)
-
-def reversed(iterable):
-    i = len(iterable)
-    while i > 0:
-        i = i - 1
-        yield iterable[i]
 
 def range(*args):
     [start, step] = [0, 1]
@@ -62,27 +83,6 @@ def all(gen):
             return False
     return True
 
-def zip(*iterables):
-    # HACK: the iterables are eagerly evaluated, so this takes up too much
-    # memory/time.
-    # HACK?: can't use map here, since it calls zip...
-    iters = []
-    for iterable in iterables:
-        iters = iters + [list(iterable)]
-
-    i = 0
-    done = len(iters) == 0
-    while not done:
-        item = []
-        for iterable in iters:
-            if i >= len(iterable):
-                done = True
-                break
-            item = item + [iterable[i]]
-        if not done:
-            yield item
-            i = i + 1
-
 def print(*args):
     return putstr(' '.join(map(str, args)) + '\n')
 
@@ -104,6 +104,7 @@ def isinstance(obj, cls):
     return type(obj) == cls
 
 # This shit's slow
+# XXX recursion
 class set:
     def __init__(*items):
         if len(items) == 0:
@@ -118,16 +119,16 @@ class set:
     def __contains__(self, item):
         return item in self.items
     def __or__(self, other):
-        return set(self.items + other.items)
+        return type(self)(self.items + other.items)
     def __sub__(self, other):
         new_items = []
         for item in self.items:
             if item not in other:
                 new_items = new_items + [item]
-        return set(new_items)
+        return type(self)(new_items)
     def pop(self):
-        # Return one item, and the set without the item
-        return [set(slice(self.items, 1, None)), self.items[0]]
+        # Return the set without one item, and that item
+        return [type(self)(slice(self.items, 1, None)), self.items[0]]
     def __iter__(self):
         for item in self.items:
             yield item

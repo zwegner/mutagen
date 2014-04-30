@@ -202,6 +202,16 @@ class Instruction(opcode: str, size: int, *args):
     destructive_ops = set(arg2_table.keys() + shift_table.keys() +
             setcc_table.keys() + ['lea', 'pop'])
 
+    def normalize_opcode(opcode):
+        opcode = opcode.replace('8', '').replace('16', '')
+        opcode = opcode.replace('32', '').replace('64', '')
+
+        # Canonicalize instruction names that have multiple names
+        if opcode in canon_table:
+            opcode = canon_table[opcode]
+
+        return opcode
+
     def __init__(opcode: str, *args):
         # Handle 32/64 bit instruction size. This info is stuck in the opcode
         # name for now since not all instructions need it.
@@ -221,16 +231,6 @@ class Instruction(opcode: str, size: int, *args):
 
         # This dictionary shit really needs to go. Need polymorphism!
         return {'opcode': opcode, 'size': size, 'args': args}
-
-    def normalize_opcode(opcode):
-        opcode = opcode.replace('8', '').replace('16', '')
-        opcode = opcode.replace('32', '').replace('64', '')
-
-        # Canonicalize instruction names that have multiple names
-        if opcode in canon_table:
-            opcode = canon_table[opcode]
-
-        return opcode
 
     def to_bytes(self):
         w = int(self.size == 64)
