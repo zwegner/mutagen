@@ -200,8 +200,7 @@ class Instruction(opcode: str, size: int, *args):
             for [cond, canon] in cond_canon}
 
     destructive_ops = set(arg2_table.keys() + shift_table.keys() +
-            bmi_arg2_table.keys() + bmi_arg3_table.keys() + setcc_table.keys() +
-            ['lea', 'pop'])
+            setcc_table.keys() + ['lea', 'pop'])
 
     def __init__(opcode: str, *args):
         # Handle 32/64 bit instruction size. This info is stuck in the opcode
