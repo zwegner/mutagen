@@ -1076,32 +1076,6 @@ class BuiltinType(BuiltinClass):
 
 TypeClass = BuiltinType('type')
 
-@node('&params')
-class UnionInlineClass(Node):
-    pass
-
-@node('ctx, name, &params, &block')
-class Union(Class):
-    def eval(self, ctx):
-        items = {}
-        for param, type in self.params.iterate_with_types():
-            if isinstance(type, UnionInlineClass):
-                params = type.params
-            elif type is None:
-                params = Params([], None, info=self)
-            else:
-                params = Params([[self.name, type]], None, info=self)
-            items[String(param, info=self)] = Class(self.ctx,
-                    '%s.%s' % (self.name, param), params, self.block).eval(ctx)
-        items[String('name', info=self)] = String(self.name, info=self)
-        items[String('__class__', info=self)] = TypeClass
-        self.cls = Object(items, info=self)
-        return self
-    def repr(self, ctx):
-        return "<union '%s'>" % self.name
-    def __eq__(self, other):
-        return Boolean(self is other, info=self)
-
 @node('name, names, path, is_builtins')
 class Import(Node):
     def eval(self, ctx):

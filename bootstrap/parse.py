@@ -138,7 +138,6 @@ def p_stmt(p):
              | while_stmt
              | def_stmt
              | class_stmt
-             | union_stmt
     """
     p[0] = p[1]
 
@@ -491,40 +490,6 @@ def p_class(p):
     """ class_stmt : CLASS IDENTIFIER params block """
     p[0] = Assignment(Target(p[2], info=get_info(p, 2)),
             Class(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
-
-# Union parameters have custom parse rules so that they can support inline
-# class definitions.
-def p_union_param(p):
-    """ union_param : IDENTIFIER
-                    | IDENTIFIER COLON typespec
-                    | IDENTIFIER COLON CLASS params
-    """
-    if len(p) == 5:
-        # For inline classes, pass the list of parameters wrapped in an object.
-        # The class will be created inside the union.
-        p[0] = [p[1], UnionInlineClass(p[4])]
-    elif len(p) == 2:
-        p[0] = [p[1], None]
-    else:
-        p[0] = [p[1], p[3]]
-
-def p_union_param_list(p):
-    """ union_param_list : union_param
-                         | union_param_list COMMA union_param
-    """
-    if len(p) == 2:
-        p[0] = [p[1]]
-    else:
-        p[0] = p[1] + [p[3]]
-
-def p_union_params(p):
-    """ union_params : LPAREN union_param_list RPAREN """
-    p[0] = Params(p[2], None, info=get_info(p, 1))
-
-def p_union(p):
-    """ union_stmt : UNION IDENTIFIER union_params block """
-    p[0] = Assignment(Target(p[2], info=get_info(p, 2)),
-        Union(current_ctx, p[2], p[3], p[4], info=get_info(p, 1)))
 
 parser = yacc.yacc(write_tables=0, debug=0)
 
