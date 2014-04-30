@@ -2,7 +2,7 @@ def pack(fmt: str, *args):
     # Only little-endian for now
     assert fmt[0] == '<'
     bytes = []
-    for [spec, member] in zip(slice(fmt, 1), args):
+    for [spec, member] in zip(slice(fmt, 1, None), args):
         spec_table = {
             'b': 1,
             'h': 2,
