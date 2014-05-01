@@ -45,6 +45,7 @@ token_map = {
     'SHIFT_LEFT':      r'<<',
     'SHIFT_RIGHT':     r'>>',
     'STAR':            r'\*',
+    'STAR_STAR':       r'\*\*',
 }
 
 keywords = [

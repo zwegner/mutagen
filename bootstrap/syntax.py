@@ -268,7 +268,7 @@ class String(Node):
     def len(self, ctx):
         return len(self.value)
 
-@node('value', compare=True, base_type=int, ops=['add', 'sub', 'mul',
+@node('value', compare=True, base_type=int, ops=['add', 'sub', 'mul', 'pow',
     'floordiv', 'mod', 'lshift', 'rshift', 'and', 'or', 'xor'])
 class Integer(Node):
     def setup(self):
@@ -477,6 +477,7 @@ class BinaryOp(Node):
             '+':  'add',
             '-':  'sub',
             '*':  'mul',
+            '**': 'pow',
             '//': 'floordiv',
             '%':  'mod',
             '&':  'and',

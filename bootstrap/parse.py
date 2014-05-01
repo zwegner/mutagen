@@ -29,6 +29,7 @@ precedence = [
     ['left', 'PLUS', 'MINUS'],
     ['left', 'STAR', 'FLOORDIV', 'MODULO'],
     ['left', 'UNARY_MINUS', 'INVERSE'],
+    ['right', 'STAR_STAR'],
     ['left', 'LBRACKET', 'LPAREN', 'LBRACE'],
     ['left', 'PERIOD'],
 ]
@@ -279,6 +280,7 @@ def p_binary_op(p):
               | expr PLUS expr
               | expr MINUS expr
               | expr STAR expr
+              | expr STAR_STAR expr
               | expr FLOORDIV expr
               | expr MODULO expr
               | expr AND expr
