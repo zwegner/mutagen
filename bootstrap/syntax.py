@@ -12,13 +12,15 @@ inv_str_escapes = [
 
 # Utility functions
 def get_class_name(ctx, cls):
-    if isinstance(cls, Class):
-        return cls.get_attr(ctx, '__name__').str(ctx)
+    name = cls.get_attr(ctx, '__name__')
+    if name is not None:
+        return name.str(ctx)
     return type(cls).__name__
 
 def get_type_name(ctx, obj):
-    if isinstance(obj, Object):
-        return get_class_name(ctx, obj.get_attr(ctx, '__class__'))
+    cls = obj.get_attr(ctx, '__class__')
+    if cls is not None:
+        return get_class_name(ctx, cls)
     return type(obj).__name__
 
 def check_obj_type(self, msg_type, ctx, obj, type):
@@ -504,7 +506,7 @@ class GetAttr(Node):
         if item is None:
             method = obj.get_attr(ctx, '__class__').get_attr(ctx, self.attr)
             if method is None:
-                self.error('object of type %s has no attribute %s' %
+                self.error("object of type '%s' has no attribute '%s'" %
                         (get_type_name(ctx, obj), self.attr), ctx=ctx)
             item = BoundFunction(method, [obj])
         return item
@@ -958,7 +960,7 @@ class BuiltinClass(Class):
 
 class BuiltinNone(BuiltinClass):
     def eval_call(self, ctx, args):
-        self.error('NoneType is not callable')
+        return None_(info=self)
 
 NoneClass = BuiltinNone('NoneType')
 
@@ -1060,6 +1062,12 @@ class BuiltinType(BuiltinClass):
 
 TypeClass = BuiltinType('type')
 
+class BuiltinModule(BuiltinClass):
+    def eval_call(self, ctx, args):
+        self.error('module class is not callable')
+
+ModuleClass = BuiltinModule('module')
+
 @node('*stmts, name, names, path, is_builtins')
 class Import(Node):
     def specialize(self, parent_ctx, ctx):
@@ -1074,8 +1082,10 @@ class Import(Node):
         for expr in self.stmts:
             expr.eval(self.ctx)
         if self.names is None:
-            obj = Object({String(k, info=self): v for k, v
-                in self.ctx.syms.items()}, info=self)
+            attrs = {String(k, info=self): v for k, v in self.ctx.syms.items()}
+            # Set the type of modules, and make sure we evaluate it at least once
+            attrs['__class__'] = ModuleClass.eval(ctx)
+            obj = Object(attrs, info=self)
             self.parent_ctx.store(self.name, obj)
         else:
             for k, v in self.ctx.syms.items():
