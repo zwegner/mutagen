@@ -9,12 +9,12 @@ root_dir = os.path.dirname(bench_dir)
 mutagen = '%s/bootstrap/parse.py' % root_dir
 python = 'python3'
 
-benchmarks = ['pidigits']
+benchmarks = ['binary-trees', 'pidigits']
 
 fails = 0
 
-fmt = '| %-10s | %-9s | %-9s | %-9s |'
-sep = '-' * 50
+fmt = '| %-14s | %-9s | %-9s | %-9s |'
+sep = '-' * 54
 nfmt = '%.2fs'
 print(sep)
 print(fmt % ('name', 'mutagen', 'python', 'mg/py'))
