@@ -198,7 +198,8 @@ class Instruction(opcode: str, size: int, *args):
             for [cond, canon] in cond_canon}
 
     destructive_ops = set(arg2_table.keys() + shift_table.keys() +
-            setcc_table.keys() + ['lea', 'pop'])
+            setcc_table.keys() + ['lea', 'pop']) - {'cmp'}
+    no_reg_ops = {'cmp', 'test'}
 
     # 'call' is also a control flow op, but doesn't affect SSA, since we
     # always resume at the next instruction
@@ -372,9 +373,13 @@ class Instruction(opcode: str, size: int, *args):
             argstr = ''
         return self.opcode + argstr
 
-def is_destructive(opcode):
+def is_destructive_op(opcode):
     opcode = Instruction.normalize_opcode(opcode)
     return opcode in Instruction.destructive_ops
+
+def needs_register(opcode):
+    opcode = Instruction.normalize_opcode(opcode)
+    return opcode not in Instruction.no_reg_ops
 
 def is_control_flow_op(opcode):
     opcode = Instruction.normalize_opcode(opcode)
