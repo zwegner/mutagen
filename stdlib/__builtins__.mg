@@ -103,6 +103,11 @@ def str_split_lines(text):
 def isinstance(obj, cls):
     return type(obj) == cls
 
+def sum(iterable, base):
+    for item in iterable:
+        base = base + item
+    return base
+
 # This shit's slow
 # XXX recursion
 class set:
