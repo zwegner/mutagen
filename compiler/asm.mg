@@ -200,6 +200,10 @@ class Instruction(opcode: str, size: int, *args):
     destructive_ops = set(arg2_table.keys() + shift_table.keys() +
             setcc_table.keys() + ['lea', 'pop'])
 
+    # 'call' is also a control flow op, but doesn't affect SSA, since we
+    # always resume at the next instruction
+    control_flow_ops = set(jump_table.keys() + ['jmp'])
+
     def normalize_opcode(opcode):
         opcode = opcode.replace('8', '').replace('16', '')
         opcode = opcode.replace('32', '').replace('64', '')
@@ -371,6 +375,10 @@ class Instruction(opcode: str, size: int, *args):
 def is_destructive(opcode):
     opcode = Instruction.normalize_opcode(opcode)
     return opcode in Instruction.destructive_ops
+
+def is_control_flow_op(opcode):
+    opcode = Instruction.normalize_opcode(opcode)
+    return opcode in Instruction.control_flow_ops
 
 def build(insts):
     bytes = []
