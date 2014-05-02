@@ -18,9 +18,11 @@ def get_class_name(ctx, cls):
     return type(cls).__name__
 
 def get_type_name(ctx, obj):
-    cls = obj.get_attr(ctx, '__class__')
-    if cls is not None:
-        return get_class_name(ctx, cls)
+    # XXX OH GOD THIS IS AWFUL. Just making sure there's no infinite recursion...
+    if type(obj).get_attr != Node.get_attr:
+        cls = obj.get_attr(ctx, '__class__')
+        if cls is not None:
+            return get_class_name(ctx, cls)
     return type(obj).__name__
 
 def check_obj_type(self, msg_type, ctx, obj, type):
