@@ -260,7 +260,7 @@ class String(Node):
     def __getitem__(self, item):
         if isinstance(item, Integer):
             return String(self.value[item.value], info=self)
-        self.error('bad arg for getitem: %s' % item)
+        return None
     def __mul__(self, other):
         if not isinstance(other, Integer):
             self.error('bad type for str.mul: %s' % get_type_name(None, other))
@@ -316,11 +316,8 @@ class List(Node):
         yield from self.items
     def __getitem__(self, item):
         if isinstance(item, Integer):
-            try:
-                return self.items[item.value]
-            except IndexError:
-                self.error('list index out of range: %s' % item.value)
-        self.error('bad arg for getitem: %s' % item)
+            return self.items[item.value]
+        return None
     def get_attr(self, ctx, attr):
         if attr == '__class__':
             return ListClass
@@ -357,9 +354,7 @@ class Dict(Node):
         return '{%s}' % ', '.join('%s: %s' % (k.repr(ctx), v.repr(ctx))
             for k, v in self.items.items())
     def __getitem__(self, item):
-        if item in self.items:
-            return self.items[item]
-        self.error('bad arg for getitem: %s' % item.str(None))
+        return self.items[item]
     def get_attr(self, ctx, attr):
         if attr == '__class__':
             return DictClass
@@ -518,8 +513,16 @@ class GetAttr(Node):
 class GetItem(Node):
     def eval(self, ctx):
         obj = self.obj.eval(ctx)
-        item = self.item.eval(ctx)
-        return obj[item]
+        index = self.item.eval(ctx)
+        try:
+            item = obj[index]
+        except KeyError:
+            self.error('key not in dict: %s' % index.repr(ctx), ctx=ctx)
+        except IndexError:
+            self.error('list index out of range: %s' % index.repr(ctx), ctx=ctx)
+        if item is None:
+            self.error('bad arg for getitem: %s' % index.repr(ctx), ctx=ctx)
+        return item
     def repr(self, ctx):
         return '%s[%s]' % (self.obj.repr(ctx), self.item.repr(ctx))
 
