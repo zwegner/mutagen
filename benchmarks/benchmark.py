@@ -13,7 +13,7 @@ benchmarks = ['binary-trees', 'pidigits']
 
 fails = 0
 
-fmt = '| %-14s | %-9s | %-9s | %-9s |'
+fmt = '| %-14s | %9s | %9s | %9s |'
 sep = '-' * 54
 nfmt = '%.2fs'
 print(sep)
