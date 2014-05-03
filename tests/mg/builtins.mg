@@ -55,7 +55,7 @@ assert foldr(join, test_list, []) == [1, [2, [3, [4, [5, []]]]]]
 str_list = ['abc', 'def', 'ghi']
 str_joined = 'abc/def/ghi'
 assert '/'.join(str_list) == str_joined
-assert str_split(str_joined, '/') == str_list
+assert str_joined.split('/') == str_list
 
 # Test str.startswith
 strs = ['', 'a', 'ab', 'abc']

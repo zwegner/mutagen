@@ -86,20 +86,6 @@ def all(gen):
 def print(*args):
     return putstr(' '.join(map(str, args)) + '\n')
 
-def str_split(text, delim):
-    c = 0
-    r = []
-    while c < len(text):
-        start = c
-        while c < len(text) and text[c] != delim:
-            c = c + 1
-        r = r + [slice(text, start, c)]
-        c = c + 1
-    return r
-
-def str_split_lines(text):
-    return str_split(text, '\n')
-
 def isinstance(obj, cls):
     return type(obj) == cls
 

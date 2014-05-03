@@ -995,6 +995,9 @@ class BuiltinStr(BuiltinClass):
     def replace(obj, ctx, args):
         [arg, pattern, repl] = args
         return String(arg.value.replace(pattern.value, repl.value), info=arg)
+    def split(obj, ctx, args):
+        [arg, splitter] = args
+        return List(arg.value.split(splitter.value), info=arg)
     def join(obj, ctx, args):
         [sep, args] = args
         return String(sep.value.join(a.value for a in args), info=sep)
