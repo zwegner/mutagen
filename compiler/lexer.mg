@@ -83,6 +83,7 @@ token_map = [
     ['LPAREN',          '\\('],
     ['MINUS',           '-'],
     ['MODULO',          '%'],
+    ['NEWLINE',         '\n'],
     ['NOT_EQUALS',      '!='],
     ['PERIOD',          '\\.'],
     ['PLUS',            '\\+'],
@@ -96,7 +97,7 @@ token_map = [
     ['WHITESPACE',      '[ \t]+'],
     ['IDENTIFIER',      '[a-zA-Z_][a-zA-Z0-9_]*', t_identifier],
     ['INTEGER',         '((0x[0-9a-fA-F]*)|([0-9]+))', t_integer],
-    ['COMMENT',         '#.*', tokenize.ignore_token_fn],
+    ['COMMENT',         '#[^\n]*', tokenize.ignore_token_fn],
     ['STRING',          '\'((\\\\.)|[^\\\\\'])*\'', t_string],
 ]
 

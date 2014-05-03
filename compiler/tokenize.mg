@@ -29,22 +29,19 @@ class Tokenizer:
         return {'token_matchers': token_matchers}
 
     def tokenize_input(self, input):
-        # HACK: manually split up lines
-        for i in str_split_lines(input):
-            while len(i) > 0:
-                best_match = [False, 0]
-                best_token = None
-                for t in self.token_matchers:
-                    m = t.match(i)
-                    if m[0] and m[1] > best_match[1]:
-                        best_match = m
-                        best_token = t
-                if not best_match[0]:
-                    error('Error: '+repr(i))
+        while len(input) > 0:
+            best_match = [False, 0]
+            best_token = None
+            for t in self.token_matchers:
+                m = t.match(input)
+                if m[0] and m[1] > best_match[1]:
+                    best_match = m
+                    best_token = t
+            if not best_match[0]:
+                error('Error lexing input: {}...'.format(slice(input, 40)))
 
-                match = slice(i, best_match[1])
-                i = slice(i, best_match[1], None)
-                token = best_token.fn(Token(best_token.name, match))
-                if token != None:
-                    yield token
-            yield Token('NEWLINE', '\n')
+            match = slice(input, best_match[1])
+            input = slice(input, best_match[1], None)
+            token = best_token.fn(Token(best_token.name, match))
+            if token != None:
+                yield token
