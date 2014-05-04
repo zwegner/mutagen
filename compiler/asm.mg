@@ -447,8 +447,10 @@ def get_inst_specs():
                 [src2, src1] = [src1, src2]
             yield ['{}{}'.format(inst, size), 'r', src1, src2]
 
-        yield ['push{}'.format(size), 'ri']
-        yield ['pop{}'.format(size), 'r']
+        # Push/pop don't have a 32-bit operand encoding in 64-bit mode...
+        yield ['push', 'ri']
+        yield ['pop', 'r']
+
         yield ['lea{}'.format(size), 'r', 'a']
         yield ['test{}'.format(size), 'ra', 'r']
 
