@@ -63,7 +63,7 @@ for test in raw_tests:
     # Run python script, just check the output code
     try:
         path = '%s.py' % (test)
-        output = subprocess.check_output([python, path], cwd=raw_test_dir)
+        subprocess.check_call([python, path], cwd=raw_test_dir)
         passes += 1
     except Exception:
         fails += 1
