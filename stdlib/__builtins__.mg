@@ -48,6 +48,20 @@ def map(fn, *lists):
     for args in zip(*lists):
         yield fn(*args)
 
+def max(iterable):
+    highest = None
+    for item in iterable:
+        if highest == None or item > highest:
+            highest = item
+    return highest
+
+def min(iterable):
+    lowest = None
+    for item in iterable:
+        if lowest == None or item < lowest:
+            lowest = item
+    return lowest
+
 def range(*args):
     [start, step] = [0, 1]
     if len(args) == 1:
