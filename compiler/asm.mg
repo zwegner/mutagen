@@ -420,46 +420,44 @@ def build(insts):
     return [bytes, labels, global_labels]
 
 # Create a big list of possible instructions with possible operands
-inst_specs = []
+def get_inst_specs():
+    for inst in Instruction.arg0_table.keys():
+        yield [inst]
 
-for inst in Instruction.arg0_table.keys():
-    inst_specs = inst_specs + [[inst]]
+    for size in [32, 64]:
+        for inst in Instruction.arg1_table.keys():
+            yield ['{}{}'.format(inst, size), 'ra']
 
-for size in [32, 64]:
-    for inst in Instruction.arg1_table.keys():
-        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'ra']]
+        for inst in Instruction.arg2_table.keys():
+            yield ['{}{}'.format(inst, size), 'r', 'rai']
+            yield ['{}{}'.format(inst, size), 'a', 'r']
 
-    for inst in Instruction.arg2_table.keys():
-        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'rai'],
-                ['{}{}'.format(inst, size), 'a', 'r']]
-
-    for inst in Instruction.shift_table.keys():
-        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'ra', 'i'],
+        for inst in Instruction.shift_table.keys():
+            yield ['{}{}'.format(inst, size), 'ra', 'i']
             # Printing shifts by CL is a pain in the ass, since it can
             # use two different register sizes
-            # ['{}{}'.format(inst, size), 'ra', Register(1)]
-        ]
+            # yield ['{}{}'.format(inst, size), 'ra', Register(1)]
 
-    for inst in Instruction.bmi_arg2_table.keys():
-        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', 'ra']]
+        for inst in Instruction.bmi_arg2_table.keys():
+            yield ['{}{}'.format(inst, size), 'r', 'ra']
 
-    for inst in Instruction.bmi_arg3_table.keys():
-        [src1, src2] = ['ra', 'r']
-        if inst in Instruction.bmi_arg3_reversed:
-            [src2, src1] = [src1, src2]
-        inst_specs = inst_specs + [['{}{}'.format(inst, size), 'r', src1, src2]]
+        for inst in Instruction.bmi_arg3_table.keys():
+            [src1, src2] = ['ra', 'r']
+            if inst in Instruction.bmi_arg3_reversed:
+                [src2, src1] = [src1, src2]
+            yield ['{}{}'.format(inst, size), 'r', src1, src2]
 
-    inst_specs = inst_specs + [['push'.format(size), 'ri']]
-    inst_specs = inst_specs + [['pop'.format(size), 'r']]
-    inst_specs = inst_specs + [['lea{}'.format(size), 'r', 'a']]
-    inst_specs = inst_specs + [['test{}'.format(size), 'ra', 'r']]
+        yield ['push{}'.format(size), 'ri']
+        yield ['pop{}'.format(size), 'r']
+        yield ['lea{}'.format(size), 'r', 'a']
+        yield ['test{}'.format(size), 'ra', 'r']
 
-# Make sure all of the condition codes are tested, to test canonicalization
-for [cond, code] in Instruction.jump_table:
-    inst_specs = inst_specs + [[cond, 'l']]
+    # Make sure all of the condition codes are tested, to test canonicalization
+    for [cond, code] in Instruction.jump_table:
+        yield [cond, 'l']
 
-for [cond, code] in Instruction.setcc_table:
-    inst_specs = inst_specs + [[cond + '8', 'ra']]
+    for [cond, code] in Instruction.setcc_table:
+        yield [cond + '8', 'ra']
 
-for inst in ['jmp', 'call']:
-    inst_specs = inst_specs + [[inst, 'rl']]
+    for inst in ['jmp', 'call']:
+        yield [inst, 'rl']

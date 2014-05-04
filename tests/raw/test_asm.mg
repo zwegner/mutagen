@@ -37,9 +37,10 @@ labels = [asm.Label(l, False) for l in ['_start', '_end']]
 # instruction somehow (random.shuffle?). This is also a good case for figuring
 # out some way to thread a stream of random numbers through for every place
 # that needs one.
+inst_specs = list(asm.get_inst_specs())
 insts = [asm.Label('_start', True)]
 for rand in gen_rand_64(1000):
-    [inst_spec, rand] = rand_select(asm.inst_specs, rand)
+    [inst_spec, rand] = rand_select(inst_specs, rand)
     args = []
     for arg_spec in slice(inst_spec, 1, None):
         [arg_type, rand] = rand_select(arg_spec, rand)
