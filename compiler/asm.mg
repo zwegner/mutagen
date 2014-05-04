@@ -310,6 +310,11 @@ class Instruction(opcode: str, size: int, *args):
             [dst] = self.args
             assert isinstance(dst, Register)
             return rex(0, 0, dst) + [0x58 | (dst.index & 7)]
+        elif self.opcode == 'xchg':
+            [dst, src] = self.args
+            assert isinstance(src, Register)
+            assert isinstance(dst, Register) or isinstance(dst, Address)
+            return rex(w, src, dst) + [0x87] + mod_rm_sib(src, dst)
         elif self.opcode == 'lea':
             [dst, src] = self.args
             assert isinstance(dst, Register) and isinstance(src, Address)
@@ -451,6 +456,7 @@ def get_inst_specs():
         yield ['push', 'ri']
         yield ['pop', 'r']
 
+        yield ['xchg{}'.format(size), 'ra', 'r']
         yield ['lea{}'.format(size), 'r', 'a']
         yield ['test{}'.format(size), 'ra', 'r']
 
