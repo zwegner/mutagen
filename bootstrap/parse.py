@@ -481,10 +481,30 @@ def p_return_type(p):
     else:
         p[0] = None
 
+def p_decorator_list(p):
+    """ decorator_list : AT expr NEWLINE
+                       | decorator_list AT expr NEWLINE
+    """
+    if len(p) == 4:
+        p[0] = [p[2]]
+    else:
+        p[0] = p[1] + [p[3]]
+
+def p_decorators(p):
+    """ decorators :
+                   | decorator_list
+    """
+    if len(p) == 1:
+        p[0] = []
+    else:
+        p[0] = p[1]
+
 def p_def(p):
-    """ def_stmt : DEF IDENTIFIER params return_type block """
-    p[0] = Assignment(Target(p[2], info=get_info(p, 2)),
-            Scope(Function(p[2], p[3], p[4], p[5], info=get_info(p, 1))))
+    """ def_stmt : decorators DEF IDENTIFIER params return_type block """
+    fn = Scope(Function(p[3], p[4], p[5], p[6], info=get_info(p, 2)))
+    for dec in p[1]:
+        fn = Call(dec, [fn])
+    p[0] = Assignment(Target(p[3], info=get_info(p, 3)), fn)
 
 def p_lambda(p):
     """ lambda : LAMBDA params return_type block """

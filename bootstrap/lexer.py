@@ -16,6 +16,7 @@ tokens = [
 ]
 
 token_map = {
+    'AT':              r'@',
     'BIT_AND':         r'&',
     'BIT_OR':          r'\|',
     'BIT_XOR':         r'\^',
