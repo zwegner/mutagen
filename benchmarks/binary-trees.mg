@@ -5,21 +5,25 @@
 # modified by Dominique Wahli and Daniel Nanz
 # modified a bit for Mutagen syntax by Zach Wegner
 
+from langdeps import *
+
+@fixed_point
 def make_tree(mt, i, d):
     if d > 0:
         i2 = i + i
-        return [i, mt(mt, i2 - 1, d - 1), mt(mt, i2, d - 1)]
+        return [i, mt(i2 - 1, d - 1), mt(i2, d - 1)]
     return [i, None, None]
 
+@fixed_point
 def check_tree(ct, node):
     [i, l, r] = node
     if l == None:
         return i
-    return i + ct(ct, l) - ct(ct, r)
+    return i + ct(l) - ct(r)
 
 def make_check(itde):
     [i, d] = itde
-    return check_tree(check_tree, make_tree(make_tree, i, d))
+    return check_tree(make_tree(i, d))
 
 def get_argchunks(i, d):
     chunksize = 5000
@@ -40,7 +44,7 @@ def main(n):
     print('stretch tree of depth {0}\t check: {1}'.format(
           stretch_depth, make_check([0, stretch_depth])))
 
-    long_lived_tree = make_tree(make_tree, 0, max_depth)
+    long_lived_tree = make_tree(0, max_depth)
 
     mmd = max_depth + min_depth
     for d in range(min_depth, stretch_depth, 2):
@@ -52,6 +56,6 @@ def main(n):
         print('{0}\t trees of depth {1}\t check: {2}'.format(i * 2, d, cs))
 
     print('long lived tree of depth {0}\t check: {1}'.format(
-          max_depth, check_tree(check_tree, long_lived_tree)))
+          max_depth, check_tree(long_lived_tree)))
 
-main(12)
+main(8)
