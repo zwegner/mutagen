@@ -77,6 +77,15 @@ assert not all(range(1))
 assert not all(range(2))
 assert all([1, True, [0]])
 
+# Test the fixed-point combinator
+@fixed_point
+def fib(f, x):
+    if x < 2:
+        return 1
+    return f(x - 2) + f(x - 1)
+
+assert list(map(fib, range(10))) == [1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
+
 # Test set
 items_1 = [0, 1, 2, 3, 4, {'a': 'b'}]
 items_2 = [5, 6, 7, 8, 9, {'c': 'd'}]

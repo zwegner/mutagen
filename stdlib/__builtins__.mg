@@ -108,6 +108,22 @@ def sum(iterable, base):
         base = base + item
     return base
 
+def partial(f, *args1):
+    def applied(*args2):
+        return f(*args1, *args2)
+    return applied
+
+# XXX would be nice to use macromagic to add the name of the function as an implicit
+# first parameter, so we wouldn't have to have an explicit alias name
+def fixed_point(fn):
+    def recurse(x):
+        return x(x)
+    def call(c):
+        def inner(*args):
+            return c(c)(*args)
+        return partial(fn, inner)
+    return recurse(call)
+
 # This shit's slow
 # XXX recursion
 class set:
