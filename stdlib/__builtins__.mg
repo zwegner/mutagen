@@ -172,8 +172,8 @@ class set:
     def __len__(self):
         return len(self.items)
     def __eq__(self, other):
-        return (isinstance(other, type(self)) and
-            list(sorted(self.items)) == list(sorted(other.items)))
+        return (isinstance(other, type(self)) and len(self) == len(other) and
+            all([i in self.items for i in other.items]))
     def __repr__(self):
         if not self.items:
             return 'set()'

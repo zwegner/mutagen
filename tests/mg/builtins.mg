@@ -94,6 +94,7 @@ t = set(items_2)
 u = s | t
 assert u | s == u
 assert u | t == u
+assert t | s == u
 assert u and s and t
 assert not set()
 
