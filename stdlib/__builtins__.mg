@@ -171,6 +171,9 @@ class set:
             yield item
     def __len__(self):
         return len(self.items)
+    def __eq__(self, other):
+        return (isinstance(other, type(self)) and
+            list(sorted(self.items)) == list(sorted(other.items)))
     def __repr__(self):
         if not self.items:
             return 'set()'
