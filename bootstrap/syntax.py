@@ -878,15 +878,13 @@ class Function(Node):
         if self.is_generator:
             return Generator(child_ctx, self.block, info=self)
 
-        ret = None_(info=self)
         try:
             self.block.eval(child_ctx)
         except ReturnExc as r:
-            ret = r.value
             if self.return_type:
-                check_obj_type(self, 'return value', ctx, ret, self.rt_eval)
-
-        return ret
+                check_obj_type(self, 'return value', ctx, r.value, self.rt_eval)
+            return r.value
+        return None_(info=self)
     def repr(self, ctx):
         ret_str = ' -> %s' % self.return_type.repr(ctx) if self.return_type else ''
         return 'def %s(%s)%s%s' % (self.name, self.params.repr(ctx),
