@@ -1,7 +1,60 @@
 import re
 
-import re_test_cases
+from langdeps import *
 
-for r in re_test_cases.regexes:
+regexes = [
+    '',
+    '.*',
+    '.+',
+    '[A-Z]',
+    '[[]',
+    '[]]',
+    '[^[]',
+    '[^[ab]',
+    '[^a-b]',
+    '[^b-z]',
+    '[a-b]*',
+    '[a-z]',
+    '[a-z]b',
+    '[b-c]+',
+    '[b-z]',
+    '][a]',
+    'a?a?b',
+    'aa|b',
+    '(a?)*b',
+    'aab|bbb|(aa*)',
+    '(a|b)*',
+    'asdf|',
+]
+inputs = [
+    '',
+    '[',
+    ']',
+    ']a',
+    'aa',
+    'aab',
+    'aaaaaab',
+    'aabaaab',
+    'aa',
+    'aa',
+    'aa',
+    'b',
+    'ba',
+    'bab',
+    'bba',
+    'bbb',
+    'bca',
+]
+
+for r in regexes:
     reg = re.compile(r)
-    print([bool(x is not None) for x in map(reg.match, re_test_cases.inputs)])
+    print([bool(x != None) for x in map(reg.match, inputs)])
+
+bad_regexes = [
+    '*',
+    '(asdf',
+    'asdf)',
+]
+
+for r in bad_regexes:
+    assert_call_fails(re.compile, r)

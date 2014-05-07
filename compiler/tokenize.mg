@@ -25,7 +25,7 @@ class Tokenizer:
                 [type, regex] = token
                 token_fn = null_token_fn
             token_matchers = token_matchers + [TokenMatcher(type,
-                re.parse(regex), token_fn)]
+                re.compile(regex), token_fn)]
         return {'token_matchers': token_matchers}
 
     def tokenize_input(self, input):
@@ -34,7 +34,7 @@ class Tokenizer:
             best_token = None
             for t in self.token_matchers:
                 m = t.match(input)
-                if m[0] and m[1] > best_match[1]:
+                if m != None and m[1] > best_match[1]:
                     best_match = m
                     best_token = t
             if not best_match[0]:
