@@ -48,6 +48,11 @@ def map(fn, *lists):
     for args in zip(*lists):
         yield fn(*args)
 
+def filter(fn, list):
+    for i in list:
+        if fn(i):
+            yield i
+
 def max(iterable):
     highest = None
     for item in iterable:
@@ -123,6 +128,17 @@ def fixed_point(fn):
             return c(c)(*args)
         return partial(fn, inner)
     return recurse(call)
+
+# Super fucking slow selection sort!
+def sorted(iterable):
+    iterable = list(iterable)
+    for i in range(len(iterable)):
+        best = 0
+        for j in range(1, len(iterable)):
+            if iterable[j] < iterable[best]:
+                best = j
+        yield iterable[best]
+        iterable = slice(iterable, best) + slice(iterable, best + 1, None)
 
 # This shit's slow
 # XXX recursion
