@@ -30,32 +30,14 @@ assert_call_fails(lambda() {
 # Test return types
 test_types = ['abc', 123, True, False]
 for x in test_types:
-    # XXX this is not working now, for a rather complicated reason related to
-    # lambda lifting. Since the test function in the loop has a variable from
-    # the parent scope, it gets lifted out to the beginning of the program. At
-    # that point, type is not declared yet. This can be sort-of solved by making
-    # sure to insert the lifted lambda in the right place, in the top-most
-    # statement list just before the current expression tree. However, this
-    # exposes a deeper problem: the style of lambda lifting we use needs two
-    # different kinds of scope-borrowing: one for the function definition, which
-    # includes parameter types, the return type, and eventually any expression
-    # used as a default argument (once that's supported), and one for the actual
-    # body of the function. Since lifted lambdas use the same BoundFunction type
-    # we use for bound-methods to pass in arguments to the function, this does
-    # not apply to the actual function. As it is, we create only one Function
-    # object for whole function, with specializations coming from different
-    # BoundFunction instantiations. But since the parameter/return types and
-    # default arguments can change too, we really need full new Function
-    # instantiations, or at least some other wrapper that does the type checking
-    # and argument handling.
-    #for y in test_types:
-    #    def test_ret() -> type(x):
-    #        return y
-    #    if isinstance(y, type(x)):
-    #        assert isinstance(test_ret(), type(x))
-    #        assert_call_fails(assert_call_fails, test_ret)
-    #    else:
-    #        assert_call_fails(test_ret)
+    for y in test_types:
+        def test_ret() -> type(x):
+            return y
+        if isinstance(y, type(x)):
+            assert isinstance(test_ret(), type(x))
+            assert_call_fails(assert_call_fails, test_ret)
+        else:
+            assert_call_fails(test_ret)
 
     def test_ret_bad() -> x:
         return 0
