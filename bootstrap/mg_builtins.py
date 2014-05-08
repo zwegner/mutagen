@@ -60,7 +60,7 @@ def mgb_error(ctx, msg):
 def mgb_slice(ctx, seq, *args):
     args = [a.value if a is not None and not isinstance(a, None_) else None
             for a in args]
-    [start, stop, step] = [None, None, None]
+    [start, stop, step] = [None] * 3
     if len(args) == 1:
         [stop] = args
     elif len(args) == 2:

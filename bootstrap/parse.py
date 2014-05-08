@@ -309,6 +309,38 @@ def p_getitem(p):
     """ getitem : expr LBRACKET expr RBRACKET """
     p[0] = GetItem(p[1], p[3])
 
+# PLY makes this kind of thing a huge pain in the ass!! There's valid syntax
+# here (e.g. x[y::] we don't even support for now because it's so irritating.
+def p_slice(p):
+    """ getitem : expr LBRACKET expr COLON RBRACKET
+                | expr LBRACKET COLON expr RBRACKET
+                | expr LBRACKET expr COLON expr RBRACKET
+                | expr LBRACKET COLON COLON expr RBRACKET
+                | expr LBRACKET expr COLON COLON expr RBRACKET
+                | expr LBRACKET COLON expr COLON expr RBRACKET
+                | expr LBRACKET expr COLON expr COLON expr RBRACKET
+    """
+    [start, stop, step] = [None_(info=get_info(p, 1))] * 3
+    if len(p) == 6:
+        if p[4] == ':':
+            start = p[3]
+        else:
+            stop = p[4]
+    elif len(p) == 7:
+        if p[3] != ':':
+            [start, stop] = [p[3], p[5]]
+        else:
+            step = p[5]
+    elif len(p) == 8:
+        step = p[6]
+        if p[4] == ':':
+            start = p[3]
+        else:
+            stop = p[4]
+    else:
+        [start, stop, step] = [p[3], p[5], p[7]]
+    p[0] = Call(Identifier('slice', info=get_info(p, 1)), [p[1], start, stop, step])
+
 def p_vararg(p):
     """ vararg : STAR expr """
     p[0] = VarArg(p[2])
