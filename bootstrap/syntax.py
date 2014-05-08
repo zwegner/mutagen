@@ -805,10 +805,6 @@ class Params(Node):
         yield from self.params
         if self.star_params:
             yield self.star_params
-    def iterate_with_types(self):
-        # XXX not implemented
-        assert not self.star_params
-        yield from zip(self.params, self.type_evals)
 
 @node('&expr')
 class Scope(Node):
