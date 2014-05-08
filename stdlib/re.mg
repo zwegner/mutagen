@@ -42,17 +42,31 @@ class Split(offset1, offset2):
     def __repr__(self):
         return 'split {}, {}'.format(self.offset1, self.offset2)
 
+class Save(index):
+    def __repr__(self):
+        return 'save {}'.format(self.index)
+
 class Done:
     def __repr__(self):
         return 'done'
 
-class Pattern(states):
+class Match(save_points, groups):
+    def span(self, group):
+        return slice(self.save_points, group * 2, group * 2 + 2)
+    def get_last_group(self):
+        group = None
+        for i in range(3, len(self.save_points), 2):
+            if self.save_points[i] != None and self.groups[i // 2] != None:
+                group = self.groups[i // 2]
+        return group
+
+class Pattern(states, groups):
     def match(self, s):
-        def add_state(l, s):
-            if s not in l:
-                l = l + [s]
+        def add_state(l, s, sp):
+            if not any([item[0] == s for item in l]):
+                l = l + [[s, sp]]
             return l
-        states = [0]
+        states = [[0, [None] * len(self.groups) * 2]]
         result = None
         for i in range(len(s) + 1):
             if not states:
@@ -63,17 +77,21 @@ class Pattern(states):
             new_states = []
             n = 0
             while n < len(states):
-                state_id = states[n]
+                [state_id, save_points] = states[n]
                 state = self.states[state_id]
                 if isinstance(state, Jump):
-                    states = add_state(states, state_id + state.offset)
+                    states = add_state(states, state_id + state.offset, save_points)
                 elif isinstance(state, Split):
-                    states = add_state(states, state_id + state.offset1)
-                    states = add_state(states, state_id + state.offset2)
+                    states = add_state(states, state_id + state.offset1, save_points)
+                    states = add_state(states, state_id + state.offset2, save_points)
+                elif isinstance(state, Save):
+                    save_points = (slice(save_points, state.index) + [i] +
+                        slice(save_points, state.index + 1, None))
+                    states = add_state(states, state_id + 1, save_points)
                 elif isinstance(state, Done):
-                    result = [True, i]
+                    result = Match(save_points, self.groups)
                 elif c != None and state.matches(c):
-                    new_states = add_state(new_states, state_id + 1)
+                    new_states = add_state(new_states, state_id + 1, save_points)
                 n = n + 1
             states = new_states
 
@@ -83,7 +101,7 @@ class Pattern(states):
         lines = []
         for state in self.states:
             if (isinstance(state, Jump) or isinstance(state, Split) or
-                isinstance(state, Done)):
+                isinstance(state, Done) or isinstance(state, Save)):
                 lines = lines + [str(state)]
             else:
                 lines = lines + ['match {}'.format(state)]
@@ -130,20 +148,36 @@ def parse_item(string, c):
         item = MatchChar(string[c])
     return [[item], c + 1]
 
-def parse_group(parse_alt, string, c):
+def parse_group(parse_alt, string, c, groups):
     states = []
-    while c < len(string) and string[c] != ')':
+    while c < len(string) and string[c] not in ['|', ')']:
         if string[c] == '(':
-            [new_states, c] = parse_alt(string, c + 1)
+            c = c + 1
+            group_name = None
+            if c < len(string) and string[c] == '?':
+                c = c + 1
+                if c + 1 < len(string) and string[c] == 'P' and string[c + 1] == '<':
+                    c = c + 2
+                    group_name = ''
+                    while c < len(string) and string[c] != '>':
+                        group_name = group_name + string[c]
+                        c = c + 1
+                    c = c + 1
+                else:
+                    error('regex parsing error at char {}: "{}"'.format(c, string[c]))
+            group_id = len(groups)
+            groups = groups + [group_name]
+
+            [new_states, c, groups] = parse_alt(string, c, groups)
             if string[c] != ')':
                 error('regex parsing error at char {}: "{}"'.format(c, string[c]))
             c = c + 1
-        elif string[c] == '|':
-            return [states, c]
+
+            new_states = [Save(group_id * 2)] + new_states + [Save(group_id * 2 + 1)]
         else:
             [new_states, c] = parse_item(string, c)
 
-        # Parse repeaters/connectors
+        # Parse repeaters
         if c < len(string):
             if string[c] == '*':
                 # Try to either match the next item and do it again, or
@@ -160,23 +194,24 @@ def parse_group(parse_alt, string, c):
                 new_states = [Split(1, len(new_states) + 1)] + new_states
                 c = c + 1
         states = states + new_states
-    return [states, c]
+    return [states, c, groups]
 
 @fixed_point
-def parse_alt(parse_alt, string, c):
-    [states, c] = parse_group(parse_alt, string, c)
+def parse_alt(parse_alt, string, c, groups):
+    [states, c, groups] = parse_group(parse_alt, string, c, groups)
 
     # Parse the alternator character--use right recursion for simplicity
     if c < len(string) and string[c] == '|':
-        [other_states, c] = parse_alt(string, c + 1)
+        [other_states, c, groups] = parse_alt(string, c + 1, groups)
         # Try to match the first item, or the second
         states = ([Split(1, len(states) + 2)] + states +
                 [Jump(len(other_states) + 1)] + other_states)
 
-    return [states, c]
+    return [states, c, groups]
 
 def compile(string):
-    [states, c] = parse_alt(string, 0)
+    [states, c, groups] = parse_alt(string, 0, [None])
     if c < len(string):
         error('regex parsing error at char {}: "{}"'.format(c, string[c]))
-    return Pattern(states + [Done()])
+    states = [Save(0)] + states + [Save(1), Done()]
+    return Pattern(states, groups)
