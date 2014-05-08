@@ -8,6 +8,8 @@ for [k, v] in test_dict:
     value_sum = value_sum + v
 assert key_sum == -9
 assert value_sum == 75
+assert key_sum == sum(test_dict.keys(), 0)
+assert value_sum == sum(test_dict.values(), 0)
 
 # Test that scoping works properly for assignments and for loops, that is,
 # both of them should put their targets in the set of locals.
@@ -22,10 +24,9 @@ test_scoping()
 # Test parameter errors
 def test_fn(a: int, b: str):
     return str(a) + b
-assert_call_fails(lambda() { test_fn('a', 'b'); })
-assert_call_fails(lambda() {
-        assert_call_fails(lambda() { test_fn(1, 'b'); });
-    })
+assert_call_fails(lambda: test_fn('a', 'b');)
+assert_call_fails(lambda:
+    assert_call_fails(lambda: test_fn(1, 'b'););)
 
 # Test return types
 test_types = ['abc', 123, True, False]
