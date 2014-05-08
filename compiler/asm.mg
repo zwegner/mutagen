@@ -414,13 +414,13 @@ def build(insts):
         new_bytes = []
         last_offset = 0
         for [rel, offset] in relocations:
-            new_bytes = new_bytes + slice(bytes, last_offset, offset)
+            new_bytes = new_bytes + bytes[last_offset:offset]
             # XXX only 4-byte for now
             assert rel.size == 4
             disp = label_dict[rel.label.name] - offset - rel.size
             new_bytes = new_bytes + pack32(disp)
             last_offset = offset + rel.size
-        bytes = new_bytes + slice(bytes, last_offset, None)
+        bytes = new_bytes + bytes[last_offset:]
 
     return [bytes, labels, global_labels]
 

@@ -32,11 +32,11 @@ class Tokenizer:
             if m != None:
                 type = m.get_last_group()
             else:
-                error('Error lexing input: {}...'.format(slice(input, 40)))
+                error('Error lexing input: {}...'.format(input[:40]))
 
             [start, end] = m.span(0)
-            match = slice(input, end)
-            input = slice(input, end, None)
+            match = input[:end]
+            input = input[end:]
 
             token = Token(type, match)
             if type in self.token_fns:

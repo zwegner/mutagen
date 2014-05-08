@@ -166,7 +166,7 @@ def process_indentation(tokens):
             else:
                 # Pop off the indent stack until we reach the previous level
                 while spaces < ws_stack[-1]:
-                    ws_stack = slice(ws_stack, len(ws_stack) - 1)
+                    ws_stack = ws_stack[:len(ws_stack) - 1]
                     yield tokenize.Token('DEDENT', '')
                 if spaces != ws_stack[-1]:
                     error('unindent level does not match' +
@@ -176,7 +176,7 @@ def process_indentation(tokens):
 
     # Make sure we have enough indents at EOF
     while len(ws_stack) > 1:
-        ws_stack = slice(ws_stack, len(ws_stack) - 1)
+        ws_stack = ws_stack[:len(ws_stack) - 1]
         yield tokenize.Token('DEDENT', '')
 
 tokenizer = tokenize.Tokenizer(token_map)

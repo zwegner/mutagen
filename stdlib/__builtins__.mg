@@ -138,7 +138,7 @@ def sorted(iterable):
             if iterable[j] < iterable[best]:
                 best = j
         yield iterable[best]
-        iterable = slice(iterable, best) + slice(iterable, best + 1, None)
+        iterable = iterable[:best] + iterable[best + 1:]
 
 # This shit's slow
 # XXX recursion
@@ -165,7 +165,7 @@ class set:
         return type(self)(new_items)
     def pop(self):
         # Return the set without one item, and that item
-        return [type(self)(slice(self.items, 1, None)), self.items[0]]
+        return [type(self)(self.items[1:]), self.items[0]]
     def __iter__(self):
         for item in self.items:
             yield item

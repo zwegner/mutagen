@@ -42,7 +42,7 @@ insts = [asm.Label('_start', True)]
 for rand in gen_rand_64(1000):
     [inst_spec, rand] = rand_select(inst_specs, rand)
     args = []
-    for arg_spec in slice(inst_spec, 1, None):
+    for arg_spec in inst_spec[1:]:
         [arg_type, rand] = rand_select(arg_spec, rand)
         if arg_type == 'r':
             [arg, rand] = rand_select(regs, rand)

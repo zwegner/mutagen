@@ -52,7 +52,7 @@ class Done:
 
 class Match(save_points, groups):
     def span(self, group):
-        return slice(self.save_points, group * 2, group * 2 + 2)
+        return self.save_points[group * 2:group * 2 + 2]
     def get_last_group(self):
         group = None
         for i in range(3, len(self.save_points), 2):
@@ -85,8 +85,8 @@ class Pattern(states, groups):
                     states = add_state(states, state_id + state.offset1, save_points)
                     states = add_state(states, state_id + state.offset2, save_points)
                 elif isinstance(state, Save):
-                    save_points = (slice(save_points, state.index) + [i] +
-                        slice(save_points, state.index + 1, None))
+                    save_points = (save_points[:state.index] + [i] +
+                        save_points[state.index + 1:])
                     states = add_state(states, state_id + 1, save_points)
                 elif isinstance(state, Done):
                     result = Match(save_points, self.groups)

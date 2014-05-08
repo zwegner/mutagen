@@ -13,7 +13,7 @@ class BasicBlock(insts):
             live_sets = live_sets + [live_set]
 
             if inst[0] != 'literal':
-                for arg in slice(inst, 1, None):
+                for arg in inst[1:]:
                     live_set = live_set | {arg}
 
             # Make sure we aren't live before we exist
@@ -40,7 +40,7 @@ def gen_insts(blocks):
         free_regs = set(range(16))
         reg_assns = {}
         for [i, [inst, live_set]] in enumerate(zip(block.insts, live_sets)):
-            [opcode, args] = [inst[0], slice(inst, 1, None)]
+            [opcode, args] = [inst[0], inst[1:]]
             # Special literal opcode: just a placeholder so we can differentiate
             # instruction indices and just literal ints/strs/whatever.
             if opcode == 'literal':
@@ -67,7 +67,7 @@ def gen_insts(blocks):
                 arg_regs = [reg_assns[i] for i in args]
 
                 # Return any now-unused sources to the free set.
-                for [arg, dest] in slice(list(zip(args, arg_regs)), 1, None):
+                for [arg, dest] in list(zip(args, arg_regs))[1:]:
                     if isinstance(dest, asm.Register) and arg not in live_set:
                         free_regs = {dest.index} | free_regs
 
