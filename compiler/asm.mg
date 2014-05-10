@@ -101,10 +101,10 @@ def ex_transform(r, addr):
 
     return [r, x, b]
 
-def rex(w, r, addr):
+def rex(w, r, addr, force=0):
     [r, x, b] = ex_transform(r, addr)
     value = w << 3 | (r & 8) >> 1 | (x & 8) >> 2 | (b & 8) >> 3
-    if value:
+    if value or force:
         return [0x40 | value]
     return []
 
@@ -350,12 +350,9 @@ class Instruction(opcode: str, size: int, *args):
         elif self.opcode in setcc_table:
             opcode = setcc_table[self.opcode]
             [dst] = self.args
-            # XXX HACK: ah/bh etc. are used instead of sil etc. unless there's a REX
-            if isinstance(dst, Register) and dst.index & 0xC == 4:
-                prefix = [0x40]
-            else:
-                prefix = rex(0, 0, dst)
-            return prefix + [0x0F, opcode] + mod_rm_sib(0, dst)
+            # Force REX since ah/bh etc. are used instead of sil etc. without it
+            force = isinstance(dst, Register) and dst.index & 0xC == 4
+            return rex(0, 0, dst, force=force) + [0x0F, opcode] + mod_rm_sib(0, dst)
         assert False
 
     def __str__(self):
