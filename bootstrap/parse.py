@@ -535,7 +535,7 @@ def p_params_2(p):
     """
     params = []
     starparams = None
-    if len(p) == 3:
+    if len(p) == 4:
         kwparams = p[2]
     elif len(p) == 6:
         [params, kwparams] = [p[2], p[4]]

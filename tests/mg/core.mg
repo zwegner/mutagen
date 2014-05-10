@@ -44,6 +44,24 @@ for x in test_types:
         return 0
     assert_call_fails(test_ret_bad)
 
+# Test keyword arguments. Different cases mainly since they're parsed separately
+def kwargs0(x=4):
+    return x
+def kwargs1(base, x=4):
+    return base * x
+def kwargs2(*items, x=3):
+    return sum(items, 0) * x
+def kwargs3(base, *items, x=3):
+    return sum(items, 0) * x + base
+assert kwargs0() == 4
+assert kwargs0(x=0) == 0
+assert kwargs1(2) == 8
+assert kwargs1(2, x=1) == 2
+assert kwargs2(0, 1, 2) == 9
+assert kwargs2(0, 1, 2, x=1) == 3
+assert kwargs3(5, 0, 1, 2) == 14
+assert kwargs3(5, 0, 1, 2, x=0) == 5
+
 # Test lambda lifting--static closures mean variables capture value at time of
 # definition
 items = list(range(4))
@@ -67,13 +85,14 @@ for [v, l] in zip(range(16), lambdas):
 # Test class
 class TestA: pass
 class TestB: pass
-class TestClass(x: TestA, y: TestB):
+class TestClass(x: TestA, y: TestB, z=0):
     pass
 t = TestClass(TestA(), TestB())
 assert isinstance(t.x, TestA)
 assert not isinstance(t.x, TestB)
 assert not isinstance(t.y, TestA)
 assert isinstance(t.y, TestB)
+assert isinstance(t.z, int)
 assert str(t).startswith('<TestClass at ')
 
 assert isinstance(type(t), type)
