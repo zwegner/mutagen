@@ -113,6 +113,73 @@ def gen_insts(blocks):
 
     return sum(reversed(block_insts), [])
 
+# Determine all predecessor and successor blocks
+def get_block_linkage(blocks):
+    succs = {i: [] for i in range(len(blocks))}
+    preds = {i: [] for i in range(len(blocks))}
+
+    for [i, block] in enumerate(blocks):
+        last_inst = block.insts[-1]
+        [opcode, args] = [last_inst[0], last_inst[1:]]
+        dests = []
+        # Jump: add the destination block and the fall-through block
+        if asm.is_control_flow_op(opcode):
+            dests = args
+            if opcode != 'jmp' and i + 1 < len(blocks):
+                dests = dests + [i + 1]
+        # ...or just the fallthrough
+        elif i + 1 < len(blocks):
+            dests = [i + 1]
+
+        # Link up blocks
+        for dest in dests:
+            succs = succs + {i: succs[i] + [dest]}
+            preds = preds + {dest: preds[dest] + [i]}
+
+    return [preds, succs]
+
+# This is slower than necessary. Only probably correct.
+@fixed_point
+def postorder_traverse(postorder_traverse, succs, start, used):
+    if start not in used:
+        used = used | {start}
+        for succ in succs[start]:
+            for b in postorder_traverse(succs, succ, used):
+                used = used | {b}
+                yield b
+        yield start
+
+# Dominance algorithm from http://www.cs.rice.edu/~keith/EMBED/dom.pdf
+def get_block_dominance(start, preds, succs):
+    # Get postorder traversal minus the first block
+    postorder = list(postorder_traverse(succs, start, set()))
+    post_id = {b: i for [i, b] in enumerate(postorder)}
+
+    # Function to find the common dominator between two blocks
+    def intersect(doms, b1, b2):
+        while b1 != b2:
+            while post_id[b1] < post_id[b2]:
+                b1 = doms[b1]
+            while post_id[b2] < post_id[b1]:
+                b2 = doms[b2]
+        return b1
+
+    doms = {b: None for b in preds.keys()} + {start: start}
+    changed = True
+    while changed:
+        changed = False
+        for b in reversed(postorder[:-1]):
+            [new_idom, rest] = [preds[b][0], preds[b][1:]]
+            assert doms[new_idom] != None
+            for p in rest:
+                if doms[p] != None:
+                    new_idom = intersect(doms, new_idom, p)
+            if doms[b] != new_idom:
+                doms = doms + {b: new_idom}
+                assert doms[b] == new_idom
+                changed = True
+    return doms
+
 blocks = [
     BasicBlock([
         ['literal', 11],
