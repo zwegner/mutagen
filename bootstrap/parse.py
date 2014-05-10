@@ -343,20 +343,43 @@ def p_slice_2(p):
         [stop, step] = [p[4], p[6]]
     p[0] = Call(Identifier('slice', info=get_info(p, 1)), [p[1], start, stop, step])
 
-def p_vararg(p):
-    """ vararg : STAR expr """
-    p[0] = VarArg(p[2])
+def p_kwarg(p):
+    """ kwarg : IDENTIFIER EQUALS expr """
+    p[0] = KeywordArg(p[1], p[3])
 
-def p_arg_list(p):
-    """ arg_list : expr
-                 | vararg
-                 | arg_list COMMA expr
-                 | arg_list COMMA vararg
+def p_kwargs(p):
+    """ kwargs : kwarg
+               | kwargs COMMA kwarg
     """
     if len(p) == 2:
         p[0] = [p[1]]
     else:
         p[0] = p[1] + [p[3]]
+
+def p_vararg(p):
+    """ vararg : STAR expr """
+    p[0] = VarArg(p[2])
+
+def p_args(p):
+    """ args : expr
+             | vararg
+             | args COMMA expr
+             | args COMMA vararg
+    """
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = p[1] + [p[3]]
+
+def p_arg_list(p):
+    """ arg_list : args
+                 | kwargs
+                 | args COMMA kwargs
+    """
+    if len(p) == 2:
+        p[0] = p[1]
+    else:
+        p[0] = p[1] + p[3]
 
 def p_call(p):
     """ call : expr LPAREN arg_list RPAREN
@@ -473,7 +496,7 @@ def p_param(p):
               | IDENTIFIER COLON typespec
     """
     if len(p) == 2:
-        p[0] = [p[1], None]
+        p[0] = [p[1], None_(info=get_info(p, 1))]
     else:
         p[0] = [p[1], p[3]]
 
@@ -487,24 +510,41 @@ def p_param_list(p):
         p[0] = p[1] + [p[3]]
 
 def p_params(p):
-    """ params : LPAREN param_list RPAREN
+    """ params :
                | LPAREN RPAREN
-               |
+               | LPAREN param_list RPAREN
+               | LPAREN STAR IDENTIFIER RPAREN
+               | LPAREN param_list COMMA STAR IDENTIFIER RPAREN
     """
+    params = []
+    starparams = None
     if len(p) == 4:
         params = p[2]
-    else:
-        params = []
-    p[0] = Params(params, None, info=get_info(p, 0))
+    elif len(p) == 5:
+        starparams = p[3]
+    elif len(p) == 7:
+        [params, starparams] = [p[2], p[5]]
+    [params, types] = [[p[i] for p in params] for i in range(2)]
+    p[0] = Params(params, types, starparams, [], info=get_info(p, 0))
 
-def p_params_star(p):
-    """ params : LPAREN param_list COMMA STAR IDENTIFIER RPAREN
-               | LPAREN STAR IDENTIFIER RPAREN
+def p_params_2(p):
+    """ params : LPAREN kwargs RPAREN
+               | LPAREN param_list COMMA kwargs RPAREN
+               | LPAREN STAR IDENTIFIER COMMA kwargs RPAREN
+               | LPAREN param_list COMMA STAR IDENTIFIER COMMA kwargs RPAREN
     """
-    if len(p) == 5:
-        p[0] = Params([], p[3], info=get_info(p, 1))
+    params = []
+    starparams = None
+    if len(p) == 3:
+        kwparams = p[2]
+    elif len(p) == 6:
+        [params, kwparams] = [p[2], p[4]]
+    elif len(p) == 7:
+        [starparams, kwparams] = [p[3], p[5]]
     else:
-        p[0] = Params(p[2], p[5], info=get_info(p, 1))
+        [params, starparams, kwparams] = [p[2], p[5], p[7]]
+    [params, types] = [[p[i] for p in params] for i in range(2)]
+    p[0] = Params(params, types, starparams, kwparams, info=get_info(p, 0))
 
 def p_return_type(p):
     """ return_type : RARROW expr

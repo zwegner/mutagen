@@ -415,7 +415,7 @@ class Object(Node):
         cls = self.get_attr(ctx, '__class__')
         op = cls.get_attr(ctx, attr)
         if op is not None and ctx is not None:
-            return op.eval_call(ctx, [self] + args)
+            return op.eval_call(ctx, [self] + args, {})
         return None
     def dispatch(self, ctx, attr, args):
         cls = self.get_attr(ctx, '__class__')
@@ -424,9 +424,9 @@ class Object(Node):
 
 @node('&fn, *args')
 class BoundFunction(Node):
-    def eval_call(self, ctx, args):
+    def eval_call(self, ctx, args, kwargs):
         args = self.args + args
-        return self.fn.eval_call(ctx, args)
+        return self.fn.eval_call(ctx, args, kwargs)
     def repr(self, ctx):
         return '<bound-fn %s(%s, ...)>' % (self.fn.repr(ctx),
                 ', '.join(a.repr(ctx) for a in self.args))
@@ -744,13 +744,16 @@ class Call(Node):
     def eval(self, ctx):
         fn = self.fn.eval(ctx)
         args = []
+        kwargs = {}
         for a in self.args:
             if isinstance(a, VarArg):
                 args.extend(list(a.eval(ctx).iter(ctx)))
+            elif isinstance(a, KeywordArg):
+                kwargs[a.name] = a.eval(ctx)
             else:
                 args.append(a.eval(ctx))
         ctx.current_node = self
-        return fn.eval_call(ctx, args)
+        return fn.eval_call(ctx, args, kwargs)
     def repr(self, ctx):
         return '%s(%s)' % (self.fn.repr(ctx), ', '.join(s.repr(ctx) for s in self.args))
 
@@ -761,15 +764,20 @@ class VarArg(Node):
     def repr(self, ctx):
         return '*%s' % self.expr.repr(ctx)
 
-# XXX types need to be edges
-@node('params, star_params')
+@node('name, &expr')
+class KeywordArg(Node):
+    def eval(self, ctx):
+        return self.expr.eval(ctx)
+    def repr(self, ctx):
+        return '%s=%s' % (self.name, self.expr.repr(ctx))
+
+@node('params, *types, star_params, *kwparams')
 class Params(Node):
-    def setup(self):
-        self.params, self.types = [[p[i] for p in self.params] for i in range(2)]
     def specialize(self, ctx):
-        self.type_evals = [t and t.eval(ctx) for t in self.types]
+        self.type_evals = [t.eval(ctx) for t in self.types]
+        self.keyword_evals = {p.name: p.eval(ctx) for p in self.kwparams}
         return self
-    def bind(self, obj, ctx, args):
+    def bind(self, obj, ctx, args, kwargs):
         if self.star_params:
             if len(args) < len(self.params):
                 self.error('wrong number of arguments to %s, '
@@ -785,11 +793,23 @@ class Params(Node):
         # Check argument types
         args = []
         for p, t, a in zip(self.params, self.type_evals, pos_args):
-            if t is not None:
+            if not isinstance(t, None_):
                 check_obj_type(self, 'argument', ctx, a, t)
             args += [(p, a)]
         if self.star_params:
             args += [(self.star_params, var_args)]
+
+        # Bind keyword arguments
+        for arg in kwargs:
+            if arg not in self.keyword_evals:
+                self.error('got unexpected keyword argument \'%s\'' % arg, ctx=ctx)
+
+        for kwparam in self.kwparams:
+            if kwparam.name in kwargs:
+                args += [(kwparam.name, kwargs[kwparam.name])]
+            else:
+                args += [(kwparam.name, self.keyword_evals[kwparam.name])]
+
         return args
     def repr(self, ctx):
         params = []
@@ -805,6 +825,8 @@ class Params(Node):
         yield from self.params
         if self.star_params:
             yield self.star_params
+        for p in self.kwparams:
+            yield p.name
 
 @node('&expr')
 class Scope(Node):
@@ -867,9 +889,9 @@ class Function(Node):
         if self.return_type:
             self.rt_eval = self.return_type.eval(parent_ctx)
         return self
-    def eval_call(self, ctx, args):
+    def eval_call(self, ctx, args, kwargs):
         child_ctx = Context(self.name, self.ctx, ctx)
-        for p, a in self.params.bind(self, ctx, args):
+        for p, a in self.params.bind(self, ctx, args, kwargs):
             child_ctx.store(p, a)
         if self.is_generator:
             return Generator(child_ctx, self.block, info=self)
@@ -900,7 +922,8 @@ class Generator(Node):
 
 @node('name, fn')
 class BuiltinFunction(Node):
-    def eval_call(self, ctx, args):
+    def eval_call(self, ctx, args, kwargs):
+        assert kwargs == {}
         return self.fn(self, ctx, args)
     def repr(self, ctx):
         return '<builtin %s>' % self.name
@@ -922,14 +945,14 @@ class Class(Node):
             items[String('__class__', info=self)] = TypeClass
             self.cls = Object(items, info=self)
         return self
-    def eval_call(self, ctx, args):
+    def eval_call(self, ctx, args, kwargs):
         init = self.cls.get_attr(ctx, '__init__')
         if init is None:
             attrs = {String(k, info=self): v.eval(ctx) for k, v in
-                    self.params.bind(self, ctx, args)}
+                    self.params.bind(self, ctx, args, kwargs)}
         else:
             ctx.current_node = self
-            d = init.eval_call(ctx, args)
+            d = init.eval_call(ctx, args, kwargs)
             assert isinstance(d, Dict)
             attrs = d.items
         # Add __class__ attribute
@@ -948,7 +971,7 @@ builtin_info = Info('__builtins__', 0)
 
 class BuiltinClass(Class):
     def __init__(self, name):
-        super().__init__(name, Params([], None, info=builtin_info), None)
+        super().__init__(name, Params([], [], None, [], info=builtin_info), None)
         self.ctx = None
         methods = set(dir(type(self))) - set(dir(BuiltinClass))
         stmts = []
@@ -959,13 +982,13 @@ class BuiltinClass(Class):
         self.block = Block(stmts, info=builtin_info)
 
 class BuiltinNone(BuiltinClass):
-    def eval_call(self, ctx, args):
+    def eval_call(self, ctx, args, kwargs):
         return None_(info=self)
 
 NoneClass = BuiltinNone('NoneType')
 
 class BuiltinStr(BuiltinClass):
-    def eval_call(self, ctx, args):
+    def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return String(arg.str(ctx), info=arg)
     def islower(obj, ctx, args):
@@ -1016,7 +1039,7 @@ class BuiltinStr(BuiltinClass):
 StrClass = BuiltinStr('str')
 
 class BuiltinInt(BuiltinClass):
-    def eval_call(self, ctx, args):
+    def eval_call(self, ctx, args, kwargs):
         if len(args) == 2:
             result = int(args[0].value, args[1].value)
         elif len(args) == 1:
@@ -1028,21 +1051,21 @@ class BuiltinInt(BuiltinClass):
 IntClass = BuiltinInt('int')
 
 class BuiltinBool(BuiltinClass):
-    def eval_call(self, ctx, args):
+    def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return Boolean(arg.bool(ctx), info=arg)
 
 BoolClass = BuiltinBool('bool')
 
 class BuiltinList(BuiltinClass):
-    def eval_call(self, ctx, args):
+    def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return List(list(arg), info=arg)
 
 ListClass = BuiltinList('list')
 
 class BuiltinDict(BuiltinClass):
-    def eval_call(self, ctx, args):
+    def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return Dict(dict(arg), info=arg)
     def keys(obj, ctx, args):
@@ -1055,7 +1078,7 @@ class BuiltinDict(BuiltinClass):
 DictClass = BuiltinDict('dict')
 
 class BuiltinType(BuiltinClass):
-    def eval_call(self, ctx, args):
+    def eval_call(self, ctx, args, kwargs):
         [arg] = args
         item = arg.get_attr(ctx, '__class__')
         if item is None:
@@ -1066,8 +1089,7 @@ class BuiltinType(BuiltinClass):
 TypeClass = BuiltinType('type')
 
 class BuiltinModule(BuiltinClass):
-    def eval_call(self, ctx, args):
-        self.error('module class is not callable')
+    pass
 
 ModuleClass = BuiltinModule('module')
 
