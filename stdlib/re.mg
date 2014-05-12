@@ -62,11 +62,14 @@ class Match(save_points, groups):
 
 class Pattern(states, groups):
     def match(self, s):
-        def add_state(l, s, sp):
-            if not any([item[0] == s for item in l]):
-                l = l + [[s, sp]]
-            return l
-        states = [[0, [None] * len(self.groups) * 2]]
+        def add_state(ss, sps, s, sp):
+            if s not in sps:
+                ss = ss + [s]
+                sps = sps + {s: sp}
+            return [ss, sps]
+        save = [None] * len(self.groups) * 2
+        states = [0]
+        save_points = {0: save}
         result = None
         for i in range(len(s) + 1):
             if not states:
@@ -75,25 +78,32 @@ class Pattern(states, groups):
             if i < len(s):
                 c = s[i]
             new_states = []
+            new_save_points = {}
             n = 0
             while n < len(states):
-                [state_id, save_points] = states[n]
+                state_id = states[n]
+                save = save_points[state_id]
                 state = self.states[state_id]
                 if isinstance(state, Jump):
-                    states = add_state(states, state_id + state.offset, save_points)
+                    [states, save_points] = add_state(states, save_points,
+                        state_id + state.offset, save)
                 elif isinstance(state, Split):
-                    states = add_state(states, state_id + state.offset1, save_points)
-                    states = add_state(states, state_id + state.offset2, save_points)
+                    [states, save_points] = add_state(states, save_points,
+                        state_id + state.offset1, save)
+                    [states, save_points] = add_state(states, save_points,
+                        state_id + state.offset2, save)
                 elif isinstance(state, Save):
-                    save_points = (save_points[:state.index] + [i] +
-                        save_points[state.index + 1:])
-                    states = add_state(states, state_id + 1, save_points)
+                    save = save[:state.index] + [i] + save[state.index+1:]
+                    [states, save_points] = add_state(states, save_points,
+                        state_id + 1, save)
                 elif isinstance(state, Done):
-                    result = Match(save_points, self.groups)
+                    result = Match(save, self.groups)
                 elif c != None and state.matches(c):
-                    new_states = add_state(new_states, state_id + 1, save_points)
+                    [new_states, new_save_points] = add_state(new_states,
+                        new_save_points, state_id + 1, save)
                 n = n + 1
             states = new_states
+            save_points = new_save_points
 
         return result
 
