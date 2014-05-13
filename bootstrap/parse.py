@@ -6,7 +6,7 @@ import ply.yacc as yacc
 
 import lexer
 import mg_builtins
-from core import *
+from syntax import *
 
 from lexer import tokens
 

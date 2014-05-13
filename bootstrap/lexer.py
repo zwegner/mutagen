@@ -3,7 +3,7 @@ import sys
 
 import ply.lex as lex
 
-import core
+import syntax
 
 tokens = [
     'WHITESPACE',
@@ -144,7 +144,7 @@ def t_error(t):
     error(t, 'invalid token: %s' % t)
 
 def error(t, msg):
-    print('%s(%s): %s' % (core.filename, t.lineno, msg))
+    print('%s(%s): %s' % (syntax.filename, t.lineno, msg))
     sys.exit(1)
 
 class Token:

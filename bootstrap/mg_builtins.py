@@ -1,6 +1,6 @@
 import sys
 
-from core import *
+from syntax import *
 
 builtins = {}
 
