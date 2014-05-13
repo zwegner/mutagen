@@ -53,9 +53,10 @@ def gen_insts(blocks):
                 # operand within that block, and make sure we add them to the
                 # live outs of the proper block, and mark the assigned register.
                 for [src_block_id, src_op] in args:
-                    outs = block_outs[src_block_id] + {src_op: reg}
-                    block_outs = block_outs + {src_block_id: outs}
-            elif asm.is_control_flow_op(opcode):
+                    if src_op not in block_outs[src_block_id]:
+                        outs = block_outs[src_block_id] + {src_op: reg}
+                        block_outs = block_outs + {src_block_id: outs}
+            elif asm.is_jump_op(opcode):
                 # Make sure only the last instruction is a control flow op
                 assert i == len(block.insts) - 1
                 # XXX take a flags argument, and make sure it's from the latest
@@ -80,6 +81,8 @@ def gen_insts(blocks):
                     # should probably done during scheduling with spill/fill.
                     # This also needs to interact with coalescing, when we have that.
                     if args[0] in live_set:
+                        # XXX make sure we don't use one of the registers that
+                        # become free after this instruction
                         [free_regs, reg] = free_regs.pop()
                         insts = insts + [asm.Instruction('mov64',
                             asm.Register(reg), arg_regs[0])]
@@ -123,12 +126,14 @@ def get_block_linkage(blocks):
         [opcode, args] = [last_inst[0], last_inst[1:]]
         dests = []
         # Jump: add the destination block and the fall-through block
-        if asm.is_control_flow_op(opcode):
+        if asm.is_jump_op(opcode):
             dests = args
-            if opcode != 'jmp' and i + 1 < len(blocks):
+            if opcode != 'jmp':
+                assert i + 1 < len(blocks)
                 dests = dests + [i + 1]
         # ...or just the fallthrough
-        elif i + 1 < len(blocks):
+        else:
+            assert i + 1 < len(blocks)
             dests = [i + 1]
 
         # Link up blocks
@@ -138,7 +143,7 @@ def get_block_linkage(blocks):
 
     return [preds, succs]
 
-# This is slower than necessary. Only probably correct.
+# This is slower than necessary. Interesting case for syntax/state handling.
 @fixed_point
 def postorder_traverse(postorder_traverse, succs, start, used):
     if start not in used:
@@ -160,7 +165,7 @@ def get_block_dominance(start, preds, succs):
         while b1 != b2:
             while post_id[b1] < post_id[b2]:
                 b1 = doms[b1]
-            while post_id[b2] < post_id[b1]:
+            while post_id[b1] > post_id[b2]:
                 b2 = doms[b2]
         return b1
 

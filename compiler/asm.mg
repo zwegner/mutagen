@@ -201,9 +201,7 @@ class Instruction(opcode: str, size: int, *args):
             setcc_table.keys() + ['lea', 'pop']) - {'cmp'}
     no_reg_ops = {'cmp', 'test'}
 
-    # 'call' is also a control flow op, but doesn't affect SSA, since we
-    # always resume at the next instruction
-    control_flow_ops = set(jump_table.keys() + ['jmp'])
+    jump_ops = set(jump_table.keys() + ['jmp'])
 
     def normalize_opcode(opcode):
         opcode = opcode.replace('8', '').replace('16', '')
@@ -383,9 +381,9 @@ def needs_register(opcode):
     opcode = Instruction.normalize_opcode(opcode)
     return opcode not in Instruction.no_reg_ops
 
-def is_control_flow_op(opcode):
+def is_jump_op(opcode):
     opcode = Instruction.normalize_opcode(opcode)
-    return opcode in Instruction.control_flow_ops
+    return opcode in Instruction.jump_ops
 
 def build(insts):
     bytes = []
