@@ -194,9 +194,8 @@ class Lexer(liblex.Tokenizer):
     def input(self, input):
         super().input(input)
         # Big ass chain of generators
-        self.tokens = list(process_indentation(process_whitespace(process_newlines(
-            self.tokens))))
-        self.stream = iter(self.tokens)
+        self.tokens = process_indentation(process_whitespace(process_newlines(
+            self.tokens)))
 
     def token(self):
-        return next(self.stream)
+        return next(self.tokens)

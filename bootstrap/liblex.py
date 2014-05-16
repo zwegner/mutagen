@@ -23,23 +23,34 @@ class Tokenizer:
         self.skip = skip
 
     def input(self, line):
-        self.tokens = []
-        match = self.matcher(line)
-        while match is not None:
-            type = match.lastgroup
-            value = match.group(type)
-            if type not in self.skip:
-                token = Token(type, value)
-                if type in self.token_fns:
-                    token = self.token_fns[type](token)
-                self.tokens.append(token)
-            match = self.matcher(line, match.end())
+        def read_line(line):
+            match = self.matcher(line)
+            while match is not None:
+                type = match.lastgroup
+                value = match.group(type)
+                if type not in self.skip:
+                    token = Token(type, value)
+                    if type in self.token_fns:
+                        token = self.token_fns[type](token)
+                    yield token
+                match = self.matcher(line, match.end())
+        self.tokens = read_line(line)
+        self.saved_token = None
 
     def peek(self):
-        return self.tokens[0] if self.tokens else None
+        if not self.saved_token:
+            try:
+                self.saved_token = next(self.tokens)
+            except StopIteration:
+                return None
+        return self.saved_token
 
     def next(self):
-        return self.tokens.pop(0)
+        if self.saved_token:
+            t = self.saved_token
+            self.saved_token = None
+            return t
+        return next(self.tokens)
 
     def accept(self, t):
         if self.peek() and self.peek().type == t:
