@@ -3,17 +3,18 @@ import liblex
 # Classes to represent grammar structure
 
 class String:
-    def __init__(self, s):
-        self.s = s
+    def __init__(self, name):
+        self.name = name
     def parse(self, tokenizer, fn_table):
-        if self.s in fn_table:
-            return fn_table[self.s].parse(tokenizer, fn_table)
-        elif tokenizer.peek().type == self.s:
+        if self.name in fn_table:
+            return fn_table[self.name].parse(tokenizer, fn_table)
+        elif tokenizer.peek() is None:
+            return None
+        elif tokenizer.peek().type == self.name:
             t = tokenizer.next()
             return t.value
-        return None
     def __str__(self):
-        return '"%s"' % self.s
+        return '"%s"' % self.name
 
 class Repeat:
     def __init__(self, item):
@@ -98,8 +99,7 @@ def parse_rule_atom(tokenizer):
 def parse_rule_seq(tokenizer):
     r = []
     tok = tokenizer.peek()
-    while (tok.type != 'RBRACKET' and tok.type != 'RPAREN' and tok.type != 'PIPE'
-        and tok.type != 'EOF'):
+    while tok and tok.type != 'RBRACKET' and tok.type != 'RPAREN' and tok.type != 'PIPE':
         r.append(parse_rule_atom(tokenizer))
         tok = tokenizer.peek()
     if len(r) > 1:

@@ -34,16 +34,15 @@ class Tokenizer:
                     token = self.token_fns[type](token)
                 self.tokens.append(token)
             match = self.matcher(line, match.end())
-        self.tokens.append(Token('EOF', 'EOF'))
 
     def peek(self):
-        return self.tokens[0]
+        return self.tokens[0] if self.tokens else None
 
     def next(self):
         return self.tokens.pop(0)
 
     def accept(self, t):
-        if self.peek().type == t:
+        if self.peek() and self.peek().type == t:
             return self.next()
         return None
 

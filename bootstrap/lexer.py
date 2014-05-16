@@ -195,14 +195,8 @@ class Lexer(liblex.Tokenizer):
         super().input(input)
         # Big ass chain of generators
         self.tokens = list(process_indentation(process_whitespace(process_newlines(
-            self.gen_tokens()))))
+            self.tokens))))
         self.stream = iter(self.tokens)
-
-    def gen_tokens(self):
-        for t in self.tokens:
-            if t.type == 'EOF':
-                break
-            yield t
 
     def token(self):
         return next(self.stream)
