@@ -162,7 +162,7 @@ skip = {'WHITESPACE'}
 
 def rule_fn(rule_table, rule, prod):
     def wrapper(fn):
-        rule_table[rule] = (prod, fn)
+        rule_table.append((rule, (prod, fn)))
         return fn
     return wrapper
 
@@ -170,7 +170,7 @@ class Parser:
     def __init__(self, rule_table, start):
         self.tokenizer = liblex.Tokenizer(rule_tokens, skip)
         self.fn_table = {}
-        for k, v in sorted(rule_table.items()):
+        for k, v in rule_table:
             fn = None
             if isinstance(v, tuple):
                 v, fn = v
