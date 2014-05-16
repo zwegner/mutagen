@@ -6,7 +6,7 @@ lexer = utils.import_path('../../bootstrap/lexer.py')
 for path in ['../../stdlib/__builtins__.mg', '../../stdlib/re.mg', '../../compiler/lexer.mg']:
     with open(path) as f:
         blah = f.read()
-    lex = lexer.get_lexer()
+    lex = lexer.Lexer()
     lex.input(blah)
     while True:
         t = lex.token()
