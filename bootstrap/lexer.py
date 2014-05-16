@@ -1,53 +1,44 @@
 import itertools
 import sys
 
-import ply.lex as lex
+import liblex
 
 import syntax
 
-tokens = [
-    'WHITESPACE',
-    'INDENT',
-    'DEDENT',
-    'NEWLINE',
-    'IDENTIFIER',
-    'STRING',
-    'INTEGER',
-]
+lineno = 0
 
-token_map = {
-    'AT':              r'@',
-    'BIT_AND':         r'&',
-    'BIT_OR':          r'\|',
-    'BIT_XOR':         r'\^',
-    'COLON':           r':',
-    'COMMA':           r',',
-    'EQUALS':          r'=',
-    'EQUALS_EQUALS':   r'==',
-    'FLOORDIV':        r'//',
-    'GREATER':         r'>',
-    'GREATER_EQUALS':  r'>=',
-    'INVERSE':         r'~',
-    'LBRACE':          r'{',
-    'LBRACKET':        r'\[',
-    'LESS':            r'<',
-    'LESS_EQUALS':     r'<=',
-    'LPAREN':          r'\(',
-    'MINUS':           r'-',
-    'MODULO':          r'%',
-    'NOT_EQUALS':      r'!=',
-    'PERIOD':          r'\.',
-    'PLUS':            r'\+',
-    'RARROW':          r'->',
-    'RBRACE':          r'}',
-    'RBRACKET':        r']',
-    'RPAREN':          r'\)',
-    'SEMICOLON':       r';',
-    'SHIFT_LEFT':      r'<<',
-    'SHIFT_RIGHT':     r'>>',
-    'STAR':            r'\*',
-    'STAR_STAR':       r'\*\*',
+str_escapes = {
+    'n': '\n',
+    't': '\t',
+    'b': '\b',
+    '\\': '\\',
+    '\'': '\'',
 }
+
+def process_string(t):
+    string = ''
+    i = iter(t.value[1:-1])
+    while True:
+        try:
+            c = next(i)
+        except StopIteration:
+            break
+        if c == '\\':
+            c = next(i)
+            if c == 'x':
+                string += chr(int(next(i) + next(i), 16))
+            elif c not in str_escapes:
+                error(t, 'bad string escape: "\%s"' % c)
+            else:
+                string += str_escapes[c]
+        else:
+            string += c
+    return liblex.Token(t.type, string)
+
+def process_newline(n):
+    global lineno
+    lineno = lineno + 1
+    return n
 
 keywords = [
     'False',
@@ -71,88 +62,58 @@ keywords = [
     'or',
     'pass',
     'return',
+    'syntax',
     'union',
     'while',
     'yield',
 ]
-
-for keyword in keywords:
-    tokens += [keyword.upper()]
-    globals()['t_%s' % keyword.upper()] = keyword
-
-for token, regex in token_map.items():
-    tokens += [token]
-    globals()['t_%s' % token] = regex
-
-def t_IDENTIFIER(t):
-    r'[a-zA-Z_][a-zA-Z0-9_]*'
-    if t.value in keywords:
-        t.type = t.value.upper()
-    return t
-
-str_escapes = {
-    'n': '\n',
-    't': '\t',
-    'b': '\b',
-    '\\': '\\',
-    '\'': '\'',
+token_map = {
+    'AT':              r'@',
+    'BIT_AND':         r'&',
+    'BIT_OR':          r'\|',
+    'BIT_XOR':         r'\^',
+    'COLON':           r':',
+    'COMMA':           r',',
+    'COMMENT':         r'\#.*',
+    'EQUALS':          r'=',
+    'EQUALS_EQUALS':   r'==',
+    'FLOORDIV':        r'//',
+    'GREATER':         r'>',
+    'GREATER_EQUALS':  r'>=',
+    'IDENTIFIER':      (r'[a-zA-Z_][a-zA-Z0-9_]*',
+        lambda t: liblex.Token(t.value.upper(), t.value) if t.value in keywords else t),
+    'INTEGER':         (r'((0x[0-9a-fA-F]*)|([0-9]+))',
+        lambda t: liblex.Token(t.type, int(t.value, 0))),
+    'INVERSE':         r'~',
+    'LBRACE':          r'{',
+    'LBRACKET':        r'\[',
+    'LESS':            r'<',
+    'LESS_EQUALS':     r'<=',
+    'LPAREN':          r'\(',
+    'MINUS':           r'-',
+    'MODULO':          r'%',
+    'NEWLINE':         r'\n',
+    'NOT_EQUALS':      r'!=',
+    'PERIOD':          r'\.',
+    'PLUS':            r'\+',
+    'RARROW':          r'->',
+    'RBRACE':          r'}',
+    'RBRACKET':        r']',
+    'RPAREN':          r'\)',
+    'SEMICOLON':       r';',
+    'SHIFT_LEFT':      r'<<',
+    'SHIFT_RIGHT':     r'>>',
+    'STAR':            r'\*',
+    'STAR_STAR':       r'\*\*',
+    'STRING':          (r'\'((\\.)|[^\\\'])*\'', process_string),
+    'WHITESPACE':      r'[ \t\r]+',
 }
-
-def t_STRING(t):
-    r'\'((\\.)|[^\\\'])*\''
-    string = ''
-    i = iter(t.value[1:-1])
-    while True:
-        try:
-            c = next(i)
-        except StopIteration:
-            break
-        if c == '\\':
-            c = next(i)
-            if c == 'x':
-                string += chr(int(next(i) + next(i), 16))
-            elif c not in str_escapes:
-                error(t, 'bad string escape: "\%s"' % c)
-            else:
-                string += str_escapes[c]
-        else:
-            string += c
-    t.value = string
-    return t
-
-def t_INTEGER(t):
-    r'((0x[0-9a-fA-F]*)|([0-9]+))'
-    t.value = int(t.value, 0)
-    return t
-
-t_ignore = "\r"
-
-def t_WHITESPACE(t):
-    r'[ \t]+'
-    return t
-
-def t_NEWLINE(t):
-    r'\n'
-    t.lexer.lineno += 1
-    return t
-
-def t_COMMENT(t):
-    r'\#.*'
-    pass
-
-def t_error(t):
-    error(t, 'invalid token: %s' % t)
+skip = {'COMMENT'}
+tokens = list(token_map.keys()) + [k.upper() for k in keywords] + ['INDENT', 'DEDENT']
 
 def error(t, msg):
-    print('%s(%s): %s' % (syntax.filename, t.lineno, msg))
+    print('%s(%s): %s' % (syntax.filename, lineno, msg))
     sys.exit(1)
-
-class Token:
-    def __init__(self, type, value):
-        self.type = type
-        self.value = value
-    def __str__(self):
-        return 'Token(%s, \'%s\')' % (self.type, self.value)
 
 def process_newlines(tokens):
     braces = brackets = parens = 0
@@ -186,7 +147,7 @@ def process_whitespace(tokens):
                     yield token
             # Got a token at the beginning of the line--yield empty whitespace
             elif token.type != 'NEWLINE':
-                yield Token('WHITESPACE', '')
+                yield liblex.Token('WHITESPACE', '')
                 yield token
 
         # Not after a newline--ignore whitespace
@@ -206,12 +167,12 @@ def process_indentation(tokens):
             # Check the indent level against the stack
             if spaces > ws_stack[-1]:
                 ws_stack.append(spaces)
-                yield Token('INDENT', '')
+                yield liblex.Token('INDENT', '')
             else:
                 # Pop off the indent stack until we reach the previous level
                 while spaces < ws_stack[-1]:
                     ws_stack.pop()
-                    yield Token('DEDENT', '')
+                    yield liblex.Token('DEDENT', '')
                 if spaces != ws_stack[-1]:
                     error(t, 'unindent level does not match' +
                         'any previous indent')
@@ -221,29 +182,27 @@ def process_indentation(tokens):
     # Make sure we have enough indents at EOF
     while len(ws_stack) > 1:
         ws_stack.pop()
-        yield Token('DEDENT', '')
+        yield liblex.Token('DEDENT', '')
 
     yield None
 
-class Lexer:
+class Lexer(liblex.Tokenizer):
     def __init__(self):
-        self.lexer = lex.lex()
+        super().__init__(token_map, skip)
+        self.lineno = 0
 
     def input(self, input):
-        self.lexer.input(input)
+        super().input(input)
         # Big ass chain of generators
-        self.stream = process_indentation(process_whitespace(process_newlines(
-            self.gen_tokens())))
+        self.tokens = list(process_indentation(process_whitespace(process_newlines(
+            self.gen_tokens()))))
+        self.stream = iter(self.tokens)
 
     def gen_tokens(self):
-        while True:
-            t = self.lexer.token()
-            if t is None:
+        for t in self.tokens:
+            if t.type == 'EOF':
                 break
             yield t
 
     def token(self):
         return next(self.stream)
-
-def get_lexer():
-    return Lexer()

@@ -612,7 +612,7 @@ def parse(path, import_builtins=True, ctx=None):
     if not dirname:
         dirname = '.'
     with open(path) as f:
-        block = parser.parse(input=f.read(), lexer=lexer.get_lexer())
+        block = parser.parse(input=f.read(), lexer=lexer.Lexer())
 
     # Do some post-processing, starting with adding builtins
     if import_builtins:
