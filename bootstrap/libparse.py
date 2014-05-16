@@ -1,5 +1,10 @@
 import liblex
 
+class Context:
+    def __init__(self, fn_table):
+        self.fn_table = fn_table
+        self.check_prods = set()
+
 # Classes to represent grammar structure
 
 class String:
@@ -13,6 +18,11 @@ class String:
         elif tokenizer.peek().type == self.name:
             t = tokenizer.next()
             return t.value
+    def check_first_token(self, ctx):
+        if self.name in ctx.fn_table:
+            return ctx.fn_table[self.name].check_first_token(ctx)
+        # XXX check whether token type exists
+        return {self.name}
     def __str__(self):
         return '"%s"' % self.name
 
@@ -26,6 +36,8 @@ class Repeat:
             results.append(item)
             item = self.item.parse(tokenizer, fn_table)
         return results
+    def check_first_token(self, ctx):
+        return self.item.check_first_token(ctx)
     def __str__(self):
         return 'rep(%s)' % self.item
 
@@ -42,6 +54,14 @@ class Seq:
                 return None
             items.append(r)
         return items[0] if len(items) == 1 else items
+    def check_first_token(self, ctx):
+        # Check that all later symbols are unambiguously parseable, but only
+        # if we're not being called recursively
+        if self.items[0] not in ctx.check_prods:
+            ctx.check_prods.add(self.items[0])
+            [item.check_first_token(ctx) for item in self.items[1:]]
+            ctx.check_prods.remove(self.items[0])
+        return self.items[0].check_first_token(ctx)
     def __str__(self):
         return 'seq(%s)' % ','.join(map(str, self.items))
 
@@ -54,6 +74,12 @@ class Alt:
             if r is not None:
                 return r
         return None
+    def check_first_token(self, ctx):
+        firsts = [item.check_first_token(ctx) for item in self.items]
+        all_firsts = set(item for f in firsts for item in f)
+        if len(all_firsts) != sum(len(f) for f in firsts):
+            raise RuntimeError('ambiguous parser specification near: %s' % self)
+        return all_firsts
     def __str__(self):
         return 'alt(%s)' % ','.join(map(str, self.items))
 
@@ -62,6 +88,8 @@ class Opt:
         self.item = item
     def parse(self, tokenizer, fn_table):
         return self.item.parse(tokenizer, fn_table) or ''
+    def check_first_token(self, ctx):
+        return self.item.check_first_token(ctx)
     def __str__(self):
         return 'opt(%s)' % self.item
 
@@ -74,6 +102,8 @@ class FnWrapper:
         if result:
             return self.fn(result)
         return None
+    def check_first_token(self, ctx):
+        return self.prod.check_first_token(ctx)
 
 # Mini parser for our grammar specification language (basically EBNF)
 
@@ -154,6 +184,7 @@ class Parser:
         if rule not in self.fn_table:
             self.fn_table[rule] = Alt([])
         self.fn_table[rule].items.append(prod)
+        self.fn_table[rule].check_first_token(Context(self.fn_table))
 
     def parse(self, tokenizer):
         prod = self.fn_table[self.start]
