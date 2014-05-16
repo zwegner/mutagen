@@ -16,7 +16,9 @@ class Tokenizer:
                 v, fn = v
                 self.token_fns[k] = fn
             new_token_map[k] = v
-        regex = '|'.join('(?P<%s>%s)' % (k, v) for k, v in new_token_map.items())
+        # Sort by longest regex first
+        sorted_keys = sorted(new_token_map.items(), key=lambda item: -len(item[1]))
+        regex = '|'.join('(?P<%s>%s)' % (k, v) for k, v in sorted_keys)
         self.matcher = re.compile(regex).match
         self.skip = skip
 
