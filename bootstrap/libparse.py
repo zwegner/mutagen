@@ -120,9 +120,9 @@ rule_tokens = {
     'IDENT': '[a-zA-Z_]+',
     'LBRACKET': '\[',
     'LPAREN': '\(',
+    'PIPE': '\|',
     'RBRACKET': '\]',
     'RPAREN': '\)',
-    'PIPE': '\|',
     'STAR': '\*',
     'WHITESPACE': ' ',
 }
@@ -146,10 +146,15 @@ class Parser:
                 v, fn = v
             self.create_rule(k, v, fn)
         self.start = start
+
     def create_rule(self, rule, prod, fn):
         self.tokenizer.input(prod)
         prod = parse_rule_expr(self.tokenizer)
-        self.fn_table[rule] = FnWrapper(prod, fn) if fn else prod
+        prod = FnWrapper(prod, fn) if fn else prod
+        if rule not in self.fn_table:
+            self.fn_table[rule] = Alt([])
+        self.fn_table[rule].items.append(prod)
+
     def parse(self, tokenizer):
-        rule = self.fn_table[self.start]
-        return rule.parse(tokenizer, self.fn_table)
+        prod = self.fn_table[self.start]
+        return prod.parse(tokenizer, self.fn_table)
