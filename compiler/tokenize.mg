@@ -3,11 +3,6 @@ import re
 def ignore_token_fn(t):
     return None
 
-# A class for eating up input, matching against a lex rule
-class TokenMatcher(name, regex, fn):
-    def match(self, s):
-        return self.regex.match(s)
-
 # A token from the input stream
 class Token(type, value):
     pass
