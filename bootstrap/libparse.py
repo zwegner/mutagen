@@ -8,7 +8,8 @@ class Context:
 # Classes to represent grammar structure
 
 class String:
-    def __init__(self, name):
+    def __init__(self, rule, name):
+        self.rule = rule
         self.name = name
     def parse(self, tokenizer, fn_table):
         if self.name in fn_table:
@@ -27,7 +28,8 @@ class String:
         return '"%s"' % self.name
 
 class Repeat:
-    def __init__(self, item):
+    def __init__(self, rule, item):
+        self.rule = rule
         self.item = item
     def parse(self, tokenizer, fn_table):
         results = []
@@ -42,15 +44,17 @@ class Repeat:
         return 'rep(%s)' % self.item
 
 class Seq:
-    def __init__(self, items):
+    def __init__(self, rule, items):
+        self.rule = rule
         self.items = items
     def parse(self, tokenizer, fn_table):
         items = []
         for i, item in enumerate(self.items):
             r = item.parse(tokenizer, fn_table)
             if r is None:
-                # Instead of proper error messages, explode randomly
-                assert i == 0
+                if i > 0:
+                    raise RuntimeError('parsing error: got %s while looking for %s '
+                        'in rule %s: %s' % (tokenizer.peek(), item, self.rule, self))
                 return None
             items.append(r)
         return items[0] if len(items) == 1 else items
@@ -66,7 +70,8 @@ class Seq:
         return 'seq(%s)' % ','.join(map(str, self.items))
 
 class Alt:
-    def __init__(self, items):
+    def __init__(self, rule, items):
+        self.rule = rule
         self.items = items
     def parse(self, tokenizer, fn_table):
         for item in self.items:
@@ -84,7 +89,8 @@ class Alt:
         return 'alt(%s)' % ','.join(map(str, self.items))
 
 class Opt:
-    def __init__(self, item):
+    def __init__(self, rule, item):
+        self.rule = rule
         self.item = item
     def parse(self, tokenizer, fn_table):
         return self.item.parse(tokenizer, fn_table) or ''
@@ -94,7 +100,8 @@ class Opt:
         return 'opt(%s)' % self.item
 
 class FnWrapper:
-    def __init__(self, prod, fn):
+    def __init__(self, rule, prod, fn):
+        self.rule = rule
         self.prod = prod
         self.fn = fn
     def parse(self, tokenizer, fn_table):
@@ -107,41 +114,41 @@ class FnWrapper:
 
 # Mini parser for our grammar specification language (basically EBNF)
 
-def parse_rule_atom(tokenizer):
+def parse_rule_atom(rule, tokenizer):
     if tokenizer.accept('LPAREN'):
-        r = parse_rule_expr(tokenizer)
+        r = parse_rule_expr(rule, tokenizer)
         tokenizer.expect('RPAREN')
         if tokenizer.accept('STAR'):
-            r = Repeat(r)
+            r = Repeat(rule, r)
     elif tokenizer.accept('LBRACKET'):
-        r = Opt(parse_rule_expr(tokenizer))
+        r = Opt(rule, parse_rule_expr(rule, tokenizer))
         tokenizer.expect('RBRACKET')
     else:
         t = tokenizer.accept('IDENT')
         if t:
-            r = String(t.value)
+            r = String(rule, t.value)
             if tokenizer.accept('STAR'):
-                r = Repeat(r)
+                r = Repeat(rule, r)
         else:
             raise RuntimeError('bad tok: %s' % (tokenizer.peek(),))
     return r
 
-def parse_rule_seq(tokenizer):
+def parse_rule_seq(rule, tokenizer):
     r = []
     tok = tokenizer.peek()
     while tok and tok.type != 'RBRACKET' and tok.type != 'RPAREN' and tok.type != 'PIPE':
-        r.append(parse_rule_atom(tokenizer))
+        r.append(parse_rule_atom(rule, tokenizer))
         tok = tokenizer.peek()
     if len(r) > 1:
-        return Seq(r)
+        return Seq(rule, r)
     return r[0] if r else None
 
-def parse_rule_expr(tokenizer):
-    r = [parse_rule_seq(tokenizer)]
+def parse_rule_expr(rule, tokenizer):
+    r = [parse_rule_seq(rule, tokenizer)]
     while tokenizer.accept('PIPE'):
-        r.append(parse_rule_seq(tokenizer))
+        r.append(parse_rule_seq(rule, tokenizer))
     if len(r) > 1:
-        return Alt(r)
+        return Alt(rule, r)
     return r[0]
 
 # ...And a mini lexer too
@@ -179,10 +186,10 @@ class Parser:
 
     def create_rule(self, rule, prod, fn):
         self.tokenizer.input(prod)
-        prod = parse_rule_expr(self.tokenizer)
-        prod = FnWrapper(prod, fn) if fn else prod
+        prod = parse_rule_expr(rule, self.tokenizer)
+        prod = FnWrapper(rule, prod, fn) if fn else prod
         if rule not in self.fn_table:
-            self.fn_table[rule] = Alt([])
+            self.fn_table[rule] = Alt(rule, [])
         self.fn_table[rule].items.append(prod)
         self.fn_table[rule].check_first_token(Context(self.fn_table))
 
