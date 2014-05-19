@@ -34,7 +34,7 @@ class Repeat:
     def parse(self, tokenizer, fn_table):
         results = []
         item = self.item.parse(tokenizer, fn_table)
-        while item != None:
+        while item is not None:
             results.append(item)
             item = self.item.parse(tokenizer, fn_table)
         return results
@@ -111,6 +111,8 @@ class FnWrapper:
         return None
     def check_first_token(self, ctx):
         return self.prod.check_first_token(ctx)
+    def __str__(self):
+        return str(self.prod)
 
 # Mini parser for our grammar specification language (basically EBNF)
 
