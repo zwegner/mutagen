@@ -5,6 +5,9 @@ class Context:
         self.fn_table = fn_table
         self.check_prods = set()
 
+# Dummy sentinel object
+BAD_PARSE = object()
+
 # Classes to represent grammar structure
 
 class String:
@@ -15,10 +18,11 @@ class String:
         if self.name in fn_table:
             return fn_table[self.name].parse(tokenizer, fn_table)
         elif tokenizer.peek() is None:
-            return None
+            return BAD_PARSE
         elif tokenizer.peek().type == self.name:
             t = tokenizer.next()
             return t.value
+        return BAD_PARSE
     def check_first_token(self, ctx):
         if self.name in ctx.fn_table:
             return ctx.fn_table[self.name].check_first_token(ctx)
@@ -34,7 +38,7 @@ class Repeat:
     def parse(self, tokenizer, fn_table):
         results = []
         item = self.item.parse(tokenizer, fn_table)
-        while item is not None:
+        while item is not BAD_PARSE:
             results.append(item)
             item = self.item.parse(tokenizer, fn_table)
         return results
@@ -51,11 +55,11 @@ class Seq:
         items = []
         for i, item in enumerate(self.items):
             r = item.parse(tokenizer, fn_table)
-            if r is None:
+            if r is BAD_PARSE:
                 if i > 0:
                     raise RuntimeError('parsing error: got %s while looking for %s '
                         'in rule %s: %s' % (tokenizer.peek(), item, self.rule, self))
-                return None
+                return BAD_PARSE
             items.append(r)
         return items[0] if len(items) == 1 else items
     def check_first_token(self, ctx):
@@ -76,9 +80,9 @@ class Alt:
     def parse(self, tokenizer, fn_table):
         for item in self.items:
             r = item.parse(tokenizer, fn_table)
-            if r is not None:
+            if r is not BAD_PARSE:
                 return r
-        return None
+        return BAD_PARSE
     def check_first_token(self, ctx):
         firsts = [item.check_first_token(ctx) for item in self.items]
         all_firsts = set(item for f in firsts for item in f)
@@ -93,7 +97,8 @@ class Opt:
         self.rule = rule
         self.item = item
     def parse(self, tokenizer, fn_table):
-        return self.item.parse(tokenizer, fn_table) or ''
+        result = self.item.parse(tokenizer, fn_table)
+        return [] if result is BAD_PARSE else result
     def check_first_token(self, ctx):
         return self.item.check_first_token(ctx)
     def __str__(self):
@@ -106,9 +111,9 @@ class FnWrapper:
         self.fn = fn
     def parse(self, tokenizer, fn_table):
         result = self.prod.parse(tokenizer, fn_table)
-        if result:
+        if result is not BAD_PARSE:
             return self.fn(result)
-        return None
+        return BAD_PARSE
     def check_first_token(self, ctx):
         return self.prod.check_first_token(ctx)
     def __str__(self):
