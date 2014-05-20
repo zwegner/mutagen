@@ -34,6 +34,7 @@ class Tokenizer:
                         token = self.token_fns[type](token)
                     yield token
                 match = self.matcher(line, match.end())
+        self.pos = 0
         self.tokens = read_line(line)
         self.saved_token = None
 
@@ -46,6 +47,7 @@ class Tokenizer:
         return self.saved_token
 
     def next(self):
+        self.pos += 1
         if self.saved_token:
             t = self.saved_token
             self.saved_token = None
