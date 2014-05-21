@@ -813,8 +813,8 @@ class Params(Node):
         return args
     def repr(self, ctx):
         params = []
-        for p, t in zip(self.params, self.type_evals):
-            if t is not None:
+        for p, t in zip(self.params, self.types):
+            if not isinstance(t, None_):
                 params.append('%s: %s' % (p, t.str(ctx)))
             else:
                 params.append(p)
