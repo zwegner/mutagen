@@ -123,27 +123,27 @@ class FnWrapper:
 
 # Mini parser for our grammar specification language (basically EBNF)
 
+def parse_repeat(rule, tokenizer, repeated):
+    if tokenizer.accept('STAR'):
+        return Repeat(rule, repeated)
+    elif tokenizer.accept('PLUS'):
+        return Repeat(rule, repeated, min=1)
+    return repeated
+
 def parse_rule_atom(rule, tokenizer):
     if tokenizer.accept('LPAREN'):
         r = parse_rule_expr(rule, tokenizer)
         tokenizer.expect('RPAREN')
-        if tokenizer.accept('STAR'):
-            r = Repeat(rule, r)
-        elif tokenizer.accept('PLUS'):
-            r = Repeat(rule, r, min=1)
+        r = parse_repeat(rule, tokenizer, r)
     elif tokenizer.accept('LBRACKET'):
         r = Opt(rule, parse_rule_expr(rule, tokenizer))
         tokenizer.expect('RBRACKET')
     else:
         t = tokenizer.accept('IDENT')
         if t:
-            r = String(rule, t.value)
-            if tokenizer.accept('STAR'):
-                r = Repeat(rule, r)
-            elif tokenizer.accept('PLUS'):
-                r = Repeat(rule, r, min=1)
+            r = parse_repeat(rule, tokenizer, String(rule, t.value))
         else:
-            raise RuntimeError('bad tok: %s' % (tokenizer.peek(),))
+            raise RuntimeError('bad token: %s' % tokenizer.peek())
     return r
 
 def parse_rule_seq(rule, tokenizer):
