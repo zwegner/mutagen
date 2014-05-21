@@ -32,16 +32,17 @@ class String:
         return '"%s"' % self.name
 
 class Repeat:
-    def __init__(self, rule, item):
+    def __init__(self, rule, item, min=0):
         self.rule = rule
         self.item = item
+        self.min = min
     def parse(self, tokenizer, fn_table):
         results = []
         item = self.item.parse(tokenizer, fn_table)
         while item is not BAD_PARSE:
             results.append(item)
             item = self.item.parse(tokenizer, fn_table)
-        return results
+        return results if len(results) >= self.min else BAD_PARSE
     def check_first_token(self, ctx):
         return self.item.check_first_token(ctx)
     def __str__(self):
@@ -128,6 +129,8 @@ def parse_rule_atom(rule, tokenizer):
         tokenizer.expect('RPAREN')
         if tokenizer.accept('STAR'):
             r = Repeat(rule, r)
+        elif tokenizer.accept('PLUS'):
+            r = Repeat(rule, r, min=1)
     elif tokenizer.accept('LBRACKET'):
         r = Opt(rule, parse_rule_expr(rule, tokenizer))
         tokenizer.expect('RBRACKET')
@@ -137,6 +140,8 @@ def parse_rule_atom(rule, tokenizer):
             r = String(rule, t.value)
             if tokenizer.accept('STAR'):
                 r = Repeat(rule, r)
+            elif tokenizer.accept('PLUS'):
+                r = Repeat(rule, r, min=1)
         else:
             raise RuntimeError('bad tok: %s' % (tokenizer.peek(),))
     return r
