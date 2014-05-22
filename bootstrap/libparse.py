@@ -174,6 +174,7 @@ rule_tokens = {
     'RBRACKET': '\]',
     'RPAREN': '\)',
     'STAR': '\*',
+    'PLUS': '\+',
     'WHITESPACE': ' ',
 }
 skip = {'WHITESPACE'}
