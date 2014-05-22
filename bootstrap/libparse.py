@@ -190,11 +190,12 @@ class Parser:
     def __init__(self, rule_table, start):
         self.tokenizer = liblex.Tokenizer(rule_tokens, skip)
         self.fn_table = {}
-        for k, v in rule_table:
-            fn = None
-            if isinstance(v, tuple):
-                v, fn = v
-            self.create_rule(k, v, fn)
+        for [rule, *prods] in rule_table:
+            for prod in prods:
+                fn = None
+                if isinstance(prod, tuple):
+                    prod, fn = prod
+                self.create_rule(rule, prod, fn)
         self.start = start
 
     def create_rule(self, rule, prod, fn):
