@@ -8,17 +8,18 @@ class Token:
         return 'Token(%s, "%s")' % (self.type, self.value)
 
 class Tokenizer:
-    def __init__(self, token_map, skip):
-        new_token_map = {}
+    def __init__(self, token_list, skip):
         self.token_fns = {}
-        for k, v in token_map.items():
+        # If the token list is actually a dict, sort by longest regex first
+        if isinstance(token_list, dict):
+            token_list = sorted(token_list.items(), key=lambda item: -len(item[1]))
+        sorted_tokens = []
+        for k, v in token_list:
             if isinstance(v, tuple):
                 v, fn = v
                 self.token_fns[k] = fn
-            new_token_map[k] = v
-        # Sort by longest regex first
-        sorted_keys = sorted(new_token_map.items(), key=lambda item: -len(item[1]))
-        regex = '|'.join('(?P<%s>%s)' % (k, v) for k, v in sorted_keys)
+            sorted_tokens.append([k, v])
+        regex = '|'.join('(?P<%s>%s)' % (k, v) for k, v in sorted_tokens)
         self.matcher = re.compile(regex).match
         self.skip = skip
 
