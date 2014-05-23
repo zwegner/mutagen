@@ -210,4 +210,10 @@ class Parser:
 
     def parse(self, tokenizer):
         prod = self.fn_table[self.start]
-        return prod.parse(tokenizer, self.fn_table)
+        result = prod.parse(tokenizer, self.fn_table)
+        if result is BAD_PARSE:
+            raise RuntimeError('bad parse near token %s' % tokenizer.peek())
+        elif tokenizer.peek() is not None:
+            raise RuntimeError('parser did not consume entire input, near token %s' %
+                tokenizer.peek())
+        return result
