@@ -10,6 +10,14 @@ BAD_PARSE = object()
 
 # Classes to represent grammar structure
 
+def memoize(fn):
+    memo = {}
+    def memoized(*args):
+        if args not in memo:
+            memo[args] = fn(*args)
+        return memo[args]
+    return memoized
+
 class String:
     def __init__(self, rule, name):
         self.rule = rule
@@ -23,6 +31,7 @@ class String:
             t = tokenizer.next()
             return t.value
         return BAD_PARSE
+    @memoize
     def check_first_token(self, ctx):
         if self.name in ctx.fn_table:
             return ctx.fn_table[self.name].check_first_token(ctx)
@@ -43,6 +52,7 @@ class Repeat:
             results.append(item)
             item = self.item.parse(tokenizer, fn_table)
         return results if len(results) >= self.min else BAD_PARSE
+    @memoize
     def check_first_token(self, ctx):
         return self.item.check_first_token(ctx)
     def __str__(self):
@@ -64,6 +74,7 @@ class Seq:
                 return BAD_PARSE
             items.append(r)
         return items[0] if len(items) == 1 else items
+    @memoize
     def check_first_token(self, ctx):
         # Check that all later symbols are unambiguously parseable, but only
         # if we're not being called recursively
@@ -85,6 +96,7 @@ class Alt:
             if r is not BAD_PARSE:
                 return r
         return BAD_PARSE
+    @memoize
     def check_first_token(self, ctx):
         firsts = [item.check_first_token(ctx) for item in self.items]
         all_firsts = set(item for f in firsts for item in f)
@@ -101,6 +113,7 @@ class Opt:
     def parse(self, tokenizer, fn_table):
         result = self.item.parse(tokenizer, fn_table)
         return [] if result is BAD_PARSE else result
+    @memoize
     def check_first_token(self, ctx):
         return self.item.check_first_token(ctx)
     def __str__(self):
@@ -116,6 +129,7 @@ class FnWrapper:
         if result is not BAD_PARSE:
             return self.fn(result)
         return BAD_PARSE
+    @memoize
     def check_first_token(self, ctx):
         return self.prod.check_first_token(ctx)
     def __str__(self):
