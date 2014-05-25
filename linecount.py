@@ -3,7 +3,7 @@ import subprocess
 
 files = subprocess.check_output(['git', 'ls-files']).decode('utf8').splitlines()
 
-groups = ['bootstrap/ply', 'bootstrap', 'stdlib', 'mg_tests', 'py_tests', '']
+groups = ['bootstrap/ply', 'bootstrap', 'stdlib', 'tests', 'compiler', 'benchmarks', '']
 group_dict = {k: [] for k in groups}
 ignored_groups = {'bootstrap/ply'}
 
