@@ -73,15 +73,14 @@ def parse_arg(p):
 def parse_subscript(p):
     [start, stop, step] = [None_(info=get_info(p, 0))] * 3
     if p[0]:
-        if not p[1]:
+        if p[1] is None:
             return lambda expr: GetItem(expr, p[0])
         start = p[0]
-    else:
-        assert p[1]
-        if p[1][1]:
-            stop = p[1][1]
-        if p[1][2] and p[1][2][1]:
-            step = p[1][2][1]
+    assert p[1]
+    if p[1][1] is not None:
+        stop = p[1][1]
+    if p[1][2] is not None and p[1][2][1] is not None:
+        step = p[1][2][1]
     return lambda expr: Call(Identifier('slice', info=get_info(p, 0)),
         [expr, start, stop, step])
 
