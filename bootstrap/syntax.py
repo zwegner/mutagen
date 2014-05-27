@@ -131,6 +131,10 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
             assert len(iargs) == len(args), 'bad args, expected %s(%s)' % (node.__name__, argstr)
 
             for (arg_type, arg_name), v in zip(args, iargs):
+                if arg_type == ARG_EDGE:
+                    assert isinstance(v, Node)
+                elif arg_type == ARG_EDGE_LIST:
+                    assert isinstance(v, list) and all(isinstance(i, Node) for i in v)
                 setattr(self, arg_name, v)
 
             if info is None:
@@ -976,15 +980,15 @@ builtin_info = Info('__builtins__', 0)
 
 class BuiltinClass(Class):
     def __init__(self, name):
-        super().__init__(name, Params([], [], None, [], info=builtin_info), None)
         self.ctx = None
         methods = set(dir(type(self))) - set(dir(BuiltinClass))
         stmts = []
-        for name in methods:
-            fn = getattr(self.__class__, name)
-            stmts.append(Assignment(Target(name, info=self),
-                BuiltinFunction(name, fn, info=builtin_info)))
-        self.block = Block(stmts, info=builtin_info)
+        for method in methods:
+            fn = getattr(self.__class__, method)
+            stmts.append(Assignment(Target(method, info=builtin_info),
+                BuiltinFunction(method, fn, info=builtin_info)))
+        super().__init__(name, Params([], [], None, [], info=builtin_info),
+            Block(stmts, info=builtin_info))
 
 class BuiltinNone(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
