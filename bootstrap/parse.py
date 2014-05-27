@@ -2,594 +2,285 @@
 import os
 import sys
 
-import ply.yacc as yacc
-
 import lexer
+import libparse
+
 import mg_builtins
 from syntax import *
 
-from lexer import tokens
+def get_info(*a):
+    # XXX
+    return Info('', 0)
 
-root_dir = os.path.dirname(sys.path[0])
-stdlib_dir = '%s/stdlib' % root_dir
+def reduce_binop(p):
+    r = p[0]
+    for item in p[1]:
+        r = BinaryOp(item[0], r, item[1])
+    return r
 
-start = 'stmt_list_or_empty'
+def reduce_list(p):
+    return [p[0]] + [item[1] for item in p[1]]
 
-precedence = [
-    ['right', 'EQUALS'],
-    ['left', 'OR'],
-    ['left', 'AND'],
-    ['left', 'NOT'],
-    ['left', 'EQUALS_EQUALS', 'NOT_EQUALS', 'GREATER', 'GREATER_EQUALS',
-        'LESS', 'LESS_EQUALS', 'IN'],
-    ['left', 'BIT_OR'],
-    ['left', 'BIT_XOR'],
-    ['left', 'BIT_AND'],
-    ['left', 'SHIFT_RIGHT', 'SHIFT_LEFT'],
-    ['left', 'PLUS', 'MINUS'],
-    ['left', 'STAR', 'FLOORDIV', 'MODULO'],
-    ['left', 'UNARY_MINUS', 'INVERSE'],
-    ['right', 'STAR_STAR'],
-    ['left', 'LBRACKET', 'LPAREN', 'LBRACE'],
-    ['left', 'PERIOD'],
+rule_table = [
+    # Atoms
+    ['identifier', ('IDENTIFIER', lambda p: Identifier(p, info=get_info(p, 0)))],
+    ['none', ('NONE', lambda p: None_(info=get_info(p, 1)))],
+    ['boolean', ('TRUE|FALSE', lambda p:
+        Boolean({'True': True, 'False': False}[p], info=get_info(p, 1)))],
+    ['integer', ('INTEGER', lambda p: Integer(p, info=get_info(p, 0)))],
+    ['string', ('STRING', lambda p: String(p, info=get_info(p, 0)))],
+    ['parenthesized', ('LPAREN test RPAREN', lambda p: p[1])],
+    ['atom', 'identifier|none|boolean|integer|string|parenthesized|list_comp|dict_set_comp'],
 ]
 
-def get_info(p, idx):
-    return Info(filename, p.lineno(idx))
+@libparse.rule_fn(rule_table, 'list_comp', 'LBRACKET [test (comp_iter+|'
+    '(COMMA [test])*)] RBRACKET')
+def parse_list(p):
+    if p[1]:
+        items = p[1]
+        l = [items[0]]
+        if items[1]:
+            if isinstance(items[1][0], CompIter):
+                return Scope(ListComprehension(items[0], items[1]))
+            for i, item in enumerate(items[1]):
+                if item[1] is not None:
+                    l.append(item[1])
+                else:
+                    assert i == len(items[1]) - 1
+        return List(l, info=get_info(p, 0))
+    return List([], info=get_info(p, 0))
 
-def p_error(p):
-    # WHY IS THIS HAPPENING
-    l = p.lexer
-    if hasattr(l, 'lexer'):
-        l = l.lexer
-    print('%s(%i): %s' % (filename, l.lineno, p), file=sys.stderr)
-    sys.exit(1)
-
-def p_stmt_list_or_empty(p):
-    """ stmt_list_or_empty : stmt_list
-                           |
-    """
-    p[0] = p[1] if len(p) == 2 else []
-
-def p_stmt_list(p):
-    """ stmt_list : stmt """
-    p[0] = []
-    if p[1] is not None:
-        p[0].append(p[1])
-
-def p_stmt_list_2(p):
-    """ stmt_list : stmt_list stmt """
-    p[0] = p[1]
-    if p[2] is not None:
-        p[0].append(p[2])
-
-def p_pass(p):
-    """ pass : PASS """
-    p[0] = None
-
-def p_block(p):
-    """ block : COLON delims INDENT stmt_list DEDENT
-              | LBRACE stmt_list RBRACE
-    """
-    if len(p) == 4:
-        p[0] = Block(p[2], info=get_info(p, 1))
-    else:
-        p[0] = Block(p[4], info=get_info(p, 1))
-
-def p_block_single_stmt(p):
-    """ block : COLON simple_stmt delim """
-    stmts = []
-    if p[2] is not None:
-        stmts.append(p[2])
-    p[0] = Block(stmts, info=get_info(p, 1))
-
-def p_delim(p):
-    """ delim : NEWLINE
-              | SEMICOLON
-    """
-    p[0] = None
-
-def p_delims(p):
-    """ delims : delim
-               | delims delim
-    """
-    p[0] = None
-
-def p_ident_list(p):
-    """ ident_list : IDENTIFIER
-                   | ident_list COMMA IDENTIFIER
-    """
-    if len(p) == 2:
-        p[0] = [p[1]]
-    else:
-        p[0] = p[1] + [p[3]]
-
-def p_import(p):
-    """ import : IMPORT IDENTIFIER
-               | FROM IDENTIFIER IMPORT ident_list
-               | FROM IDENTIFIER IMPORT STAR
-               | IMPORT IDENTIFIER FROM STRING
-    """
-    names = path = None
-    if len(p) == 5:
-        if p[1] == 'from':
-            names = p[4] if p[4] != '*' else []
+# This function is a wee bit crazy but it kinda has to be that way with our
+# parser and AST design
+@libparse.rule_fn(rule_table, 'dict_set_comp', 'LBRACE [test (COLON test (comp_iter+|'
+    '(COMMA [test COLON test])*)|'
+    '(COMMA [test])*)] RBRACE')
+def parse_dict_set(p):
+    if p[1]:
+        items = p[1]
+        if items[1] and items[1][0] == ':':
+            key, value = items[0], items[1][1]
+            d = {key: value}
+            if items[1][2]:
+                if isinstance(items[1][2][0], CompIter):
+                    return Scope(DictComprehension(key, value, items[1][2]))
+                for i, item in enumerate(items[1][2]):
+                    if item[1] is not None:
+                        d[item[1][0]] = item[1][2]
+                    else:
+                        assert i == len(items[1][2]) - 1
+            return Dict(d, info=get_info(p, 0))
         else:
-            path = p[4]
-    imp = Import([], p[2], names, path, False, info=get_info(p, 1))
-    all_imports.append(imp)
-    target = names or p[2]
-    p[0] = Scope(imp)
+            set_items = [items[0]]
+            if items[1]:
+                for i, item in enumerate(items[1]):
+                    if item[1] is not None:
+                        set_items.append(item[1])
+                    else:
+                        assert i == len(items[1]) - 1
+            return Call(Identifier('set', info=get_info(p, 0)),
+                [List(set_items, info=get_info(p, 0))])
+    return Dict({}, info=get_info(p, 0))
 
-def p_simple_stmt(p):
-    """ simple_stmt : expr
-                    | pass
-                    | assn
-                    | break
-                    | continue
-                    | return
-                    | yield
-                    | import
-                    | assert
-    """
-    p[0] = p[1]
+@libparse.rule_fn(rule_table, 'arg', 'test [EQUALS test]')
+def parse_arg(p):
+    if p[1]:
+        assert isinstance(p[0], Identifier)
+        return KeywordArg(p[0].name, p[1][1])
+    return p[0]
 
-def p_stmt(p):
-    """ stmt : simple_stmt delim
-             | if_stmt
-             | for_stmt
-             | while_stmt
-             | def_stmt
-             | class_stmt
-    """
-    p[0] = p[1]
+@libparse.rule_fn(rule_table, 'subscript', '[test] [COLON [test] [COLON [test]]]]')
+def parse_subscript(p):
+    [start, stop, step] = [None_(info=get_info(p, 0))] * 3
+    if p[0]:
+        if p[1] is None:
+            return lambda expr: GetItem(expr, p[0])
+        start = p[0]
+    assert p[1]
+    if p[1][1] is not None:
+        stop = p[1][1]
+    if p[1][2] is not None and p[1][2][1] is not None:
+        step = p[1][2][1]
+    return lambda expr: Call(Identifier('slice', info=get_info(p, 0)),
+        [expr, start, stop, step])
 
-def p_stmt_2(p):
-    """ stmt : stmt delim """
-    p[0] = p[1]
+rule_table += [
+    # Function calls, subscripts, attribute accesses
+    ['vararg', ('STAR test', lambda p: VarArg(p[1]))],
+    ['args', ('(arg|vararg) (COMMA (arg|vararg))*', reduce_list)],
+    # Since the trailer rules don't have access to the left-hand side, return lambdas
+    ['call', ('LPAREN [args] RPAREN', lambda p: lambda expr: Call(expr, p[1] or []))],
+    ['getitem', ('LBRACKET subscript RBRACKET', lambda p: p[1])],
+    ['getattr', ('PERIOD IDENTIFIER', lambda p: lambda expr: GetAttr(expr, p[1]))],
+    ['trailer', 'call|getitem|getattr'],
+]
 
-def p_expr_list(p):
-    """ expr_list : expr
-                  | expr_list COMMA expr
-    """
-    if len(p) == 2:
-        p[0] = [p[1]]
-    else:
-        p[0] = p[1] + [p[3]]
+@libparse.rule_fn(rule_table, 'power', 'atom trailer* [STAR_STAR factor]')
+def parse_power(p):
+    r = p[0]
+    for trailer in p[1]:
+        r = trailer(r)
+    if p[2]:
+        r = BinaryOp('**', p[2][1])
+    return r
 
-def p_expr(p):
-    """ expr : list
-             | list_comp
-             | dict
-             | dict_comp
-             | set
-             | lambda
-             | ident
-             | string
-             | integer
-             | boolean
-             | unop
-             | binop
-             | getattr
-             | getitem
-             | call
-             | none
-    """
-    p[0] = p[1]
+rule_table += [
+    # Binary ops
+    ['factor', 'power', ('(PLUS|MINUS|INVERSE) factor', lambda p: UnaryOp(p[0], p[1]))],
+    ['term', ('factor ((STAR|FLOORDIV|MODULO) factor)*', reduce_binop)],
+    ['arith_expr', ('term ((PLUS|MINUS) term)*', reduce_binop)],
+    ['shift_expr', ('arith_expr ((SHIFT_LEFT|SHIFT_RIGHT) arith_expr)*', reduce_binop)],
+    ['and_expr', ('shift_expr (BIT_AND shift_expr)*', reduce_binop)],
+    ['xor_expr', ('and_expr (BIT_XOR and_expr)*', reduce_binop)],
+    ['or_expr', ('xor_expr (BIT_OR xor_expr)*', reduce_binop)],
+    ['expr', 'or_expr'],
+]
 
-def p_paren_expr(p):
-    """ expr : LPAREN expr RPAREN """
-    p[0] = p[2]
+# XXX chaining comparisons?
+@libparse.rule_fn(rule_table, 'comparison', 'or_expr ((EQUALS_EQUALS|NOT_EQUALS|'
+    'GREATER|GREATER_EQUALS|LESS|LESS_EQUALS|IN|NOT IN) or_expr)*')
+def parse_comparison(p):
+    r = p[0]
+    for item in p[1]:
+        if item[0] == 'in':
+            r = BinaryOp('in', item[1], r)
+        elif item[0] == ['not', 'in']:
+            r = UnaryOp('not', BinaryOp('in', item[1], r))
+        else:
+            r = BinaryOp(item[0], r, item[1])
+    return r
 
-def p_ident(p):
-    """ ident : IDENTIFIER """
-    p[0] = Identifier(p[1], info=get_info(p, 1))
+rule_table += [
+    ['not_test', 'comparison', ('NOT not_test', lambda p: UnaryOp('not', p[1]))],
+    ['and_test', ('not_test (AND not_test)*', reduce_binop)],
+    ['or_test', ('and_test (OR and_test)*', reduce_binop)],
+    ['test', 'or_test|lambda'],
 
-def p_string(p):
-    """ string : STRING """
-    p[0] = String(p[1], info=get_info(p, 1))
+    ['for_assn_base', 'IDENTIFIER', ('LBRACKET for_assn_list RBRACKET',
+        lambda p: p[1])],
+    ['for_assn_list', ('for_assn_base (COMMA for_assn_base)*', reduce_list)],
+    ['for_assn', ('for_assn_base', lambda p: Target(p, info=get_info(p, 0)))],
+    ['comp_iter', ('FOR for_assn IN test', lambda p: CompIter(p[1], p[3]))],
+]
 
-def p_integer(p):
-    """ integer : INTEGER """
-    p[0] = Integer(p[1], info=get_info(p, 1))
+rule_table += [
+    # Statements
+    ['pass', ('PASS', lambda p: None)],
+    ['small_stmt', '(expr_stmt|pass|break|continue|return|yield|import|assert)'],
+    ['stmt', ('(small_stmt|if_stmt|for_stmt|while_stmt|def_stmt|class_stmt) '
+        '(NEWLINE|SEMICOLON)*', lambda p: p[0])],
+    ['stmt_list', ('stmt*', lambda p: [x for x in p if x is not None])],
 
-def p_bool(p):
-    """ boolean : TRUE
-                | FALSE
-    """
-    val = {'True': True, 'False': False}[p[1]]
-    p[0] = Boolean(val, info=get_info(p, 1))
+    ['break', ('BREAK', lambda p: Break(info=get_info(p, 1)))],
+    ['continue', ('CONTINUE', lambda p: Continue(info=get_info(p, 1)))],
+    ['return', ('RETURN test', lambda p: Return(p[1]))],
+    ['yield', ('YIELD test', lambda p: Yield(p[1]))],
+    ['assert', ('ASSERT test', lambda p: Assert(p[1]))],
+]
 
-def p_list(p):
-    """ list : LBRACKET expr_list RBRACKET
-             | LBRACKET expr_list COMMA RBRACKET
-             | LBRACKET RBRACKET
-    """
-    if len(p) == 3:
-        p[0] = List([], info=get_info(p, 1))
-    else:
-        p[0] = List(p[2], info=get_info(p, 1))
-
-def p_dict_items(p):
-    """ dict_items : expr COLON expr
-                   | dict_items COMMA expr COLON expr
-    """
-    if len(p) == 4:
-        p[0] = [[p[1], p[3]]]
-    else:
-        p[0] = p[1] + [[p[3], p[5]]]
-
-def p_comprehension(p):
-    """ comp_iter : FOR for_assn IN expr """
-    p[0] = CompIter(p[2], p[4])
-
-def p_comp_list(p):
-    """ comp_list : comp_iter
-                  | comp_list comp_iter
-    """
-    if len(p) == 2:
-        p[0] = [p[1]]
-    else:
-        p[0] = p[1] + [p[2]]
-
-def p_list_comp(p):
-    """ list_comp : LBRACKET expr comp_list RBRACKET """
-    p[0] = Scope(ListComprehension(p[2], p[3]))
-
-def p_dict_comp(p):
-    """ dict_comp : LBRACE expr COLON expr comp_list RBRACE """
-    p[0] = Scope(DictComprehension(p[2], p[4], p[5]))
-
-def p_dict(p):
-    """ dict : LBRACE RBRACE
-             | LBRACE dict_items RBRACE
-             | LBRACE dict_items COMMA RBRACE
-    """
-    if len(p) == 3:
-        p[0] = Dict({}, info=get_info(p, 1))
-    else:
-        p[0] = Dict(dict(p[2]), info=get_info(p, 1))
-
-def p_set(p):
-    """ set : LBRACE expr_list RBRACE
-            | LBRACE expr_list COMMA RBRACE
-    """
-    p[0] = Call(Identifier('set', info=get_info(p, 1)),
-            [List(p[2], info=get_info(p, 1))])
-
-def p_none(p):
-    """ none : NONE """
-    p[0] = None_(info=get_info(p, 1))
-
-def p_unary_op(p):
-    """ unop : NOT expr
-             | MINUS expr %prec UNARY_MINUS
-             | INVERSE expr
-    """
-    p[0] = UnaryOp(p[1], p[2])
-
-def p_binary_op(p):
-    """ binop : expr EQUALS_EQUALS expr
-              | expr NOT_EQUALS expr
-              | expr GREATER expr
-              | expr GREATER_EQUALS expr
-              | expr LESS expr
-              | expr LESS_EQUALS expr
-              | expr SHIFT_RIGHT expr
-              | expr SHIFT_LEFT expr
-              | expr PLUS expr
-              | expr MINUS expr
-              | expr STAR expr
-              | expr STAR_STAR expr
-              | expr FLOORDIV expr
-              | expr MODULO expr
-              | expr AND expr
-              | expr OR expr
-              | expr BIT_AND expr
-              | expr BIT_OR expr
-              | expr BIT_XOR expr
-    """
-    p[0] = BinaryOp(p[2], p[1], p[3])
-
-# XXX since 'x in y' calls y.contains(x), i.e. the lhs and rhs are reversed from
-# other binary operators, we have a special form here that swaps them.
-def p_binary_op_in(p):
-    """ binop : expr IN expr """
-    p[0] = BinaryOp('in', p[3], p[1])
-
-def p_binary_op_not_in(p):
-    """ binop : expr NOT IN expr %prec IN """
-    p[0] = UnaryOp('not', BinaryOp('in', p[4], p[1]))
-
-def p_getattr(p):
-    """ getattr : expr PERIOD IDENTIFIER """
-    p[0] = GetAttr(p[1], p[3])
-
-def p_getitem(p):
-    """ getitem : expr LBRACKET expr RBRACKET """
-    p[0] = GetItem(p[1], p[3])
-
-# PLY makes this kind of thing a huge pain in the ass!! There's valid syntax
-# here (e.g. x[y::] we don't even support for now because it's so irritating.
-def p_slice(p):
-    """ getitem : expr LBRACKET expr COLON RBRACKET
-                | expr LBRACKET expr COLON expr RBRACKET
-                | expr LBRACKET expr COLON COLON expr RBRACKET
-                | expr LBRACKET expr COLON expr COLON expr RBRACKET
-    """
-    [start, stop, step] = [None_(info=get_info(p, 1))] * 3
-    if len(p) == 6:
-        start = p[3]
-    elif len(p) == 7:
-        [start, stop] = [p[3], p[5]]
-    elif len(p) == 8:
-        [start, step] = [p[3], p[6]]
-    else:
-        [start, stop, step] = [p[3], p[5], p[7]]
-    p[0] = Call(Identifier('slice', info=get_info(p, 1)), [p[1], start, stop, step])
-
-# And more cases since PLY doesn't let us easily distinguish which case we're in
-def p_slice_2(p):
-    """ getitem : expr LBRACKET COLON expr RBRACKET
-                | expr LBRACKET COLON COLON expr RBRACKET
-                | expr LBRACKET COLON expr COLON expr RBRACKET
-    """
-    [start, stop, step] = [None_(info=get_info(p, 1))] * 3
-    if len(p) == 6:
-        stop = p[4]
-    elif len(p) == 7:
-        step = p[5]
-    else:
-        [stop, step] = [p[4], p[6]]
-    p[0] = Call(Identifier('slice', info=get_info(p, 1)), [p[1], start, stop, step])
-
-def p_kwarg(p):
-    """ kwarg : IDENTIFIER EQUALS expr """
-    p[0] = KeywordArg(p[1], p[3])
-
-def p_kwargs(p):
-    """ kwargs : kwarg
-               | kwargs COMMA kwarg
-    """
-    if len(p) == 2:
-        p[0] = [p[1]]
-    else:
-        p[0] = p[1] + [p[3]]
-
-def p_vararg(p):
-    """ vararg : STAR expr """
-    p[0] = VarArg(p[2])
-
-def p_args(p):
-    """ args : expr
-             | vararg
-             | args COMMA expr
-             | args COMMA vararg
-    """
-    if len(p) == 2:
-        p[0] = [p[1]]
-    else:
-        p[0] = p[1] + [p[3]]
-
-def p_arg_list(p):
-    """ arg_list : args
-                 | kwargs
-                 | args COMMA kwargs
-    """
-    if len(p) == 2:
-        p[0] = p[1]
-    else:
-        p[0] = p[1] + p[3]
-
-def p_call(p):
-    """ call : expr LPAREN arg_list RPAREN
-             | expr LPAREN RPAREN
-    """
-    if len(p) == 4:
-        p[0] = Call(p[1], [])
-    else:
-        p[0] = Call(p[1], p[3])
-
-def p_assert(p):
-    """ assert : ASSERT expr """
-    p[0] = Assert(p[2])
-
-def p_assignment(p):
-    """ assn : expr EQUALS expr """
-    # Please god, die in a fire
+@libparse.rule_fn(rule_table, 'expr_stmt', 'test [EQUALS test]')
+def parse_expr_stmt(p):
     def deconstruct_lhs(lhs):
         if isinstance(lhs, Identifier):
             return lhs.name
         elif isinstance(lhs, List):
             return [deconstruct_lhs(i) for i in lhs]
         lhs.error('invalid lhs for assignment')
-    p[0] = Assignment(Target(deconstruct_lhs(p[1]), info=get_info(p, 1)), p[3])
+    if p[1]:
+        return Assignment(Target(deconstruct_lhs(p[0]), info=get_info(p, 0)), p[1][1])
+    return p[0]
 
-def p_break(p):
-    """ break : BREAK """
-    p[0] = Break(info=get_info(p, 1))
+rule_table += [
+    # Blocks
+    ['delims', ('NEWLINE+', lambda p: None)],
+    ['small_stmt_list', ('small_stmt (SEMICOLON small_stmt)*',
+        lambda p: [x for x in reduce_list(p) if x is not None])],
+    ['block', ('COLON (delims INDENT stmt_list DEDENT|small_stmt_list NEWLINE)',
+        lambda p: Block(p[1][2] if len(p[1]) == 4 else p[1][0],
+            info=get_info(p, 1))),
+        ('LBRACE stmt_list RBRACE', lambda p: Block(p[1], info=get_info(p, 1)))],
+    ['for_stmt', ('FOR for_assn IN test block', lambda p: For(p[1], p[3], p[4]))],
+    ['while_stmt', ('WHILE test block', lambda p: While(p[1], p[2]))],
+]
 
-def p_continue(p):
-    """ continue : CONTINUE """
-    p[0] = Continue(info=get_info(p, 1))
+@libparse.rule_fn(rule_table,
+    'if_stmt', 'IF test block (ELIF test block)* [ELSE block]')
+def parse_if_stmt(p):
+    else_block = Block([], info=get_info(p, 0))
+    if p[4]:
+        else_block = p[4][1]
+    for elif_stmt in reversed(p[3]):
+        else_block = IfElse(elif_stmt[1], elif_stmt[2], else_block)
+    return IfElse(p[1], p[2], else_block)
 
-def p_return(p):
-    """ return : RETURN expr
-               | RETURN
-    """
-    if len(p) == 3:
-        p[0] = Return(p[2])
-    else:
-        p[0] = Return(None)
+# Params
+@libparse.rule_fn(rule_table, 'param', 'IDENTIFIER [COLON test] [EQUALS test]')
+def parse_param(p):
+    param = [p[0], p[1][1] if p[1] else None, p[2][1] if p[2] else None]
+    return param
 
-def p_yield(p):
-    """ yield : YIELD expr """
-    p[0] = Yield(p[2])
+rule_table += [
+    ['param', ('STAR IDENTIFIER', lambda p: StarParams(p[1], info=get_info(p, 0)))],
+    ['param_list', ('param (COMMA param)*', reduce_list)],
+]
 
-def p_if(p):
-    """ if_stmt : IF expr block """
-    p[0] = IfElse(p[2], p[3], Block([], info=get_info(p, 1)))
+@libparse.rule_fn(rule_table, 'params', '[LPAREN [param_list] RPAREN]')
+def parse_params(p):
+    params, types, starparams, kwparams = [], [], None, []
+    if p and p[1]:
+        for item in p[1]:
+            if isinstance(item, StarParams):
+                assert not starparams
+                assert not kwparams
+                starparams = item.name
+            elif item[2]:
+                assert not item[1]
+                kwparams.append(KeywordArg(item[0], item[2]))
+            else:
+                assert not starparams
+                assert not kwparams
+                params.append(item[0])
+                types.append(item[1] or None_(info=get_info(p, 0)))
+    return Params(params, types, starparams, kwparams, info=get_info(p, 0))
 
-def p_ifelse(p):
-    """ if_stmt : IF expr block elif_stmt
-                | IF expr block else_stmt
-    """
-    p[0] = IfElse(p[2], p[3], p[4])
+# Function/class defs
+rule_table += [
+    ['decorator', ('AT test delims', lambda p: p[1])],
+    ['return_type', ('[RARROW test]', lambda p: p[1] if p else None)],
+    ['lambda', ('LAMBDA params return_type block',
+        lambda p: Scope(Function('lambda', p[1], p[2], p[3], info=get_info(p, 0))))],
+    ['class_stmt', ('CLASS IDENTIFIER params block',
+        lambda p: Assignment(Target(p[1], info=get_info(p, 1)),
+            Scope(Class(p[1], p[2], p[3], info=get_info(p, 0)))))],
+]
 
-def p_elif(p):
-    """ elif_stmt : ELIF expr block """
-    stmts = [IfElse(p[2], p[3], Block([], info=get_info(p, 1)))]
-    p[0] = Block(stmts, info=get_info(p, 1))
-
-def p_elif_2(p):
-    """ elif_stmt : ELIF expr block elif_stmt
-                  | ELIF expr block else_stmt
-    """
-    stmts = [IfElse(p[2], p[3], p[4])]
-    p[0] = Block(stmts, info=get_info(p, 1))
-
-def p_else(p):
-    """ else_stmt : ELSE block """
-    p[0] = p[2]
-
-# For loop assignment grammar. This is not used for regular assignments, since
-# that needs to differentiate regular expressions on their own line, and that
-# would need a parser with more lookahead, since we just see [<identifier>.
-# We don't use <expr> as the assignment does, since 'expr in expr' is a
-# containment test, but that also could match 'for expr in expr'... icky!
-def p_for_assn_list(p):
-    """ for_assn_list : for_assn_base
-                      | for_assn_list COMMA for_assn_base
-    """
-    if len(p) == 2:
-        p[0] = [p[1]]
-    else:
-        p[0] = p[1] + [p[3]]
-
-def p_for_assn(p):
-    """ for_assn_base : IDENTIFIER
-                      | LBRACKET for_assn_list RBRACKET
-    """
-    if len(p) == 2:
-        p[0] = p[1]
-    else:
-        p[0] = p[2]
-
-def p_for_assn_target(p):
-    """ for_assn : for_assn_base """
-    p[0] = Target(p[1], info=get_info(p, 1))
-
-def p_for(p):
-    """ for_stmt : FOR for_assn IN expr block """
-    p[0] = For(p[2], p[4], p[5])
-
-def p_while(p):
-    """ while_stmt : WHILE expr block """
-    p[0] = While(p[2], p[3])
-
-def p_typespec(p):
-    """ typespec : expr """
-    p[0] = p[1]
-
-def p_param(p):
-    """ param : IDENTIFIER
-              | IDENTIFIER COLON typespec
-    """
-    if len(p) == 2:
-        p[0] = [p[1], None_(info=get_info(p, 1))]
-    else:
-        p[0] = [p[1], p[3]]
-
-def p_param_list(p):
-    """ param_list : param
-                   | param_list COMMA param
-    """
-    if len(p) == 2:
-        p[0] = [p[1]]
-    else:
-        p[0] = p[1] + [p[3]]
-
-def p_params(p):
-    """ params :
-               | LPAREN RPAREN
-               | LPAREN param_list RPAREN
-               | LPAREN STAR IDENTIFIER RPAREN
-               | LPAREN param_list COMMA STAR IDENTIFIER RPAREN
-    """
-    params = []
-    starparams = None
-    if len(p) == 4:
-        params = p[2]
-    elif len(p) == 5:
-        starparams = p[3]
-    elif len(p) == 7:
-        [params, starparams] = [p[2], p[5]]
-    [params, types] = [[p[i] for p in params] for i in range(2)]
-    p[0] = Params(params, types, starparams, [], info=get_info(p, 0))
-
-def p_params_2(p):
-    """ params : LPAREN kwargs RPAREN
-               | LPAREN param_list COMMA kwargs RPAREN
-               | LPAREN STAR IDENTIFIER COMMA kwargs RPAREN
-               | LPAREN param_list COMMA STAR IDENTIFIER COMMA kwargs RPAREN
-    """
-    params = []
-    starparams = None
-    if len(p) == 4:
-        kwparams = p[2]
-    elif len(p) == 6:
-        [params, kwparams] = [p[2], p[4]]
-    elif len(p) == 7:
-        [starparams, kwparams] = [p[3], p[5]]
-    else:
-        [params, starparams, kwparams] = [p[2], p[5], p[7]]
-    [params, types] = [[p[i] for p in params] for i in range(2)]
-    p[0] = Params(params, types, starparams, kwparams, info=get_info(p, 0))
-
-def p_return_type(p):
-    """ return_type : RARROW expr
-                    |
-    """
-    if len(p) == 3:
-        p[0] = p[2]
-    else:
-        p[0] = None
-
-def p_decorator_list(p):
-    """ decorator_list : AT expr NEWLINE
-                       | decorator_list AT expr NEWLINE
-    """
-    if len(p) == 4:
-        p[0] = [p[2]]
-    else:
-        p[0] = p[1] + [p[3]]
-
-def p_decorators(p):
-    """ decorators :
-                   | decorator_list
-    """
-    if len(p) == 1:
-        p[0] = []
-    else:
-        p[0] = p[1]
-
-def p_def(p):
-    """ def_stmt : decorators DEF IDENTIFIER params return_type block """
-    fn = Scope(Function(p[3], p[4], p[5], p[6], info=get_info(p, 2)))
-    for dec in p[1]:
+@libparse.rule_fn(rule_table,
+    'def_stmt', 'decorator* DEF IDENTIFIER params return_type block')
+def parse_def_stmt(p):
+    fn = Scope(Function(p[2], p[3], p[4], p[5], info=get_info(p, 1)))
+    for dec in p[0]:
         fn = Call(dec, [fn])
-    p[0] = Assignment(Target(p[3], info=get_info(p, 3)), fn)
+    return Assignment(Target(p[2], info=get_info(p, 1)), fn)
 
-def p_lambda(p):
-    """ lambda : LAMBDA params return_type block """
-    p[0] = Scope(Function('lambda', p[2], p[3], p[4], info=get_info(p, 1)))
+# Imports
+def parse_import(p, module, names, path):
+    imp = Import([], module, names, path, False, info=get_info(p, 0))
+    all_imports.append(imp)
+    target = names or module
+    return Scope(imp)
 
-def p_class(p):
-    """ class_stmt : CLASS IDENTIFIER params block """
-    p[0] = Assignment(Target(p[2], info=get_info(p, 2)),
-            Scope(Class(p[2], p[3], p[4], info=get_info(p, 1))))
+rule_table += [
+    ['ident_list', ('IDENTIFIER (COMMA IDENTIFIER)*', reduce_list)],
+    ['import', ('IMPORT IDENTIFIER [FROM STRING]',
+        lambda p: parse_import(p, p[1], None, p[2][1] if p[2] else None)),
+        ('FROM IDENTIFIER IMPORT (ident_list|STAR)',
+            lambda p: parse_import(p, p[1], p[3] if p[3] != '*' else [], None))],
+]
 
-parser = yacc.yacc(write_tables=0, debug=0)
+root_dir = os.path.dirname(sys.path[0])
+stdlib_dir = '%s/stdlib' % root_dir
+
+parser = libparse.Parser(rule_table, 'stmt_list')
 
 all_imports = None
 module_cache = {}
@@ -612,12 +303,14 @@ def parse(path, import_builtins=True, ctx=None):
     if not dirname:
         dirname = '.'
     with open(path) as f:
-        block = parser.parse(input=f.read(), lexer=lexer.Lexer())
+        tokenizer = lexer.Lexer()
+        tokenizer.input(f.read())
+        block = parser.parse(tokenizer)
 
     # Do some post-processing, starting with adding builtins
     if import_builtins:
         builtins_path = '%s/__builtins__.mg' % stdlib_dir
-        imp = Import([], 'builtins', [], builtins_path, True, info=builtin_info)
+        imp = Import([], '__builtins__', [], builtins_path, True, info=builtin_info)
         all_imports.append(imp)
         block = [Scope(imp)] + block
 
