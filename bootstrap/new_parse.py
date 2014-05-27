@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import sys
 
@@ -153,7 +154,7 @@ rule_table += [
     ['not_test', 'comparison', ('NOT not_test', lambda p: UnaryOp('not', p[1]))],
     ['and_test', ('not_test (AND not_test)*', reduce_binop)],
     ['or_test', ('and_test (OR and_test)*', reduce_binop)],
-    ['test', 'or_test'],
+    ['test', 'or_test|lambda'],
 
     ['for_assn_base', 'IDENTIFIER', ('LBRACKET for_assn_list RBRACKET',
         lambda p: p[1])],
@@ -165,7 +166,7 @@ rule_table += [
 rule_table += [
     # Statements
     ['pass', ('PASS', lambda p: None)],
-    ['simple_stmt', ('(expr_stmt|pass|break|continue|return|yield|import|assert) NEWLINE',
+    ['simple_stmt', ('(expr_stmt|pass|break|continue|return|yield|import|assert) (NEWLINE|SEMICOLON)',
         lambda p: p[0])],
     ['stmt', ('(simple_stmt|if_stmt|for_stmt|while_stmt|def_stmt|class_stmt) '
         '(NEWLINE|SEMICOLON)*', lambda p: p[0])],
