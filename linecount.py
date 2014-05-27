@@ -3,9 +3,8 @@ import subprocess
 
 files = subprocess.check_output(['git', 'ls-files']).decode('utf8').splitlines()
 
-groups = ['bootstrap/ply', 'bootstrap', 'stdlib', 'tests', 'compiler', 'benchmarks', '']
+groups = ['bootstrap', 'stdlib', 'tests', 'compiler', 'benchmarks', '']
 group_dict = {k: [] for k in groups}
-ignored_groups = {'bootstrap/ply'}
 
 for f in files:
     for g in groups:
@@ -15,8 +14,6 @@ for f in files:
 
 total = [0, 0]
 for group, files in sorted(group_dict.items()):
-    if group in ignored_groups:
-        continue
     print('%s: ' % group)
     group_total = [0, 0]
     for file in files:
