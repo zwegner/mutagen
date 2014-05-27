@@ -78,10 +78,11 @@ class Seq:
     def check_first_token(self, ctx):
         # Check that all later symbols are unambiguously parseable, but only
         # if we're not being called recursively
-        if self.items[0] not in ctx.check_prods:
-            ctx.check_prods.add(self.items[0])
-            [item.check_first_token(ctx) for item in self.items[1:]]
-            ctx.check_prods.remove(self.items[0])
+        if self not in ctx.check_prods:
+            ctx.check_prods.add(self)
+            for item in self.items[1:]:
+                item.check_first_token(ctx)
+            ctx.check_prods.remove(self)
         return self.items[0].check_first_token(ctx)
     def __str__(self):
         return 'seq(%s)' % ','.join(map(str, self.items))
