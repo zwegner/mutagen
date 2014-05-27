@@ -36,7 +36,7 @@ test_list = [1, 2, 3, 4, 5]
 
 # Test zip
 assert list(zip()) == []
-assert list(zip(test_list)) == list(map(lambda(x): return[x];, test_list))
+assert list(zip(test_list)) == list(map(lambda(x) { return[x]; }, test_list))
 assert list(zip(test_list)) != test_list
 assert list(zip(test_list, test_list)) == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
 assert list(zip('abc', 'def')) == [['a', 'd'], ['b', 'e'], ['c', 'f']]

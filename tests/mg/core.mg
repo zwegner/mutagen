@@ -24,9 +24,9 @@ test_scoping()
 # Test parameter errors
 def test_fn(a: int, b: str):
     return str(a) + b
-assert_call_fails(lambda: test_fn('a', 'b');)
-assert_call_fails(lambda:
-    assert_call_fails(lambda: test_fn(1, 'b'););)
+assert_call_fails(lambda { test_fn('a', 'b'); })
+assert_call_fails(lambda {
+    assert_call_fails(lambda { test_fn(1, 'b'); }); })
 
 # Test return types
 test_types = ['abc', 123, True, False]
@@ -67,7 +67,7 @@ assert kwargs3(5, 0, 1, 2, x=0) == 5
 items = list(range(4))
 lambdas = []
 for x in items:
-    lambdas = lambdas + [lambda: return x;]
+    lambdas = lambdas + [lambda { return x; }]
 
 for [v, l] in zip(items, lambdas):
     assert v == l()
@@ -77,7 +77,7 @@ for [v, l] in zip(items, lambdas):
 lambdas = []
 for x in items:
     for y in items:
-        lambdas = lambdas + [lambda (z): assert z == x * len(items) + y;]
+        lambdas = lambdas + [lambda (z) { assert z == x * len(items) + y; }]
 
 for [v, l] in zip(range(16), lambdas):
     l(v)

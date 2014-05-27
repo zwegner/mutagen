@@ -166,11 +166,10 @@ rule_table += [
 rule_table += [
     # Statements
     ['pass', ('PASS', lambda p: None)],
-    ['simple_stmt', ('(expr_stmt|pass|break|continue|return|yield|import|assert) (NEWLINE|SEMICOLON)',
-        lambda p: p[0])],
-    ['stmt', ('(simple_stmt|if_stmt|for_stmt|while_stmt|def_stmt|class_stmt) '
+    ['small_stmt', '(expr_stmt|pass|break|continue|return|yield|import|assert)'],
+    ['stmt', ('(small_stmt|if_stmt|for_stmt|while_stmt|def_stmt|class_stmt) '
         '(NEWLINE|SEMICOLON)*', lambda p: p[0])],
-    ['stmt_list', ('stmt*', lambda p: list(filter(lambda x: x is not None, p)))],
+    ['stmt_list', ('stmt*', lambda p: [x for x in p if x is not None])],
 
     ['break', ('BREAK', lambda p: Break(info=get_info(p, 1)))],
     ['continue', ('CONTINUE', lambda p: Continue(info=get_info(p, 1)))],
@@ -193,13 +192,13 @@ def parse_expr_stmt(p):
 
 rule_table += [
     # Blocks
-    ['delims', ('(NEWLINE|SEMICOLON)+', lambda p: None)],
-    ['block', ('COLON delims INDENT stmt_list DEDENT',
-        lambda p: Block(p[3], info=get_info(p, 3))),
+    ['delims', ('NEWLINE+', lambda p: None)],
+    ['small_stmt_list', ('small_stmt (SEMICOLON small_stmt)*',
+        lambda p: [x for x in reduce_list(p) if x is not None])],
+    ['block', ('COLON (delims INDENT stmt_list DEDENT|small_stmt_list NEWLINE)',
+        lambda p: Block(p[1][2] if len(p[1]) == 4 else p[1][0],
+            info=get_info(p, 1))),
         ('LBRACE stmt_list RBRACE', lambda p: Block(p[1], info=get_info(p, 1)))],
-        # XXX Need a better parser library
-        #('COLON simple_stmt', lambda p: Block([p[1]], info=get_info(p, 1)))],
-
     ['for_stmt', ('FOR for_assn IN test block', lambda p: For(p[1], p[3], p[4]))],
     ['while_stmt', ('WHILE test block', lambda p: While(p[1], p[2]))],
 ]
