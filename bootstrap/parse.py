@@ -167,7 +167,8 @@ rule_table += [
     # Statements
     ['pass', ('PASS', lambda p: None)],
     ['small_stmt', '(expr_stmt|pass|break|continue|return|yield|import|assert)'],
-    ['stmt', ('(small_stmt|if_stmt|for_stmt|while_stmt|def_stmt|class_stmt) '
+    ['simple_stmt', ('small_stmt (NEWLINE|SEMICOLON)', lambda p: p[0])],
+    ['stmt', ('(simple_stmt|if_stmt|for_stmt|while_stmt|def_stmt|class_stmt) '
         '(NEWLINE|SEMICOLON)*', lambda p: p[0])],
     ['stmt_list', ('stmt*', lambda p: [x for x in p if x is not None])],
 
