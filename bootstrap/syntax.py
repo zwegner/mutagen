@@ -739,6 +739,20 @@ class While(Node):
     def repr(self, ctx):
         return 'while %s%s' % (self.expr.repr(ctx), self.block.repr(ctx))
 
+@node('&expr')
+class VarArg(Node):
+    def eval(self, ctx):
+        return self.expr.eval(ctx)
+    def repr(self, ctx):
+        return '*%s' % self.expr.repr(ctx)
+
+@node('name, &expr')
+class KeywordArg(Node):
+    def eval(self, ctx):
+        return self.expr.eval(ctx)
+    def repr(self, ctx):
+        return '%s=%s' % (self.name, self.expr.repr(ctx))
+
 @node('&fn, *args')
 class Call(Node):
     def eval(self, ctx):
@@ -757,19 +771,10 @@ class Call(Node):
     def repr(self, ctx):
         return '%s(%s)' % (self.fn.repr(ctx), ', '.join(s.repr(ctx) for s in self.args))
 
-@node('&expr')
-class VarArg(Node):
-    def eval(self, ctx):
-        return self.expr.eval(ctx)
+@node('name')
+class StarParams(Node):
     def repr(self, ctx):
-        return '*%s' % self.expr.repr(ctx)
-
-@node('name, &expr')
-class KeywordArg(Node):
-    def eval(self, ctx):
-        return self.expr.eval(ctx)
-    def repr(self, ctx):
-        return '%s=%s' % (self.name, self.expr.repr(ctx))
+        return '*%s' % self.name
 
 @node('params, *types, star_params, *kwparams')
 class Params(Node):
