@@ -45,6 +45,7 @@ class Repeat:
         self.rule = rule
         self.item = item
         self.min = min
+        self.check_first_token = self.item.check_first_token
     def parse(self, tokenizer, fn_table):
         results = []
         item = self.item.parse(tokenizer, fn_table)
@@ -52,9 +53,6 @@ class Repeat:
             results.append(item)
             item = self.item.parse(tokenizer, fn_table)
         return results if len(results) >= self.min else BAD_PARSE
-    @memoize
-    def check_first_token(self, ctx):
-        return self.item.check_first_token(ctx)
     def __str__(self):
         return 'rep(%s)' % self.item
 
@@ -111,12 +109,10 @@ class Opt:
     def __init__(self, rule, item):
         self.rule = rule
         self.item = item
+        self.check_first_token = self.item.check_first_token
     def parse(self, tokenizer, fn_table):
         result = self.item.parse(tokenizer, fn_table)
         return [] if result is BAD_PARSE else result
-    @memoize
-    def check_first_token(self, ctx):
-        return self.item.check_first_token(ctx)
     def __str__(self):
         return 'opt(%s)' % self.item
 
@@ -125,14 +121,12 @@ class FnWrapper:
         self.rule = rule
         self.prod = prod
         self.fn = fn
+        self.check_first_token = self.prod.check_first_token
     def parse(self, tokenizer, fn_table):
         result = self.prod.parse(tokenizer, fn_table)
         if result is not BAD_PARSE:
             return self.fn(result)
         return BAD_PARSE
-    @memoize
-    def check_first_token(self, ctx):
-        return self.prod.check_first_token(ctx)
     def __str__(self):
         return str(self.prod)
 
