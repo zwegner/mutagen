@@ -90,7 +90,7 @@ rule_table += [
     ['vararg', ('STAR test', lambda p: VarArg(p[1]))],
     ['args', ('(arg|vararg) (COMMA (arg|vararg))*', reduce_list)],
     # Since the trailer rules don't have access to the left-hand side, return lambdas
-    ['call', ('LPAREN [args] RPAREN', lambda p: lambda expr: Call(expr, p[1]))],
+    ['call', ('LPAREN [args] RPAREN', lambda p: lambda expr: Call(expr, p[1] or []))],
     ['getitem', ('LBRACKET subscript RBRACKET', lambda p: p[1])],
     ['getattr', ('PERIOD IDENTIFIER', lambda p: lambda expr: GetAttr(expr, p[1]))],
     ['trailer', 'call|getitem|getattr'],
@@ -209,7 +209,7 @@ rule_table += [
 @libparse.rule_fn(rule_table, 'params', '[LPAREN [param_list] RPAREN]')
 def parse_params(p):
     params, types, starparams, kwparams = [], [], None, []
-    if p:
+    if p and p[1]:
         for item in p[1]:
             if isinstance(item, StarParams):
                 assert not starparams

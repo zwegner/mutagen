@@ -112,7 +112,7 @@ class Opt:
         self.check_first_token = self.item.check_first_token
     def parse(self, tokenizer, fn_table):
         result = self.item.parse(tokenizer, fn_table)
-        return [] if result is BAD_PARSE else result
+        return None if result is BAD_PARSE else result
     def __str__(self):
         return 'opt(%s)' % self.item
 
