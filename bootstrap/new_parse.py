@@ -33,31 +33,50 @@ rule_table = [
 ]
 
 @libparse.rule_fn(rule_table, 'list_comp', 'LBRACKET [test (comp_iter+|'
-    '(COMMA test)* [COMMA])] RBRACKET')
+    '(COMMA [test])*)] RBRACKET')
 def parse_list(p):
     if p[1]:
         items = p[1]
-        if items[1] and isinstance(items[1][0], CompIter):
-            return Scope(ListComprehension(items[0], items[1]))
-        return List([items[0]] + [item[1] for item in items[1][0]], info=get_info(p, 0))
+        l = [items[0]]
+        if items[1]:
+            if isinstance(items[1][0], CompIter):
+                return Scope(ListComprehension(items[0], items[1]))
+            for i, item in enumerate(items[1]):
+                if item[1] is not None:
+                    l.append(item[1])
+                else:
+                    assert i == len(items[1]) - 1
+        return List(l, info=get_info(p, 0))
     return List([], info=get_info(p, 0))
 
 # This function is a wee bit crazy but it kinda has to be that way with our
 # parser and AST design
 @libparse.rule_fn(rule_table, 'dict_set_comp', 'LBRACE [test (COLON test (comp_iter+|'
-    '(COMMA test COLON test)* [COMMA])|'
-    '(COMMA test)* [COMMA])] RBRACE')
+    '(COMMA [test COLON test])*)|'
+    '(COMMA [test])*)] RBRACE')
 def parse_dict_set(p):
     if p[1]:
         items = p[1]
-        if items[1][0] == ':':
+        if items[1] and items[1][0] == ':':
             key, value = items[0], items[1][1]
-            if items[1][2] and isinstance(items[1][2][0], CompIter):
-                return Scope(DictComprehension(key, value, items[1][2]))
-            return Dict(dict([[key, value]] + [[item[1], item[3]] for item in items[1][2][0]]),
-                info=get_info(p, 0))
+            d = {key: value}
+            if items[1][2]:
+                if isinstance(items[1][2][0], CompIter):
+                    return Scope(DictComprehension(key, value, items[1][2]))
+                for i, item in enumerate(items[1][2]):
+                    if item[1] is not None:
+                        d[item[1][0]] = item[1][2]
+                    else:
+                        assert i == len(items[1][2]) - 1
+            return Dict(d, info=get_info(p, 0))
         else:
-            set_items = [items[0]] + [item[1] for item in items[1][0]]
+            set_items = [items[0]]
+            if items[1]:
+                for i, item in enumerate(items[1]):
+                    if item[1] is not None:
+                        set_items.append(item[1])
+                    else:
+                        assert i == len(items[1]) - 1
             return Call(Identifier('set', info=get_info(p, 0)),
                 [List(set_items, info=get_info(p, 0))])
     return Dict({}, info=get_info(p, 0))
