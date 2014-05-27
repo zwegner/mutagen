@@ -132,8 +132,7 @@ def get_block_linkage(blocks):
                 assert i + 1 < len(blocks)
                 dests = dests + [i + 1]
         # ...or just the fallthrough
-        else:
-            assert i + 1 < len(blocks)
+        elif i + 1 < len(blocks):
             dests = [i + 1]
 
         # Link up blocks
