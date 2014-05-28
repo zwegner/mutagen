@@ -27,7 +27,7 @@ With readability, smart compilers, and superfast performance as fundamental lang
 Current State
 -------------
 
-Mutagen is still in a very prototypical state. It is almost entirely implemented as a Python bootstrap program, using PLY to support its lexing/parsing needs. The goal is to keep the bootstrap as small as possible, while allowing for the duplication of the bootstrap, and later compilation stages, in Mutagen, so as to allow for Pythonless execution. The bootstrap is a very simple interpreter, and actually keeps considerable state in the form of symbol tables, Python-backed data structures, and imperative-style I/O. This is just for simplicity in the initial implementation, and the language itself has no mutable state (or at least it will, once it has some monad-like facility).
+Mutagen is still in a very prototypical state. It is almost entirely implemented as a Python bootstrap program. The goal is to keep the bootstrap as small as possible, while allowing for the duplication of the bootstrap, and later compilation stages, in Mutagen, so as to allow for Pythonless execution. The bootstrap is a very simple interpreter, and actually keeps considerable state in the form of symbol tables, Python-backed data structures, and imperative-style I/O. This is just for simplicity in the initial implementation, and the language itself has no mutable state (or at least it will, once it has some monad-like facility).
 
 As of now, only the lexer has an equivalent implementation in Mutagen. It is quite reasonable in terms of code size and readability when compared to the Python version, but its speed is still quite lacking due to the slow interpretive regex engine, as well as the double interpreter layer (Mutagen on top of Python).
 
@@ -127,14 +127,14 @@ for [k, v] in d:
 * `lambda` is just a synonym for a `def` without a function identifier, not a limited expression as in Python. Thus, if used in an expression, it will usually require braces instead of indentation, semicolons as statement delimiters, and an explicit return statement:
 
 ```python
-lambda(x) {return x + 1;}
+lambda(x) { return x + 1; }
 ```
 * Closures are supported, but the captured values are static. That is, whenever the inner function definition is evaluated, the values of variables in parent scopes are bound to the function at that point. This makes metaprogramming somewhat simpler, and since any benefits of dynamic scoping would require mutable variables, there is little downside given a purely functional environment. An example of this behavior:
 
 ```python
 lambdas = []
 for x in [0, 1]:
-    lambdas = lambdas + [lambda: return x;]
+    lambdas = lambdas + [lambda { return x; }]
 for l in lambdas:
     print(l())
 
