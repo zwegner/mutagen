@@ -62,11 +62,13 @@ class Seq:
         self.items = items
     def parse(self, tokenizer, fn_table):
         items = []
-        pos = tokenizer.pos
+        tokens_consumed = tokenizer.tokens_consumed
         for item in self.items:
             r = item.parse(tokenizer, fn_table)
             if r is BAD_PARSE:
-                if pos != tokenizer.pos:
+                # If we have consumed tokens in the course of parsing this item,
+                # we must error out since we can't backtrack
+                if tokens_consumed != tokenizer.tokens_consumed:
                     raise RuntimeError('parsing error: got %s while looking for %s '
                         'in rule %s: %s' % (tokenizer.peek(), item, self.rule, self))
                 return BAD_PARSE
