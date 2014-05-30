@@ -5,8 +5,6 @@ import liblex
 
 import syntax
 
-lineno = 0
-
 str_escapes = {
     'n': '\n',
     't': '\t',
@@ -34,11 +32,6 @@ def process_string(t):
         else:
             string += c
     return liblex.Token(t.type, string)
-
-def process_newline(n):
-    global lineno
-    lineno = lineno + 1
-    return n
 
 keywords = [
     'False',
@@ -112,7 +105,8 @@ skip = {'COMMENT'}
 tokens = list(token_map.keys()) + [k.upper() for k in keywords] + ['INDENT', 'DEDENT']
 
 def error(t, msg):
-    print('%s(%s): %s' % (syntax.filename, lineno, msg))
+    info = t.info or liblex.Info('<unknown file>', 0)
+    print('%s(%s): %s' % (info.filename, info.lineno, msg))
     sys.exit(1)
 
 def process_newlines(tokens):
@@ -174,8 +168,7 @@ def process_indentation(tokens):
                     ws_stack.pop()
                     yield liblex.Token('DEDENT', '')
                 if spaces != ws_stack[-1]:
-                    error(t, 'unindent level does not match' +
-                        'any previous indent')
+                    error(t, 'unindent level does not match any previous indent')
         else:
             yield t
 
@@ -189,10 +182,9 @@ def process_indentation(tokens):
 class Lexer(liblex.Tokenizer):
     def __init__(self):
         super().__init__(token_map, skip)
-        self.lineno = 0
 
-    def input(self, input):
-        super().input(input)
+    def input(self, input, filename=None):
+        super().input(input, filename=filename)
         # Big ass chain of generators
         self.tokens = process_indentation(process_whitespace(process_newlines(
             self.tokens)))

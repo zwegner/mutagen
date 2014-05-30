@@ -1,11 +1,20 @@
 import re
 
+# Info means basically filename/line number, used for reporting errors
+class Info:
+    def __init__(self, filename, lineno):
+        self.filename = filename
+        self.lineno = lineno
+    def __str__(self):
+        return 'Info("%s", %s)' % (self.filename, self.lineno)
+
 class Token:
-    def __init__(self, type, value):
+    def __init__(self, type, value, info=None):
         self.type = type
         self.value = value
+        self.info = info
     def __str__(self):
-        return 'Token(%s, "%s")' % (self.type, self.value)
+        return 'Token(%s, "%s", info=%s)' % (self.type, self.value, self.info)
 
 class Tokenizer:
     def __init__(self, token_list, skip):
@@ -23,9 +32,10 @@ class Tokenizer:
         self.matcher = re.compile(regex).match
         self.skip = skip
 
-    def input(self, line):
+    def input(self, line, filename=None):
         def read_line(line):
             match = self.matcher(line)
+            lineno = 1
             while match is not None:
                 type = match.lastgroup
                 value = match.group(type)
@@ -33,7 +43,9 @@ class Tokenizer:
                     token = Token(type, value)
                     if type in self.token_fns:
                         token = self.token_fns[type](token)
+                    token.info = Info(filename, lineno)
                     yield token
+                lineno += value.count('\n')
                 match = self.matcher(line, match.end())
         self.tokens_consumed = 0
         self.tokens = read_line(line)

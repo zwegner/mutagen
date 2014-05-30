@@ -301,7 +301,7 @@ def parse(path, import_builtins=True, ctx=None):
         dirname = '.'
     with open(path) as f:
         tokenizer = lexer.Lexer()
-        tokenizer.input(f.read())
+        tokenizer.input(f.read(), filename=path)
         block = parser.parse(tokenizer)
 
     # Do some post-processing, starting with adding builtins
