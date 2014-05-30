@@ -1,3 +1,4 @@
+import copy
 import re
 
 # Info means basically filename/line number, used for reporting errors
@@ -13,6 +14,12 @@ class Token:
         self.type = type
         self.value = value
         self.info = info
+    def copy(self, type=None, value=None, info=None):
+        c = copy.copy(self)
+        if type is not None:  c.type = type
+        if value is not None: c.value = value
+        if info is not None:  c.info = info
+        return c
     def __str__(self):
         return 'Token(%s, "%s", info=%s)' % (self.type, self.value, self.info)
 

@@ -31,7 +31,7 @@ def process_string(t):
                 string += str_escapes[c]
         else:
             string += c
-    return liblex.Token(t.type, string)
+    return t.copy(value=string)
 
 keywords = [
     'False',
@@ -74,9 +74,9 @@ token_map = {
     'GREATER':         r'>',
     'GREATER_EQUALS':  r'>=',
     'IDENTIFIER':      (r'[a-zA-Z_][a-zA-Z0-9_]*',
-        lambda t: liblex.Token(t.value.upper(), t.value) if t.value in keywords else t),
+        lambda t: t.copy(type=t.value.upper()) if t.value in keywords else t),
     'INTEGER':         (r'((0x[0-9a-fA-F]*)|([0-9]+))',
-        lambda t: liblex.Token(t.type, int(t.value, 0))),
+        lambda t: t.copy(value=int(t.value, 0))),
     'INVERSE':         r'~',
     'LBRACE':          r'{',
     'LBRACKET':        r'\[',
@@ -141,7 +141,7 @@ def process_whitespace(tokens):
                     yield token
             # Got a token at the beginning of the line--yield empty whitespace
             elif token.type != 'NEWLINE':
-                yield liblex.Token('WHITESPACE', '')
+                yield token.copy(type='WHITESPACE', value='')
                 yield token
 
         # Not after a newline--ignore whitespace
@@ -152,30 +152,31 @@ def process_whitespace(tokens):
 
 def process_indentation(tokens):
     ws_stack = [0]
-    for t in tokens:
+    for token in tokens:
         # Whitespace has been processed, so this token is at the beginning
         # of a non-empty line
-        if t.type == 'WHITESPACE':
-            spaces = len(t.value.replace('\t', ' '*4))
+        if token.type == 'WHITESPACE':
+            spaces = len(token.value.replace('\t', ' '*4))
 
             # Check the indent level against the stack
             if spaces > ws_stack[-1]:
                 ws_stack.append(spaces)
-                yield liblex.Token('INDENT', '')
+                yield token.copy(type='INDENT', value='')
             else:
                 # Pop off the indent stack until we reach the previous level
                 while spaces < ws_stack[-1]:
                     ws_stack.pop()
-                    yield liblex.Token('DEDENT', '')
+                    yield token.copy(type='DEDENT', value='')
                 if spaces != ws_stack[-1]:
-                    error(t, 'unindent level does not match any previous indent')
+                    error(token, 'unindent level does not match '
+                        'any previous indent')
         else:
-            yield t
+            yield token
 
     # Make sure we have enough indents at EOF
     while len(ws_stack) > 1:
         ws_stack.pop()
-        yield liblex.Token('DEDENT', '')
+        yield token.copy(type='DEDENT', value='')
 
     yield None
 
