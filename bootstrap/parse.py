@@ -30,8 +30,18 @@ rule_table = [
     ['integer', ('INTEGER', lambda p: Integer(p, info=get_info(p, 0)))],
     ['string', ('STRING', lambda p: String(p, info=get_info(p, 0)))],
     ['parenthesized', ('LPAREN test RPAREN', lambda p: p[1])],
-    ['atom', 'identifier|none|boolean|integer|string|parenthesized|list_comp|dict_set_comp'],
+    ['atom', 'identifier|none|boolean|integer|string|parenthesized|list_comp|'
+        'dict_set_comp'],
 ]
+
+# Stupid function since our parser library is stupid. Parse the tail end of
+# a list/dict/set, which might have extra commas, but only at the end!
+def parse_commas(items):
+    for i, item in enumerate(items):
+        if item[1] is not None:
+            yield item[1]
+        else:
+            assert i == len(items) - 1
 
 @libparse.rule_fn(rule_table, 'list_comp', 'LBRACKET [test (comp_iter+|'
     '(COMMA [test])*)] RBRACKET')
@@ -42,11 +52,7 @@ def parse_list(p):
         if items[1]:
             if isinstance(items[1][0], CompIter):
                 return Scope(ListComprehension(items[0], items[1]))
-            for i, item in enumerate(items[1]):
-                if item[1] is not None:
-                    l.append(item[1])
-                else:
-                    assert i == len(items[1]) - 1
+            l += list(parse_commas(items[1]))
         return List(l, info=get_info(p, 0))
     return List([], info=get_info(p, 0))
 
@@ -62,22 +68,15 @@ def parse_dict_set(p):
             key, value = items[0], items[1][1]
             d = {key: value}
             if items[1][2]:
-                if isinstance(items[1][2][0], CompIter):
-                    return Scope(DictComprehension(key, value, items[1][2]))
-                for i, item in enumerate(items[1][2]):
-                    if item[1] is not None:
-                        d[item[1][0]] = item[1][2]
-                    else:
-                        assert i == len(items[1][2]) - 1
+                items = items[1][2]
+                if isinstance(items[0], CompIter):
+                    return Scope(DictComprehension(key, value, items))
+                d.update({item[0]: item[2] for item in parse_commas(items)})
             return Dict(d, info=get_info(p, 0))
         else:
             set_items = [items[0]]
             if items[1]:
-                for i, item in enumerate(items[1]):
-                    if item[1] is not None:
-                        set_items.append(item[1])
-                    else:
-                        assert i == len(items[1]) - 1
+                set_items += list(parse_commas(items[1]))
             return Call(Identifier('set', info=get_info(p, 0)),
                 [List(set_items, info=get_info(p, 0))])
     return Dict({}, info=get_info(p, 0))
@@ -267,7 +266,6 @@ def parse_def_stmt(p):
 def parse_import(p, module, names, path):
     imp = Import([], module, names, path, False, info=get_info(p, 0))
     all_imports.append(imp)
-    target = names or module
     return Scope(imp)
 
 rule_table += [
@@ -285,10 +283,9 @@ parser = libparse.Parser(rule_table, 'stmt_list')
 
 all_imports = None
 module_cache = {}
-current_ctx = None
 
 def parse(path, import_builtins=True, ctx=None):
-    global all_imports, current_ctx, filename
+    global all_imports, filename
     # Check if we've parsed this before. We do a check for recursive imports here too.
     if path in module_cache:
         if module_cache[path] is None:
@@ -298,7 +295,6 @@ def parse(path, import_builtins=True, ctx=None):
 
     # Parse the file
     all_imports = []
-    current_ctx = ctx
     filename = path
     dirname = os.path.dirname(path)
     if not dirname:
