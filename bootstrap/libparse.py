@@ -1,9 +1,26 @@
 import liblex
 
+def unzip(lists):
+    if not lists:
+        return [], []
+    return list(list(t) for t in zip(*lists))
+
 class Context:
-    def __init__(self, fn_table):
+    def __init__(self, fn_table, tokenizer=None):
         self.fn_table = fn_table
+        self.tokenizer = tokenizer
         self.check_prods = set()
+
+class ParseResult:
+    def __init__(self, items, info):
+        self.items = items
+        self.info = info
+    def __getitem__(self, n):
+        return self.items[n]
+    def get_info(self, n):
+        if self.info:
+            return self.info[n]
+        return None
 
 # Dummy sentinel object
 BAD_PARSE = object()
@@ -22,14 +39,14 @@ class String:
     def __init__(self, rule, name):
         self.rule = rule
         self.name = name
-    def parse(self, tokenizer, fn_table):
-        if self.name in fn_table:
-            return fn_table[self.name].parse(tokenizer, fn_table)
-        elif tokenizer.peek() is None:
+    def parse(self, ctx):
+        if self.name in ctx.fn_table:
+            return ctx.fn_table[self.name].parse(ctx)
+        elif ctx.tokenizer.peek() is None:
             return BAD_PARSE
-        elif tokenizer.peek().type == self.name:
-            t = tokenizer.next()
-            return t.value
+        elif ctx.tokenizer.peek().type == self.name:
+            t = ctx.tokenizer.next()
+            return (t.value, t.info)
         return BAD_PARSE
     @memoize
     def check_first_token(self, ctx):
@@ -46,13 +63,13 @@ class Repeat:
         self.item = item
         self.min = min
         self.check_first_token = self.item.check_first_token
-    def parse(self, tokenizer, fn_table):
+    def parse(self, ctx):
         results = []
-        item = self.item.parse(tokenizer, fn_table)
+        item = self.item.parse(ctx)
         while item is not BAD_PARSE:
             results.append(item)
-            item = self.item.parse(tokenizer, fn_table)
-        return results if len(results) >= self.min else BAD_PARSE
+            item = self.item.parse(ctx)
+        return unzip(results) if len(results) >= self.min else BAD_PARSE
     def __str__(self):
         return 'rep(%s)' % self.item
 
@@ -60,20 +77,21 @@ class Seq:
     def __init__(self, rule, items):
         self.rule = rule
         self.items = items
-    def parse(self, tokenizer, fn_table):
+    def parse(self, ctx):
         items = []
-        tokens_consumed = tokenizer.tokens_consumed
+        tokens_consumed = ctx.tokenizer.tokens_consumed
         for item in self.items:
-            r = item.parse(tokenizer, fn_table)
+            r = item.parse(ctx)
             if r is BAD_PARSE:
                 # If we have consumed tokens in the course of parsing this item,
                 # we must error out since we can't backtrack
-                if tokens_consumed != tokenizer.tokens_consumed:
-                    raise RuntimeError('parsing error: got %s while looking for %s '
-                        'in rule %s: %s' % (tokenizer.peek(), item, self.rule, self))
+                if tokens_consumed != ctx.tokenizer.tokens_consumed:
+                    raise RuntimeError('parsing error: got %s while looking for '
+                        '%s in rule %s: %s' % (ctx.tokenizer.peek(), item,
+                            self.rule, self))
                 return BAD_PARSE
             items.append(r)
-        return items[0] if len(items) == 1 else items
+        return unzip(items)
     @memoize
     def check_first_token(self, ctx):
         # Check that all later symbols are unambiguously parseable, but only
@@ -91,9 +109,9 @@ class Alt:
     def __init__(self, rule, items):
         self.rule = rule
         self.items = items
-    def parse(self, tokenizer, fn_table):
+    def parse(self, ctx):
         for item in self.items:
-            r = item.parse(tokenizer, fn_table)
+            r = item.parse(ctx)
             if r is not BAD_PARSE:
                 return r
         return BAD_PARSE
@@ -112,22 +130,25 @@ class Opt:
         self.rule = rule
         self.item = item
         self.check_first_token = self.item.check_first_token
-    def parse(self, tokenizer, fn_table):
-        result = self.item.parse(tokenizer, fn_table)
-        return None if result is BAD_PARSE else result
+    def parse(self, ctx):
+        result = self.item.parse(ctx)
+        return (None, None) if result is BAD_PARSE else result
     def __str__(self):
         return 'opt(%s)' % self.item
 
 class FnWrapper:
     def __init__(self, rule, prod, fn):
+        if not isinstance(prod, Seq):
+            prod = Seq(rule, [prod])
         self.rule = rule
         self.prod = prod
         self.fn = fn
         self.check_first_token = self.prod.check_first_token
-    def parse(self, tokenizer, fn_table):
-        result = self.prod.parse(tokenizer, fn_table)
+    def parse(self, ctx):
+        result = self.prod.parse(ctx)
         if result is not BAD_PARSE:
-            return self.fn(result)
+            result, info = result
+            return (self.fn(ParseResult(result, info)), info)
         return BAD_PARSE
     def __str__(self):
         return str(self.prod)
@@ -221,10 +242,11 @@ class Parser:
 
     def parse(self, tokenizer):
         prod = self.fn_table[self.start]
-        result = prod.parse(tokenizer, self.fn_table)
+        result = prod.parse(Context(self.fn_table, tokenizer=tokenizer))
         if result is BAD_PARSE:
             raise RuntimeError('bad parse near token %s' % tokenizer.peek())
         elif tokenizer.peek() is not None:
             raise RuntimeError('parser did not consume entire input, near token %s' %
                 tokenizer.peek())
+        result, info = result
         return result

@@ -3,6 +3,7 @@ import os
 import sys
 
 import lexer
+import liblex
 import libparse
 
 import mg_builtins
@@ -11,6 +12,8 @@ from syntax import *
 def get_info(*a):
     # XXX
     return Info('', 0)
+# XXX
+NULL_INFO = liblex.Info('???', 0)
 
 def reduce_binop(p):
     r = p[0]
@@ -23,12 +26,12 @@ def reduce_list(p):
 
 rule_table = [
     # Atoms
-    ['identifier', ('IDENTIFIER', lambda p: Identifier(p, info=get_info(p, 0)))],
-    ['none', ('NONE', lambda p: None_(info=get_info(p, 1)))],
+    ['identifier', ('IDENTIFIER', lambda p: Identifier(p[0], info=get_info(p, 0)))],
+    ['none', ('NONE', lambda p: None_(info=get_info(p, 0)))],
     ['boolean', ('TRUE|FALSE', lambda p:
-        Boolean({'True': True, 'False': False}[p], info=get_info(p, 1)))],
-    ['integer', ('INTEGER', lambda p: Integer(p, info=get_info(p, 0)))],
-    ['string', ('STRING', lambda p: String(p, info=get_info(p, 0)))],
+        Boolean({'True': True, 'False': False}[p[0]], info=get_info(p, 0)))],
+    ['integer', ('INTEGER', lambda p: Integer(p[0], info=get_info(p, 0)))],
+    ['string', ('STRING', lambda p: String(p[0], info=get_info(p, 0)))],
     ['parenthesized', ('LPAREN test RPAREN', lambda p: p[1])],
     ['atom', 'identifier|none|boolean|integer|string|parenthesized|list_comp|'
         'dict_set_comp'],
@@ -90,7 +93,7 @@ def parse_arg(p):
 
 @libparse.rule_fn(rule_table, 'subscript', '[test] [COLON [test] [COLON [test]]]]')
 def parse_subscript(p):
-    [start, stop, step] = [None_(info=get_info(p, 0))] * 3
+    [start, stop, step] = [None_(info=NULL_INFO)] * 3
     if p[0]:
         if p[1] is None:
             return lambda expr: GetItem(expr, p[0])
@@ -100,7 +103,7 @@ def parse_subscript(p):
         stop = p[1][1]
     if p[1][2] is not None and p[1][2][1] is not None:
         step = p[1][2][1]
-    return lambda expr: Call(Identifier('slice', info=get_info(p, 0)),
+    return lambda expr: Call(Identifier('slice', info=NULL_INFO),
         [expr, start, stop, step])
 
 rule_table += [
@@ -158,21 +161,19 @@ rule_table += [
     ['for_assn_base', 'IDENTIFIER', ('LBRACKET for_assn_list RBRACKET',
         lambda p: p[1])],
     ['for_assn_list', ('for_assn_base (COMMA for_assn_base)*', reduce_list)],
-    ['for_assn', ('for_assn_base', lambda p: Target(p, info=get_info(p, 0)))],
+    ['for_assn', ('for_assn_base', lambda p: Target(p[0], info=get_info(p, 0)))],
     ['comp_iter', ('FOR for_assn IN test', lambda p: CompIter(p[1], p[3]))],
-]
 
-rule_table += [
     # Statements
     ['pass', ('PASS', lambda p: None)],
     ['small_stmt', '(expr_stmt|pass|break|continue|return|yield|import|assert)'],
     ['simple_stmt', ('small_stmt (NEWLINE|SEMICOLON)', lambda p: p[0])],
     ['stmt', ('(simple_stmt|if_stmt|for_stmt|while_stmt|def_stmt|class_stmt) '
         '(NEWLINE|SEMICOLON)*', lambda p: p[0])],
-    ['stmt_list', ('stmt*', lambda p: [x for x in p if x is not None])],
+    ['stmt_list', ('stmt*', lambda p: [x for x in p[0] if x is not None])],
 
-    ['break', ('BREAK', lambda p: Break(info=get_info(p, 1)))],
-    ['continue', ('CONTINUE', lambda p: Continue(info=get_info(p, 1)))],
+    ['break', ('BREAK', lambda p: Break(info=get_info(p, 0)))],
+    ['continue', ('CONTINUE', lambda p: Continue(info=get_info(p, 0)))],
     ['return', ('RETURN test', lambda p: Return(p[1]))],
     ['yield', ('YIELD test', lambda p: Yield(p[1]))],
     ['assert', ('ASSERT test', lambda p: Assert(p[1]))],
@@ -197,8 +198,8 @@ rule_table += [
         lambda p: [x for x in reduce_list(p) if x is not None])],
     ['block', ('COLON (delims INDENT stmt_list DEDENT|small_stmt_list NEWLINE)',
         lambda p: Block(p[1][2] if len(p[1]) == 4 else p[1][0],
-            info=get_info(p, 1))),
-        ('LBRACE stmt_list RBRACE', lambda p: Block(p[1], info=get_info(p, 1)))],
+            info=get_info(p, 0))),
+        ('LBRACE stmt_list RBRACE', lambda p: Block(p[1], info=get_info(p, 0)))],
     ['for_stmt', ('FOR for_assn IN test block', lambda p: For(p[1], p[3], p[4]))],
     ['while_stmt', ('WHILE test block', lambda p: While(p[1], p[2]))],
 ]
@@ -216,8 +217,7 @@ def parse_if_stmt(p):
 # Params
 @libparse.rule_fn(rule_table, 'param', 'IDENTIFIER [COLON test] [EQUALS test]')
 def parse_param(p):
-    param = [p[0], p[1][1] if p[1] else None, p[2][1] if p[2] else None]
-    return param
+    return [p[0], p[1][1] if p[1] else None, p[2][1] if p[2] else None]
 
 rule_table += [
     ['param', ('STAR IDENTIFIER', lambda p: StarParams(p[1], info=get_info(p, 0)))],
@@ -227,8 +227,8 @@ rule_table += [
 @libparse.rule_fn(rule_table, 'params', '[LPAREN [param_list] RPAREN]')
 def parse_params(p):
     params, types, starparams, kwparams = [], [], None, []
-    if p and p[1]:
-        for item in p[1]:
+    if p[0] and p[0][1]:
+        for item in p[0][1]:
             if isinstance(item, StarParams):
                 assert not starparams
                 assert not kwparams
@@ -240,13 +240,13 @@ def parse_params(p):
                 assert not starparams
                 assert not kwparams
                 params.append(item[0])
-                types.append(item[1] or None_(info=get_info(p, 0)))
-    return Params(params, types, starparams, kwparams, info=get_info(p, 0))
+                types.append(item[1] or None_(info=NULL_INFO))
+    return Params(params, types, starparams, kwparams, info=NULL_INFO)
 
 # Function/class defs
 rule_table += [
     ['decorator', ('AT test delims', lambda p: p[1])],
-    ['return_type', ('[RARROW test]', lambda p: p[1] if p else None)],
+    ['return_type', ('[RARROW test]', lambda p: p[0][1] if p[0] else None)],
     ['lambda', ('LAMBDA params return_type block',
         lambda p: Scope(Function('lambda', p[1], p[2], p[3], info=get_info(p, 0))))],
     ['class_stmt', ('CLASS IDENTIFIER params block',
@@ -260,7 +260,7 @@ def parse_def_stmt(p):
     fn = Scope(Function(p[2], p[3], p[4], p[5], info=get_info(p, 1)))
     for dec in p[0]:
         fn = Call(dec, [fn])
-    return Assignment(Target(p[2], info=get_info(p, 1)), fn)
+    return Assignment(Target(p[2], info=get_info(p, 2)), fn)
 
 # Imports
 def parse_import(p, module, names, path):
