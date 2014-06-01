@@ -6,7 +6,7 @@ def unzip(lists):
     return list(list(t) for t in zip(*lists))
 
 class Context:
-    def __init__(self, fn_table, tokenizer=None):
+    def __init__(self, fn_table, tokenizer):
         self.fn_table = fn_table
         self.tokenizer = tokenizer
         self.check_prods = set()
@@ -27,14 +27,6 @@ BAD_PARSE = object()
 
 # Classes to represent grammar structure
 
-def memoize(fn):
-    memo = {}
-    def memoized(*args):
-        if args not in memo:
-            memo[args] = fn(*args)
-        return memo[args]
-    return memoized
-
 class String:
     def __init__(self, rule, name):
         self.rule = rule
@@ -48,12 +40,6 @@ class String:
             t = ctx.tokenizer.next()
             return (t.value, t.info)
         return BAD_PARSE
-    @memoize
-    def check_first_token(self, ctx):
-        if self.name in ctx.fn_table:
-            return ctx.fn_table[self.name].check_first_token(ctx)
-        # XXX check whether token type exists
-        return {self.name}
     def __str__(self):
         return '"%s"' % self.name
 
@@ -62,7 +48,6 @@ class Repeat:
         self.rule = rule
         self.item = item
         self.min = min
-        self.check_first_token = self.item.check_first_token
     def parse(self, ctx):
         results = []
         item = self.item.parse(ctx)
@@ -87,16 +72,6 @@ class Seq:
                 return BAD_PARSE
             items.append(r)
         return unzip(items)
-    @memoize
-    def check_first_token(self, ctx):
-        # Check that all later symbols are unambiguously parseable, but only
-        # if we're not being called recursively
-        if self not in ctx.check_prods:
-            ctx.check_prods.add(self)
-            for item in self.items[1:]:
-                item.check_first_token(ctx)
-            ctx.check_prods.remove(self)
-        return self.items[0].check_first_token(ctx)
     def __str__(self):
         return 'seq(%s)' % ','.join(map(str, self.items))
 
@@ -110,13 +85,6 @@ class Alt:
             if r is not BAD_PARSE:
                 return r
         return BAD_PARSE
-    @memoize
-    def check_first_token(self, ctx):
-        firsts = [item.check_first_token(ctx) for item in self.items]
-        all_firsts = set(item for f in firsts for item in f)
-        if len(all_firsts) != sum(len(f) for f in firsts):
-            raise RuntimeError('ambiguous parser specification near: %s' % self)
-        return all_firsts
     def __str__(self):
         return 'alt(%s)' % ','.join(map(str, self.items))
 
@@ -124,7 +92,6 @@ class Opt:
     def __init__(self, rule, item):
         self.rule = rule
         self.item = item
-        self.check_first_token = self.item.check_first_token
     def parse(self, ctx):
         result = self.item.parse(ctx)
         return (None, None) if result is BAD_PARSE else result
@@ -138,7 +105,6 @@ class FnWrapper:
         self.rule = rule
         self.prod = prod
         self.fn = fn
-        self.check_first_token = self.prod.check_first_token
     def parse(self, ctx):
         result = self.prod.parse(ctx)
         if result is not BAD_PARSE:
@@ -232,11 +198,10 @@ class Parser:
         if rule not in self.fn_table:
             self.fn_table[rule] = Alt(rule, [])
         self.fn_table[rule].items.append(prod)
-        self.fn_table[rule].check_first_token(Context(self.fn_table))
 
     def parse(self, tokenizer):
         prod = self.fn_table[self.start]
-        result = prod.parse(Context(self.fn_table, tokenizer=tokenizer))
+        result = prod.parse(Context(self.fn_table, tokenizer))
         if result is BAD_PARSE:
             raise RuntimeError('bad parse near token %s' % tokenizer.peek())
         elif tokenizer.peek() is not None:
