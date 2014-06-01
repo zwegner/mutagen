@@ -79,16 +79,11 @@ class Seq:
         self.items = items
     def parse(self, ctx):
         items = []
-        tokens_consumed = ctx.tokenizer.tokens_consumed
+        pos = ctx.tokenizer.pos
         for item in self.items:
             r = item.parse(ctx)
             if r is BAD_PARSE:
-                # If we have consumed tokens in the course of parsing this item,
-                # we must error out since we can't backtrack
-                if tokens_consumed != ctx.tokenizer.tokens_consumed:
-                    raise RuntimeError('parsing error: got %s while looking for '
-                        '%s in rule %s: %s' % (ctx.tokenizer.peek(), item,
-                            self.rule, self))
+                ctx.tokenizer.pos = pos
                 return BAD_PARSE
             items.append(r)
         return unzip(items)
@@ -232,8 +227,7 @@ class Parser:
         self.start = start
 
     def create_rule(self, rule, prod, fn):
-        self.tokenizer.input(prod)
-        prod = parse_rule_expr(rule, self.tokenizer)
+        prod = parse_rule_expr(rule, self.tokenizer.input(prod))
         prod = FnWrapper(rule, prod, fn) if fn else prod
         if rule not in self.fn_table:
             self.fn_table[rule] = Alt(rule, [])

@@ -277,6 +277,7 @@ root_dir = os.path.dirname(sys.path[0])
 stdlib_dir = '%s/stdlib' % root_dir
 
 parser = libparse.Parser(rule_table, 'stmt_list')
+tokenizer = lexer.Lexer()
 
 all_imports = None
 module_cache = {}
@@ -296,9 +297,7 @@ def parse(path, import_builtins=True, ctx=None):
     if not dirname:
         dirname = '.'
     with open(path) as f:
-        tokenizer = lexer.Lexer()
-        tokenizer.input(f.read(), filename=path)
-        block = parser.parse(tokenizer)
+        block = parser.parse(tokenizer.input(f.read(), filename=path))
 
     # Do some post-processing, starting with adding builtins
     if import_builtins:

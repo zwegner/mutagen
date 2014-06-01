@@ -39,40 +39,38 @@ class Tokenizer:
         self.matcher = re.compile(regex).match
         self.skip = skip
 
-    def input(self, line, filename=None):
-        def read_line(line):
-            match = self.matcher(line)
-            lineno = 1
-            while match is not None:
-                type = match.lastgroup
-                value = match.group(type)
-                if type not in self.skip:
-                    token = Token(type, value)
-                    if type in self.token_fns:
-                        token = self.token_fns[type](token)
-                    token.info = Info(filename, lineno)
-                    yield token
-                lineno += value.count('\n')
-                match = self.matcher(line, match.end())
-        self.tokens_consumed = 0
-        self.tokens = read_line(line)
+    def input(self, text, filename=None):
+        match = self.matcher(text)
+        lineno = 1
+        tokens = []
+        while match is not None:
+            type = match.lastgroup
+            value = match.group(type)
+            if type not in self.skip:
+                token = Token(type, value)
+                if type in self.token_fns:
+                    token = self.token_fns[type](token)
+                token.info = Info(filename, lineno)
+                tokens.append(token)
+            lineno += value.count('\n')
+            match = self.matcher(text, match.end())
+        return TokenizerContext(tokens)
+
+class TokenizerContext:
+    def __init__(self, tokens):
+        self.tokens = tokens
+        self.pos = 0
         self.saved_token = None
 
     def peek(self):
-        if not self.saved_token:
-            try:
-                self.saved_token = next(self.tokens)
-            except StopIteration:
-                return None
-        return self.saved_token
+        if self.pos >= len(self.tokens):
+            return None
+        return self.tokens[self.pos]
 
     def next(self):
-        self.tokens_consumed += 1
-        if self.saved_token:
-            t = self.saved_token
-            self.saved_token = None
-            return t
-        return next(self.tokens)
+        token = self.peek()
+        self.pos += 1
+        return token
 
     def accept(self, t):
         if self.peek() and self.peek().type == t:
