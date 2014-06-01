@@ -1,7 +1,5 @@
 import copy
 
-filename = 'filename'
-
 # This is a list, since order matters--backslashes must come first!
 inv_str_escapes = [
     ['\\', '\\\\'],

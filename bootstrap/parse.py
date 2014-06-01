@@ -282,7 +282,7 @@ all_imports = None
 module_cache = {}
 
 def parse(path, import_builtins=True, ctx=None):
-    global all_imports, filename
+    global all_imports
     # Check if we've parsed this before. We do a check for recursive imports here too.
     if path in module_cache:
         if module_cache[path] is None:
@@ -292,7 +292,6 @@ def parse(path, import_builtins=True, ctx=None):
 
     # Parse the file
     all_imports = []
-    filename = path
     dirname = os.path.dirname(path)
     if not dirname:
         dirname = '.'
