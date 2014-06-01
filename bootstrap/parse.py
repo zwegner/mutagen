@@ -9,9 +9,6 @@ import libparse
 import mg_builtins
 from syntax import *
 
-def get_info(*a):
-    # XXX
-    return Info('', 0)
 # XXX
 NULL_INFO = liblex.Info('???', 0)
 
@@ -26,12 +23,12 @@ def reduce_list(p):
 
 rule_table = [
     # Atoms
-    ['identifier', ('IDENTIFIER', lambda p: Identifier(p[0], info=get_info(p, 0)))],
-    ['none', ('NONE', lambda p: None_(info=get_info(p, 0)))],
+    ['identifier', ('IDENTIFIER', lambda p: Identifier(p[0], info=p.get_info(0)))],
+    ['none', ('NONE', lambda p: None_(info=p.get_info(0)))],
     ['boolean', ('TRUE|FALSE', lambda p:
-        Boolean({'True': True, 'False': False}[p[0]], info=get_info(p, 0)))],
-    ['integer', ('INTEGER', lambda p: Integer(p[0], info=get_info(p, 0)))],
-    ['string', ('STRING', lambda p: String(p[0], info=get_info(p, 0)))],
+        Boolean({'True': True, 'False': False}[p[0]], info=p.get_info(0)))],
+    ['integer', ('INTEGER', lambda p: Integer(p[0], info=p.get_info(0)))],
+    ['string', ('STRING', lambda p: String(p[0], info=p.get_info(0)))],
     ['parenthesized', ('LPAREN test RPAREN', lambda p: p[1])],
     ['atom', 'identifier|none|boolean|integer|string|parenthesized|list_comp|'
         'dict_set_comp'],
@@ -56,8 +53,8 @@ def parse_list(p):
             if isinstance(items[1][0], CompIter):
                 return Scope(ListComprehension(items[0], items[1]))
             l += list(parse_commas(items[1]))
-        return List(l, info=get_info(p, 0))
-    return List([], info=get_info(p, 0))
+        return List(l, info=p.get_info(0))
+    return List([], info=p.get_info(0))
 
 # This function is a wee bit crazy but it kinda has to be that way with our
 # parser and AST design
@@ -75,14 +72,14 @@ def parse_dict_set(p):
                 if isinstance(items[0], CompIter):
                     return Scope(DictComprehension(key, value, items))
                 d.update({item[0]: item[2] for item in parse_commas(items)})
-            return Dict(d, info=get_info(p, 0))
+            return Dict(d, info=p.get_info(0))
         else:
             set_items = [items[0]]
             if items[1]:
                 set_items += list(parse_commas(items[1]))
-            return Call(Identifier('set', info=get_info(p, 0)),
-                [List(set_items, info=get_info(p, 0))])
-    return Dict({}, info=get_info(p, 0))
+            return Call(Identifier('set', info=p.get_info(0)),
+                [List(set_items, info=p.get_info(0))])
+    return Dict({}, info=p.get_info(0))
 
 @libparse.rule_fn(rule_table, 'arg', 'test [EQUALS test]')
 def parse_arg(p):
@@ -161,7 +158,7 @@ rule_table += [
     ['for_assn_base', 'IDENTIFIER', ('LBRACKET for_assn_list RBRACKET',
         lambda p: p[1])],
     ['for_assn_list', ('for_assn_base (COMMA for_assn_base)*', reduce_list)],
-    ['for_assn', ('for_assn_base', lambda p: Target(p[0], info=get_info(p, 0)))],
+    ['for_assn', ('for_assn_base', lambda p: Target(p[0], info=p.get_info(0)))],
     ['comp_iter', ('FOR for_assn IN test', lambda p: CompIter(p[1], p[3]))],
 
     # Statements
@@ -172,8 +169,8 @@ rule_table += [
         '(NEWLINE|SEMICOLON)*', lambda p: p[0])],
     ['stmt_list', ('stmt*', lambda p: [x for x in p[0] if x is not None])],
 
-    ['break', ('BREAK', lambda p: Break(info=get_info(p, 0)))],
-    ['continue', ('CONTINUE', lambda p: Continue(info=get_info(p, 0)))],
+    ['break', ('BREAK', lambda p: Break(info=p.get_info(0)))],
+    ['continue', ('CONTINUE', lambda p: Continue(info=p.get_info(0)))],
     ['return', ('RETURN test', lambda p: Return(p[1]))],
     ['yield', ('YIELD test', lambda p: Yield(p[1]))],
     ['assert', ('ASSERT test', lambda p: Assert(p[1]))],
@@ -188,7 +185,7 @@ def parse_expr_stmt(p):
             return [deconstruct_lhs(i) for i in lhs]
         lhs.error('invalid lhs for assignment')
     if p[1]:
-        return Assignment(Target(deconstruct_lhs(p[0]), info=get_info(p, 0)), p[1][1])
+        return Assignment(Target(deconstruct_lhs(p[0]), info=p.get_info(0)), p[1][1])
     return p[0]
 
 rule_table += [
@@ -198,8 +195,8 @@ rule_table += [
         lambda p: [x for x in reduce_list(p) if x is not None])],
     ['block', ('COLON (delims INDENT stmt_list DEDENT|small_stmt_list NEWLINE)',
         lambda p: Block(p[1][2] if len(p[1]) == 4 else p[1][0],
-            info=get_info(p, 0))),
-        ('LBRACE stmt_list RBRACE', lambda p: Block(p[1], info=get_info(p, 0)))],
+            info=p.get_info(0))),
+        ('LBRACE stmt_list RBRACE', lambda p: Block(p[1], info=p.get_info(0)))],
     ['for_stmt', ('FOR for_assn IN test block', lambda p: For(p[1], p[3], p[4]))],
     ['while_stmt', ('WHILE test block', lambda p: While(p[1], p[2]))],
 ]
@@ -207,7 +204,7 @@ rule_table += [
 @libparse.rule_fn(rule_table,
     'if_stmt', 'IF test block (ELIF test block)* [ELSE block]')
 def parse_if_stmt(p):
-    else_block = Block([], info=get_info(p, 0))
+    else_block = Block([], info=p.get_info(0))
     if p[4]:
         else_block = p[4][1]
     for elif_stmt in reversed(p[3]):
@@ -220,7 +217,7 @@ def parse_param(p):
     return [p[0], p[1][1] if p[1] else None, p[2][1] if p[2] else None]
 
 rule_table += [
-    ['param', ('STAR IDENTIFIER', lambda p: StarParams(p[1], info=get_info(p, 0)))],
+    ['param', ('STAR IDENTIFIER', lambda p: StarParams(p[1], info=p.get_info(0)))],
     ['param_list', ('param (COMMA param)*', reduce_list)],
 ]
 
@@ -248,23 +245,23 @@ rule_table += [
     ['decorator', ('AT test delims', lambda p: p[1])],
     ['return_type', ('[RARROW test]', lambda p: p[0][1] if p[0] else None)],
     ['lambda', ('LAMBDA params return_type block',
-        lambda p: Scope(Function('lambda', p[1], p[2], p[3], info=get_info(p, 0))))],
+        lambda p: Scope(Function('lambda', p[1], p[2], p[3], info=p.get_info(0))))],
     ['class_stmt', ('CLASS IDENTIFIER params block',
-        lambda p: Assignment(Target(p[1], info=get_info(p, 1)),
-            Scope(Class(p[1], p[2], p[3], info=get_info(p, 0)))))],
+        lambda p: Assignment(Target(p[1], info=p.get_info(1)),
+            Scope(Class(p[1], p[2], p[3], info=p.get_info(0)))))],
 ]
 
 @libparse.rule_fn(rule_table,
     'def_stmt', 'decorator* DEF IDENTIFIER params return_type block')
 def parse_def_stmt(p):
-    fn = Scope(Function(p[2], p[3], p[4], p[5], info=get_info(p, 1)))
+    fn = Scope(Function(p[2], p[3], p[4], p[5], info=p.get_info(1)))
     for dec in p[0]:
         fn = Call(dec, [fn])
-    return Assignment(Target(p[2], info=get_info(p, 2)), fn)
+    return Assignment(Target(p[2], info=p.get_info(2)), fn)
 
 # Imports
 def parse_import(p, module, names, path):
-    imp = Import([], module, names, path, False, info=get_info(p, 0))
+    imp = Import([], module, names, path, False, info=p.get_info(0))
     all_imports.append(imp)
     return Scope(imp)
 
