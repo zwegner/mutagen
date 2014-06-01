@@ -31,20 +31,11 @@ rule_table = [
     ['string', ('STRING', lambda p: String(p[0], info=p.get_info(0)))],
     ['parenthesized', ('LPAREN test RPAREN', lambda p: p[1])],
     ['atom', 'identifier|none|boolean|integer|string|parenthesized|list_comp|'
-        'dict_set_comp'],
+        'dict_comp|set_comp'],
 ]
 
-# Stupid function since our parser library is stupid. Parse the tail end of
-# a list/dict/set, which might have extra commas, but only at the end!
-def parse_commas(items):
-    for i, item in enumerate(items):
-        if item[1] is not None:
-            yield item[1]
-        else:
-            assert i == len(items) - 1
-
 @libparse.rule_fn(rule_table, 'list_comp', 'LBRACKET [test (comp_iter+|'
-    '(COMMA [test])*)] RBRACKET')
+    '(COMMA test)* [COMMA])] RBRACKET')
 def parse_list(p):
     if p[1]:
         items = p[1]
@@ -52,34 +43,30 @@ def parse_list(p):
         if items[1]:
             if isinstance(items[1][0], CompIter):
                 return Scope(ListComprehension(items[0], items[1]))
-            l += list(parse_commas(items[1]))
+            l += [item[1] for item in items[1][0]]
         return List(l, info=p.get_info(0))
     return List([], info=p.get_info(0))
 
-# This function is a wee bit crazy but it kinda has to be that way with our
-# parser and AST design
-@libparse.rule_fn(rule_table, 'dict_set_comp', 'LBRACE [test (COLON test (comp_iter+|'
-    '(COMMA [test COLON test])*)|'
-    '(COMMA [test])*)] RBRACE')
-def parse_dict_set(p):
+@libparse.rule_fn(rule_table, 'dict_comp', 'LBRACE [test COLON test (comp_iter+|'
+    '(COMMA test COLON test)* [COMMA])] RBRACE')
+def parse_dict(p):
     if p[1]:
         items = p[1]
-        if items[1] and items[1][0] == ':':
-            key, value = items[0], items[1][1]
-            d = {key: value}
-            if items[1][2]:
-                items = items[1][2]
-                if isinstance(items[0], CompIter):
-                    return Scope(DictComprehension(key, value, items))
-                d.update({item[0]: item[2] for item in parse_commas(items)})
-            return Dict(d, info=p.get_info(0))
-        else:
-            set_items = [items[0]]
-            if items[1]:
-                set_items += list(parse_commas(items[1]))
-            return Call(Identifier('set', info=p.get_info(0)),
-                [List(set_items, info=p.get_info(0))])
+        key, value = items[0], items[2]
+        d = {key: value}
+        if items[3]:
+            items = items[3]
+            if isinstance(items[0], CompIter):
+                return Scope(DictComprehension(key, value, items))
+            d.update({item[1]: item[3] for item in items[0]})
+        return Dict(d, info=p.get_info(0))
     return Dict({}, info=p.get_info(0))
+
+@libparse.rule_fn(rule_table, 'set_comp', 'LBRACE test (COMMA test)* [COMMA] RBRACE')
+def parse_set(p):
+    set_items = [p[1]] + [p[1] for item in p[2]]
+    return Call(Identifier('set', info=p.get_info(0)),
+        [List(set_items, info=p.get_info(0))])
 
 @libparse.rule_fn(rule_table, 'arg', 'test [EQUALS test]')
 def parse_arg(p):
