@@ -1,7 +1,7 @@
 import itertools
 import sys
 
-import liblex
+import sprdpl.lex as liblex
 
 import syntax
 
@@ -180,7 +180,7 @@ def process_indentation(tokens):
 
     yield None
 
-class Lexer(liblex.Tokenizer):
+class Lexer(liblex.Lexer):
     def __init__(self):
         super().__init__(token_map, skip)
 
@@ -189,7 +189,4 @@ class Lexer(liblex.Tokenizer):
         tokenizer_ctx = super().input(input, filename=filename)
         tokens = list(process_indentation(process_whitespace(process_newlines(
             tokenizer_ctx.tokens))))
-        return liblex.TokenizerContext(tokens)
-
-    def token(self):
-        return next(self.tokens)
+        return liblex.LexerContext(tokens)

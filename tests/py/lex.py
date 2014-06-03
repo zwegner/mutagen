@@ -7,9 +7,9 @@ for path in ['../../stdlib/__builtins__.mg', '../../stdlib/re.mg', '../../compil
     with open(path) as f:
         blah = f.read()
     lex = lexer.Lexer()
-    lex.input(blah)
+    lex = lex.input(blah)
     while True:
-        t = lex.token()
+        t = lex.next()
         if not t:
             break
         print(t.type + ': ' + repr(t.value))

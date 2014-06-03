@@ -3,8 +3,8 @@ import os
 import sys
 
 import lexer
-import liblex
-import libparse
+import sprdpl.lex as liblex
+import sprdpl.parse as libparse
 
 import mg_builtins
 from syntax import *
@@ -248,7 +248,7 @@ def parse_def_stmt(p):
 
 # Imports
 def parse_import(p, module, names, path):
-    imp = Import([], module, names, path, False, info=NULL_INFO)
+    imp = Import([], module, names, path, False, info=p.get_info(0))
     all_imports.append(imp)
     return Scope(imp)
 
