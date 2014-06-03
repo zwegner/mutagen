@@ -145,7 +145,7 @@ rule_table += [
     ['for_assn_base', 'IDENTIFIER', ('LBRACKET for_assn_list RBRACKET',
         lambda p: p[1])],
     ['for_assn_list', ('for_assn_base (COMMA for_assn_base)*', reduce_list)],
-    ['for_assn', ('for_assn_base', lambda p: Target(p[0], info=p.get_info(0)))],
+    ['for_assn', ('for_assn_base', lambda p: Target(p[0], info=NULL_INFO))],
     ['comp_iter', ('FOR for_assn IN test', lambda p: CompIter(p[1], p[3]))],
 
     # Statements
@@ -172,7 +172,7 @@ def parse_expr_stmt(p):
             return [deconstruct_lhs(i) for i in lhs]
         lhs.error('invalid lhs for assignment')
     if p[1]:
-        return Assignment(Target(deconstruct_lhs(p[0]), info=p.get_info(0)), p[1][1])
+        return Assignment(Target(deconstruct_lhs(p[0]), info=NULL_INFO), p[1][1])
     return p[0]
 
 rule_table += [
@@ -248,7 +248,7 @@ def parse_def_stmt(p):
 
 # Imports
 def parse_import(p, module, names, path):
-    imp = Import([], module, names, path, False, info=p.get_info(0))
+    imp = Import([], module, names, path, False, info=NULL_INFO)
     all_imports.append(imp)
     return Scope(imp)
 

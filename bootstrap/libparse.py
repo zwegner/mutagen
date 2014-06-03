@@ -1,10 +1,5 @@
 import liblex
 
-def unzip(lists):
-    if not lists:
-        return [], []
-    return list(list(t) for t in zip(*lists))
-
 class Context:
     def __init__(self, fn_table, tokenizer):
         self.fn_table = fn_table
@@ -54,7 +49,9 @@ class Repeat:
         while item is not BAD_PARSE:
             results.append(item)
             item = self.item.parse(ctx)
-        return unzip(results) if len(results) >= self.min else BAD_PARSE
+        if len(results) >= self.min:
+            return ([item[0] for item in results], None)
+        return BAD_PARSE
     def __str__(self):
         return 'rep(%s)' % self.item
 
@@ -71,7 +68,7 @@ class Seq:
                 ctx.tokenizer.pos = pos
                 return BAD_PARSE
             items.append(r)
-        return unzip(items)
+        return [[item[i] for item in items] for i in range(2)]
     def __str__(self):
         return 'seq(%s)' % ','.join(map(str, self.items))
 
@@ -109,7 +106,7 @@ class FnWrapper:
         result = self.prod.parse(ctx)
         if result is not BAD_PARSE:
             result, info = result
-            return (self.fn(ParseResult(result, info)), info)
+            return (self.fn(ParseResult(result, info)), None)
         return BAD_PARSE
     def __str__(self):
         return str(self.prod)
