@@ -93,7 +93,8 @@ def parse_subscript(p):
 rule_table += [
     # Function calls, subscripts, attribute accesses
     ['vararg', ('STAR test', lambda p: VarArg(p[1]))],
-    ['args', ('(arg|vararg) (COMMA (arg|vararg))*', reduce_list)],
+    ['kwvararg', ('STAR_STAR test', lambda p: KeywordVarArg(p[1]))],
+    ['args', ('(arg|vararg|kwvararg) (COMMA (arg|vararg|kwvararg))*', reduce_list)],
     # Since the trailer rules don't have access to the left-hand side, return lambdas
     ['call', ('LPAREN [args] RPAREN', lambda p: lambda expr: Call(expr, p[1] or []))],
     ['getitem', ('LBRACKET subscript RBRACKET', lambda p: p[1])],

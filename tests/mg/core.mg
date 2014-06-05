@@ -69,6 +69,10 @@ assert kwargs3(5, 0, 1, 2, x=0) == 5
 assert kwargs4(3, x=5, y=6, z=2) == 16
 assert kwargs5(a=0, b=1, c=2, x=3) == 'abc3'
 
+kw_dict = {'a': 1, 'b': 2, 'c': 3}
+def pass_kwparams(**x): return x
+assert pass_kwparams(**kw_dict) == kw_dict
+
 # Test lambda lifting--static closures mean variables capture value at time of
 # definition
 items = list(range(4))

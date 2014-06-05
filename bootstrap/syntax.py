@@ -751,6 +751,13 @@ class KeywordArg(Node):
     def repr(self, ctx):
         return '%s=%s' % (self.name, self.expr.repr(ctx))
 
+@node('&expr')
+class KeywordVarArg(Node):
+    def eval(self, ctx):
+        return self.expr.eval(ctx)
+    def repr(self, ctx):
+        return '**%s' % self.expr.repr(ctx)
+
 @node('&fn, *args')
 class Call(Node):
     def eval(self, ctx):
@@ -762,6 +769,15 @@ class Call(Node):
                 args.extend(list(a.eval(ctx).iter(ctx)))
             elif isinstance(a, KeywordArg):
                 kwargs[a.name] = a.eval(ctx)
+            elif isinstance(a, KeywordVarArg):
+                kwdict = a.eval(ctx)
+                if not isinstance(kwdict, Dict):
+                    kwdict.error('keyword dictionary argument must be a '
+                        'dictionary', ctx=ctx)
+                for k, v in kwdict.items.items():
+                    if not isinstance(k, String):
+                        k.error('all keyword arguments must be strings', ctx=ctx)
+                    kwargs[k.value] = v
             else:
                 args.append(a.eval(ctx))
         ctx.current_node = self
