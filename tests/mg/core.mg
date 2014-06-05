@@ -53,6 +53,11 @@ def kwargs2(*items, x=3):
     return sum(items, 0) * x
 def kwargs3(base, *items, x=3):
     return sum(items, 0) * x + base
+def kwargs4(init, **kwparams):
+    return sum(kwparams.values(), init)
+def kwargs5(x=3, **kwparams):
+    assert 'x' not in kwparams
+    return sum(sorted(kwparams.keys()), '') + str(x)
 assert kwargs0() == 4
 assert kwargs0(x=0) == 0
 assert kwargs1(2) == 8
@@ -61,6 +66,8 @@ assert kwargs2(0, 1, 2) == 9
 assert kwargs2(0, 1, 2, x=1) == 3
 assert kwargs3(5, 0, 1, 2) == 14
 assert kwargs3(5, 0, 1, 2, x=0) == 5
+assert kwargs4(3, x=5, y=6, z=2) == 16
+assert kwargs5(a=0, b=1, c=2, x=3) == 'abc3'
 
 # Test lambda lifting--static closures mean variables capture value at time of
 # definition

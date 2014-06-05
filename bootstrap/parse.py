@@ -191,9 +191,7 @@ rule_table += [
 @libparse.rule_fn(rule_table,
     'if_stmt', 'IF test block (ELIF test block)* [ELSE block]')
 def parse_if_stmt(p):
-    else_block = Block([], info=p.get_info(0))
-    if p[4]:
-        else_block = p[4][1]
+    else_block = p[4][1] if p[4] else Block([], info=p.get_info(0))
     for elif_stmt in reversed(p[3]):
         else_block = IfElse(elif_stmt[1], elif_stmt[2], else_block)
     return IfElse(p[1], p[2], else_block)
@@ -204,28 +202,36 @@ def parse_param(p):
     return [p[0], p[1][1] if p[1] else None, p[2][1] if p[2] else None]
 
 rule_table += [
-    ['param', ('STAR IDENTIFIER', lambda p: StarParams(p[1], info=p.get_info(0)))],
+    ['param', ('STAR IDENTIFIER', lambda p: VarParams(p[1], info=p.get_info(0))),
+        ('STAR_STAR IDENTIFIER', lambda p: KeywordVarParams(p[1], info=p.get_info(0)))],
     ['param_list', ('param (COMMA param)*', reduce_list)],
 ]
 
 @libparse.rule_fn(rule_table, 'params', '[LPAREN [param_list] RPAREN]')
 def parse_params(p):
-    params, types, starparams, kwparams = [], [], None, []
+    params, types, var_params, kwparams, kw_var_params = [], [], None, [], None
     if p[0] and p[0][1]:
         for item in p[0][1]:
-            if isinstance(item, StarParams):
-                assert not starparams
+            if isinstance(item, VarParams):
+                assert not var_params
                 assert not kwparams
-                starparams = item.name
+                assert not kw_var_params
+                var_params = item.name
+            elif isinstance(item, KeywordVarParams):
+                kw_var_params = item.name
             elif item[2]:
+                assert not kw_var_params
+                # XXX no typed keyword arguments yet
                 assert not item[1]
                 kwparams.append(KeywordArg(item[0], item[2]))
             else:
-                assert not starparams
+                assert not var_params
                 assert not kwparams
+                assert not kw_var_params
                 params.append(item[0])
                 types.append(item[1] or None_(info=NULL_INFO))
-    return Params(params, types, starparams, kwparams, info=NULL_INFO)
+    return Params(params, types, var_params, kwparams, kw_var_params,
+        info=NULL_INFO)
 
 # Function/class defs
 rule_table += [

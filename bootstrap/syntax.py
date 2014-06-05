@@ -770,18 +770,21 @@ class Call(Node):
         return '%s(%s)' % (self.fn.repr(ctx), ', '.join(s.repr(ctx) for s in self.args))
 
 @node('name')
-class StarParams(Node):
-    def repr(self, ctx):
-        return '*%s' % self.name
+class VarParams(Node):
+    pass
 
-@node('params, *types, star_params, *kwparams')
+@node('name')
+class KeywordVarParams(Node):
+    pass
+
+@node('params, *types, var_params, *kwparams, kw_var_params')
 class Params(Node):
     def specialize(self, ctx):
         self.type_evals = [t.eval(ctx) for t in self.types]
         self.keyword_evals = {p.name: p.eval(ctx) for p in self.kwparams}
         return self
     def bind(self, obj, ctx, args, kwargs):
-        if self.star_params:
+        if self.var_params:
             if len(args) < len(self.params):
                 self.error('wrong number of arguments to %s, '
                 'expected at least %s' % (obj.name, len(self.params)), ctx=ctx)
@@ -799,19 +802,29 @@ class Params(Node):
             if not isinstance(t, None_):
                 check_obj_type(self, 'argument', ctx, a, t)
             args += [(p, a)]
-        if self.star_params:
-            args += [(self.star_params, var_args)]
+
+        # Bind var args
+        if self.var_params:
+            args += [(self.var_params, var_args)]
 
         # Bind keyword arguments
         for arg in kwargs:
-            if arg not in self.keyword_evals:
+            if arg not in self.keyword_evals and not self.kw_var_params:
                 self.error('got unexpected keyword argument \'%s\'' % arg, ctx=ctx)
 
+        # Copy the kwargs, since we're going to mutate it
+        kwargs = kwargs.copy()
         for kwparam in self.kwparams:
             if kwparam.name in kwargs:
                 args += [(kwparam.name, kwargs[kwparam.name])]
+                del kwargs[kwparam.name]
             else:
                 args += [(kwparam.name, self.keyword_evals[kwparam.name])]
+
+        # Bind var args
+        if self.kw_var_params:
+            kwargs = {String(k, info=self): v for k, v in kwargs.items()}
+            args += [(self.kw_var_params, Dict(kwargs, info=self))]
 
         return args
     def repr(self, ctx):
@@ -821,15 +834,21 @@ class Params(Node):
                 params.append('%s: %s' % (p, t.str(ctx)))
             else:
                 params.append(p)
-        if self.star_params:
-            params += ['*%s' % self.star_params]
+        if self.var_params:
+            params.append('*%s' % self.var_params)
+        for param in self.kwparams:
+            params.append(param.str(ctx))
+        if self.kw_var_params:
+            params.append('**%s' % self.kw_var_params)
         return ', '.join(params)
     def __iter__(self):
         yield from self.params
-        if self.star_params:
-            yield self.star_params
+        if self.var_params:
+            yield self.var_params
         for p in self.kwparams:
             yield p.name
+        if self.kw_var_params:
+            yield self.kw_var_params
 
 @node('&expr')
 class Scope(Node):
@@ -981,7 +1000,7 @@ class BuiltinClass(Class):
             fn = getattr(self.__class__, method)
             stmts.append(Assignment(Target(method, info=builtin_info),
                 BuiltinFunction(method, fn, info=builtin_info)))
-        super().__init__(name, Params([], [], None, [], info=builtin_info),
+        super().__init__(name, Params([], [], None, [], None, info=builtin_info),
             Block(stmts, info=builtin_info))
 
 class BuiltinNone(BuiltinClass):
