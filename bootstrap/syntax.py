@@ -1,5 +1,7 @@
 import copy
 
+import sprdpl.lex
+
 # This is a list, since order matters--backslashes must come first!
 inv_str_escapes = [
     ['\\', '\\\\'],
@@ -63,12 +65,6 @@ class Context:
         else:
             result.append('in module %s' % self.name)
         return result
-
-# Info means basically filename/line number, used for reporting errors
-class Info:
-    def __init__(self, filename, lineno):
-        self.filename = filename
-        self.lineno = lineno
 
 class ProgramError(Exception):
     def __init__(self, stack_trace, msg):
@@ -974,7 +970,7 @@ class Class(Node):
     def __hash__(self):
         return hash((self.name, self.params, self.block))
 
-builtin_info = Info('__builtins__', 0)
+builtin_info = sprdpl.lex.Info('__builtins__', 1)
 
 class BuiltinClass(Class):
     def __init__(self, name):
