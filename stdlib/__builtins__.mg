@@ -113,9 +113,9 @@ def sum(iterable, base):
         base = base + item
     return base
 
-def partial(fn, *args1):
-    def applied(*args2):
-        return fn(*args1, *args2)
+def partial(fn, *args1, **kwargs1):
+    def applied(*args2, **kwargs2):
+        return fn(*args1, *args2, **kwargs1, **kwargs2)
     return applied
 
 # XXX would be nice to use macro magic to add the name of the function as an
@@ -124,8 +124,8 @@ def fixed_point(fn):
     def recurse(x):
         return x(x)
     def call(c):
-        def inner(*args):
-            return c(c)(*args)
+        def inner(*args, **kwargs):
+            return c(c)(*args, **kwargs)
         return partial(fn, inner)
     return recurse(call)
 
