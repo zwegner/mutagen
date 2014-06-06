@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
+import os
 import subprocess
 
-files = subprocess.check_output(['git', 'ls-files']).decode('utf8').splitlines()
-
-groups = ['bootstrap', 'stdlib', 'tests', 'compiler', 'benchmarks', '']
+groups = ['bootstrap/sprdpl', 'bootstrap', 'stdlib', 'tests', 'compiler', 'benchmarks', '']
 group_dict = {k: [] for k in groups}
 
-for f in files:
-    for g in groups:
-        if f.startswith(g):
-            group_dict[g].append(f)
-            break
+def get_files_recursively(root):
+    env = {'GIT_DIR': '%s/.git' % root}
+    files = subprocess.check_output(['git', 'ls-files'], env=env).decode('utf8').splitlines()
+
+    for f in files:
+        if os.path.isdir(f):
+            get_files_recursively(f)
+        else:
+            for g in groups:
+                path = os.path.normpath('%s/%s' % (root, f))
+                if path.startswith(g):
+                    group_dict[g].append(path)
+                    break
+
+get_files_recursively('.')
 
 total = [0, 0]
 for group, files in sorted(group_dict.items()):
