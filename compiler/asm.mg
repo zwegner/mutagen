@@ -18,12 +18,11 @@ class Register(index: int):
         }[size]
         if self.index >= 8:
             return 'r{}{}'.format(self.index, suffix)
-        else:
-            if size == 8:
-                if self.index & 4:
-                    return names[self.index + 1] + 'l'
-                return names[self.index + 1][0] + 'l'
-            return prefix + names[self.index + 1]
+        elif size == 8:
+            if self.index & 4:
+                return names[self.index + 1] + 'l'
+            return names[self.index + 1][0] + 'l'
+        return prefix + names[self.index + 1]
 
 class Address(base: int, scale: int, index: int, disp: int):
     def to_str(self, use_size_prefix, size):

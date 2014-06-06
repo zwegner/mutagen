@@ -62,8 +62,8 @@ def create_elf_file(code, labels, global_labels):
 
     reserved_section = [0] * 64
 
-    elf_file = elf_header + reserved_section
-    data_offset = len(elf_file) + 64 * len(sections)
+    elf_headers = elf_header + reserved_section
+    data_offset = len(elf_headers) + 64 * len(sections)
     elf_data = []
     for [i, [data, section_type]] in enumerate(zip(sections, section_types)):
         if section_type == 2: # .symtab has special handling
@@ -82,8 +82,7 @@ def create_elf_file(code, labels, global_labels):
             alignment, # address alignment
             size # entry size
         )
-        elf_file = elf_file + section_header
+        elf_headers = elf_headers + section_header
         elf_data = elf_data + data
 
-    elf_file = elf_file + elf_data
-    return elf_file
+    return elf_headers + elf_data

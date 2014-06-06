@@ -179,7 +179,6 @@ def get_block_dominance(start, preds, succs):
                     new_idom = intersect(doms, new_idom, p)
             if doms[b] != new_idom:
                 doms = doms + {b: new_idom}
-                assert doms[b] == new_idom
                 changed = True
     return doms
 

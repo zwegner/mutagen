@@ -119,17 +119,10 @@ def process_newlines(tokens):
             yield t
 
 def process_whitespace(tokens):
-    after_newline = 1
-    i = 0
+    after_newline = True
     # HACK until we have some sliding-window-type generator
     tokens = list(tokens)
-    while i < len(tokens):
-        token = tokens[i]
-        if i < len(tokens) - 1:
-            next_token = tokens[i+1]
-        else:
-            next_token = None
-
+    for [token, next_token] in zip(tokens, tokens[1:] + [None]):
         # Check whitespace only at the beginning of lines
         if after_newline:
             # Don't generate indent/dedent on empty lines
@@ -146,8 +139,6 @@ def process_whitespace(tokens):
             yield token
 
         after_newline = (token.type == 'NEWLINE')
-
-        i = i + 1
 
 def process_indentation(tokens):
     ws_stack = [0]
