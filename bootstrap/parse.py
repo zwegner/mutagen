@@ -146,7 +146,7 @@ rule_table += [
     ['for_assn_base', 'IDENTIFIER', ('LBRACKET for_assn_list RBRACKET',
         lambda p: p[1])],
     ['for_assn_list', ('for_assn_base (COMMA for_assn_base)*', reduce_list)],
-    ['for_assn', ('for_assn_base', lambda p: Target(p[0], info=NULL_INFO))],
+    ['for_assn', ('for_assn_base', lambda p: Target([p[0]], info=NULL_INFO))],
     ['comp_iter', ('FOR for_assn IN test', lambda p: CompIter(p[1], p[3]))],
 
     # Statements
@@ -164,7 +164,7 @@ rule_table += [
     ['assert', ('ASSERT test', lambda p: Assert(p[1]))],
 ]
 
-@libparse.rule_fn(rule_table, 'expr_stmt', 'test [EQUALS test]')
+@libparse.rule_fn(rule_table, 'expr_stmt', 'test (EQUALS test)*')
 def parse_expr_stmt(p):
     def deconstruct_lhs(lhs):
         if isinstance(lhs, Identifier):
@@ -173,7 +173,10 @@ def parse_expr_stmt(p):
             return [deconstruct_lhs(i) for i in lhs]
         lhs.error('invalid lhs for assignment')
     if p[1]:
-        return Assignment(Target(deconstruct_lhs(p[0]), info=NULL_INFO), p[1][1])
+        all_items = reduce_list(p)
+        [targets, expr] = [all_items[:-1], all_items[-1]]
+        return Assignment(Target([deconstruct_lhs(t) for t in targets],
+            info=NULL_INFO), expr)
     return p[0]
 
 rule_table += [
@@ -241,7 +244,7 @@ rule_table += [
     ['lambda', ('LAMBDA params return_type block',
         lambda p: Scope(Function('lambda', p[1], p[2], p[3], info=p.get_info(0))))],
     ['class_stmt', ('CLASS IDENTIFIER params block',
-        lambda p: Assignment(Target(p[1], info=p.get_info(1)),
+        lambda p: Assignment(Target([p[1]], info=p.get_info(1)),
             Scope(Class(p[1], p[2], p[3], info=p.get_info(0)))))],
 ]
 
@@ -251,7 +254,7 @@ def parse_def_stmt(p):
     fn = Scope(Function(p[2], p[3], p[4], p[5], info=p.get_info(1)))
     for dec in p[0]:
         fn = Call(dec, [fn])
-    return Assignment(Target(p[2], info=p.get_info(2)), fn)
+    return Assignment(Target([p[2]], info=p.get_info(2)), fn)
 
 # Imports
 def parse_import(p, module, names, path):
@@ -303,7 +306,7 @@ def parse(path, import_builtins=True, ctx=None):
     new_block = []
 
     for k, v in mg_builtins.builtins.items():
-        new_block.append(Assignment(Target(k, info=builtin_info), v))
+        new_block.append(Assignment(Target([k], info=builtin_info), v))
 
     # Recursively parse imports. Be sure to copy the all_imports since
     # we'll be clearing and modifying it in each child parsing pass.

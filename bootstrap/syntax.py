@@ -534,7 +534,7 @@ class Assert(Node):
     def repr(self, ctx):
         return 'assert %s' % self.expr.repr(ctx)
 
-@node('target')
+@node('targets')
 class Target(Node):
     def assign_values(self, ctx, rhs):
         def _assign_values(ctx, lhs, rhs):
@@ -548,7 +548,8 @@ class Target(Node):
                     _assign_values(ctx, lhs_i, rhs_i)
             else:
                 assert False
-        return _assign_values(ctx, self.target, rhs)
+        for target in self.targets:
+            _assign_values(ctx, target, rhs)
 
     def get_stores(self):
         def _get_stores(target):
@@ -559,7 +560,7 @@ class Target(Node):
             for t in target:
                 stores |= _get_stores(t)
             return stores
-        return _get_stores(self.target)
+        return _get_stores(self.targets)
 
     def repr(self, ctx):
         return str(self.target)
@@ -1014,7 +1015,7 @@ class BuiltinClass(Class):
         stmts = []
         for method in methods:
             fn = getattr(self.__class__, method)
-            stmts.append(Assignment(Target(method, info=builtin_info),
+            stmts.append(Assignment(Target([method], info=builtin_info),
                 BuiltinFunction(method, fn, info=builtin_info)))
         super().__init__(name, Params([], [], None, [], None, info=builtin_info),
             Block(stmts, info=builtin_info))
