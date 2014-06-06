@@ -108,7 +108,7 @@ def parse_power(p):
     for trailer in p[1]:
         r = trailer(r)
     if p[2]:
-        r = BinaryOp('**', p[2][1])
+        r = BinaryOp('**', r, p[2][1])
     return r
 
 rule_table += [
