@@ -118,8 +118,7 @@ def gen_insts(blocks):
 
 # Determine all predecessor and successor blocks
 def get_block_linkage(blocks):
-    succs = {i: [] for i in range(len(blocks))}
-    preds = {i: [] for i in range(len(blocks))}
+    succs = preds = {i: [] for i in range(len(blocks))}
 
     for [i, block] in enumerate(blocks):
         last_inst = block.insts[-1]

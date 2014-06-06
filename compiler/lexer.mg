@@ -103,9 +103,7 @@ token_map = [
 ]
 
 def process_newlines(tokens):
-    braces = 0
-    brackets = 0
-    parens = 0
+    braces = brackets = parens = 0
     for t in tokens:
         if t.type == 'LBRACE':     braces = braces + 1
         elif t.type == 'RBRACE':   braces = braces - 1

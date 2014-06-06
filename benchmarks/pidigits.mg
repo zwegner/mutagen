@@ -7,11 +7,8 @@
 
 N = 10000
 
-i = 0
-k = 0
-ns = 0
-k1 = 1
-[n, a, d, t, u] = [1, 0, 1, 0, 0]
+i = k = ns = a = t = u = 0
+k1 = n = d = 1
 while True:
     k = k + 1
     t = n << 1
