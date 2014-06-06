@@ -563,7 +563,11 @@ class Target(Node):
         return _get_stores(self.targets)
 
     def repr(self, ctx):
-        return str(self.target)
+        def target_repr(target):
+            if isinstance(target, str):
+                return target
+            return '[%s]' % ', '.join(map(target_repr, target))
+        return ' = '.join(map(target_repr, self.targets))
 
 @node('&target, &rhs')
 class Assignment(Node):
@@ -644,7 +648,9 @@ class IfElse(Node):
         yield from block.eval_gen(ctx)
     def repr(self, ctx):
         else_block = ''
-        if self.else_block:
+        if isinstance(self.else_block, IfElse):
+            else_block = '\nel%s' % self.else_block.repr(ctx)
+        elif isinstance(self.else_block, Block) and self.else_block.stmts:
             else_block = '\nelse%s' % self.else_block.repr(ctx)
         return 'if %s%s%s' % (self.expr.repr(ctx), self.if_block.repr(ctx), else_block)
 
