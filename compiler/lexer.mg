@@ -95,6 +95,7 @@ token_map = [
     ['SHIFT_LEFT',      '<<'],
     ['SHIFT_RIGHT',     '>>'],
     ['STAR',            '\\*'],
+    ['STAR_STAR',       '\\*\\*'],
     ['WHITESPACE',      '[ \t]+'],
     ['IDENTIFIER',      '[a-zA-Z_][a-zA-Z0-9_]*', t_identifier],
     ['INTEGER',         '((0x[0-9a-fA-F]*)|([0-9]+))', t_integer],
