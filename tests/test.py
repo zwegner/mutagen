@@ -55,13 +55,14 @@ for test in py_tests:
     if py_output != mg_output:
         fails += 1
         print('PYTHON TEST %s FAILED!' % test)
-        with tempfile.NamedTemporaryFile() as f1:
-            f1.write(py_output)
-            f1.flush()
-            with tempfile.NamedTemporaryFile() as f2:
-                f2.write(mg_output)
-                f2.flush()
-                subprocess.call(['diff', '-a', f1.name, f2.name])
+        if py_output and mg_output:
+            with tempfile.NamedTemporaryFile() as f1:
+                f1.write(py_output)
+                f1.flush()
+                with tempfile.NamedTemporaryFile() as f2:
+                    f2.write(mg_output)
+                    f2.flush()
+                    subprocess.call(['diff', '-a', f1.name, f2.name])
     else:
         passes += 1
 
