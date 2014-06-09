@@ -104,6 +104,14 @@ def fib(f, x):
 
 assert list(map(fib, range(10))) == [1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
 
+# Test sorted
+test_sorted_list = [8, 1, -7, 3, 5, 9, 2, -10, -2, 0]
+assert list(sorted(test_sorted_list)) == [-10, -7, -2, 0, 1, 2, 3, 5, 8, 9]
+assert list(sorted(test_sorted_list, key=abs)) == [
+    0, 1, 2, -2, 3, 5, -7, 8, 9, -10]
+assert list(sorted(test_sorted_list, key=lambda(x) { return -x // 4; })) == [
+    9, 8, 5, 1, 3, 2, -2, 0, -7, -10]
+
 # Test set
 items_1 = [0, 1, 2, 3, 4, {'a': 'b'}]
 items_2 = [5, 6, 7, 8, 9, {'c': 'd'}]
