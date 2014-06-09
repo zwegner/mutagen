@@ -113,6 +113,11 @@ def sum(iterable, base):
         base = base + item
     return base
 
+def abs(x: int):
+    if x < 0:
+        return -x
+    return x
+
 def partial(fn, *args1, **kwargs1):
     def applied(*args2, **kwargs2):
         return fn(*args1, *args2, **kwargs1, **kwargs2)
