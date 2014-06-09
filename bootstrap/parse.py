@@ -336,11 +336,14 @@ def parse(path, import_builtins=True, ctx=None):
     module_cache[path] = new_block[:]
     return new_block
 
-def interpret(path):
+def interpret(path, print_program=False):
     ctx = Context('__main__', None, None)
     block = parse(path, ctx=ctx)
     preprocess_program(ctx, block)
     try:
+        if print_program:
+            for expr in block:
+                print(expr.str(ctx))
         for expr in block:
             expr.eval(ctx)
     except ProgramError as e:
@@ -350,4 +353,9 @@ def interpret(path):
         print(e.msg, file=sys.stderr)
         sys.exit(1)
 
-interpret(sys.argv[1])
+print_program = False
+if sys.argv[1] == '--print':
+    print_program = True
+    sys.argv.pop(1)
+
+interpret(sys.argv[1], print_program=print_program)
