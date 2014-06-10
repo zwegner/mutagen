@@ -4,8 +4,32 @@ def ignore_token_fn(t):
     return None
 
 # A token from the input stream
-class Token(type, value):
+class Token(type, value, info=None):
     pass
+
+class Info(filename, lineno):
+    pass
+
+# XXX recursion
+class LexerContext(tokens, pos=0):
+    def peek(self):
+        if self.pos >= len(self.tokens):
+            return None
+        return self.tokens[self.pos]
+
+    def next(self):
+        token = self.peek()
+        return [type(self)(self.tokens, self.pos + 1), token]
+
+    def accept(self, t):
+        if self.peek() and self.peek().type == t:
+            return self.next()
+        return [self, None]
+
+    def expect(self, t):
+        if not self.peek() or self.peek().type != t:
+            assert False
+        return self.next()
 
 class Lexer:
     def __init__(token_list):
@@ -21,19 +45,24 @@ class Lexer:
         token_match = re.compile('|'.join(token_matchers)).match
         return {'token_match': token_match, 'token_fns': token_fns}
 
-    def tokenize_input(self, input):
-        while input:
-            m = self.token_match(input)
+    def lex_input(self, text, filename):
+        lineno = 1
+        while text:
+            m = self.token_match(text)
             if m != None:
                 type = m.get_last_group()
             else:
-                error('Error lexing input: {}...'.format(input[:40]))
+                error('Error lexing input: {}...'.format(text[:40]))
 
             [start, end] = m.span(0)
-            [match, input] = [input[:end], input[end:]]
+            [match, text] = [text[:end], text[end:]]
 
-            token = Token(type, match)
+            token = Token(type, match, info=Info(filename, lineno))
             if type in self.token_fns:
                 token = self.token_fns[type](token)
             if token != None:
                 yield token
+            lineno = lineno + match.count('\n')
+
+    def input(self, text, filename=None):
+        return LexerContext(list(self.lex_input(text, filename)))

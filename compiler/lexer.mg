@@ -169,10 +169,10 @@ def process_indentation(tokens):
         ws_stack = ws_stack[:len(ws_stack) - 1]
         yield liblex.Token('DEDENT', '')
 
-tokenizer = liblex.Lexer(token_map)
+lexer = liblex.Lexer(token_map)
 
-def lex_input(input):
-    tokens = tokenizer.tokenize_input(input)
+def lex_input(input, filename=None):
+    tokens = lexer.lex_input(input, filename)
     tokens = process_newlines(tokens)
     tokens = process_whitespace(tokens)
     tokens = process_indentation(tokens)
