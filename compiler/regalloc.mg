@@ -67,28 +67,33 @@ def gen_insts(blocks):
             elif args:
                 arg_regs = [reg_assns[i] for i in args]
 
-                # Return any now-unused sources to the free set.
-                for [arg, dest] in list(zip(args, arg_regs))[1:]:
-                    if isinstance(dest, asm.Register) and arg not in live_set:
-                        free_regs = {dest.index} | free_regs
-
+                # Handle destructive ops first, which might need a move into
+                # a new register. Do this before we return any registers to the
+                # free set, since the inserted move comes before the instruction.
+                destructive = False
                 if (asm.is_destructive_op(opcode) and
                     isinstance(arg_regs[0], asm.Register)):
+                    destructive = True
                     # See if we can clobber the register. If not, copy it
                     # into another register and change the assignment so
                     # later ops can see it.
                     # XXX This can be done in two ways, but moreover this
-                    # should probably done during scheduling with spill/fill.
+                    # should probably be done during scheduling with spill/fill.
                     # This also needs to interact with coalescing, when we have that.
                     if args[0] in live_set:
-                        # XXX make sure we don't use one of the registers that
-                        # become free after this instruction
                         [free_regs, reg] = free_regs.pop()
                         insts = insts + [asm.Instruction('mov64',
                             asm.Register(reg), arg_regs[0])]
                     else:
                         reg = arg_regs[0].index
-                elif asm.needs_register(opcode):
+
+                # Return any now-unused sources to the free set. We create a new
+                # set of free registers, since
+                for [arg, dest] in list(zip(args, arg_regs))[1:]:
+                    if isinstance(dest, asm.Register) and arg not in live_set:
+                        free_regs = {dest.index} | free_regs
+
+                if not destructive and asm.needs_register(opcode):
                     # Non-destructive ops need a register assignment for their
                     # implicit destination
                     # First, check if this operand is a live out of the block,
