@@ -7,7 +7,7 @@ def ignore_token_fn(t):
 class Token(type, value):
     pass
 
-class Tokenizer:
+class Lexer:
     def __init__(token_list):
         token_matchers = []
         if isinstance(token_list, dict):
