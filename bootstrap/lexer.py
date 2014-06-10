@@ -184,9 +184,8 @@ class Lexer(liblex.Lexer):
     def __init__(self):
         super().__init__(token_map, skip)
 
-    def input(self, input, filename=None):
+    def input(self, text, filename=None):
+        tokens = self.lex_input(text, filename)
         # Big ass chain of generators
-        tokenizer_ctx = super().input(input, filename=filename)
-        tokens = list(process_indentation(process_whitespace(process_newlines(
-            tokenizer_ctx.tokens))))
+        tokens = list(process_indentation(process_whitespace(process_newlines(tokens))))
         return liblex.LexerContext(tokens)
