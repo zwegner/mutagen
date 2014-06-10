@@ -1036,6 +1036,9 @@ class BuiltinStr(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return String(arg.str(ctx), info=arg)
+    def count(obj, ctx, args):
+        [arg, counted] = args
+        return Integer(arg.value.count(counted.value), info=arg)
     def islower(obj, ctx, args):
         [arg] = args
         return Boolean(arg.value.islower(), info=arg)
