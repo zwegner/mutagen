@@ -5,21 +5,28 @@ def ignore_token_fn(t):
 
 # A token from the input stream
 class Token(type, value, info=None):
-    pass
+    # XXX meh, shadowing
+    type_ = type
+    # XXX recursion
+    def copy(self, type=None, value=None, info=None):
+        if type == None: type = self.type
+        if value == None: value = self.value
+        if info == None: info = self.info
+        return type_(self)(type, value, info=info)
 
 class Info(filename, lineno):
     pass
 
-# XXX recursion
 class LexerContext(tokens, pos=0):
     def peek(self):
         if self.pos >= len(self.tokens):
             return None
         return self.tokens[self.pos]
 
+    # XXX recursion
     def next(self):
         token = self.peek()
-        return [type(self)(self.tokens, self.pos + 1), token]
+        return [type(self)(self.tokens, pos=self.pos + 1), token]
 
     def accept(self, t):
         if self.peek() and self.peek().type == t:
