@@ -84,6 +84,8 @@ class Node:
     def __ne__(self, other):
         return Boolean(not self.__eq__(other).value, info=self)
     def bool(self, ctx):
+        if self.len is Node.len:
+            return True
         return self.len(ctx) > 0
     def len(self, ctx):
         self.error('__len__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
@@ -396,8 +398,11 @@ class Object(Node):
     def __hash__(self):
         return sum(hash(k) * hash(v) for k, v in self.items.items())
     def bool(self, ctx):
-        return (self.overload(ctx, '__bool__', []) or
-                self.dispatch(ctx, '__len__', [])).value
+        result = (self.overload(ctx, '__bool__', []) or
+                self.overload(ctx, '__len__', []))
+        if not result:
+            return True
+        return result.value
     def len(self, ctx):
         return self.dispatch(ctx, '__len__', []).value
     def str(self, ctx):
