@@ -95,6 +95,18 @@ class Node:
         self.error('__repr__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
     def get_attr(self, ctx, attr):
         self.error('__getattr__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
+    def get_item(self, ctx, index):
+        try:
+            item = self[index]
+        except KeyError:
+            self.error('key not in dict: %s' % index.repr(ctx), ctx=ctx)
+        except IndexError:
+            self.error('list index out of range: %s' % index.repr(ctx), ctx=ctx)
+        except TypeError:
+            self.error('__getitem__ unimplemented for: %s' % get_type_name(ctx, self), ctx=ctx)
+        if item is None:
+            self.error('bad arg for get_item: %s' % index.repr(ctx), ctx=ctx)
+        return item
     def iter(self, ctx):
         return iter(self)
     def overload(self, ctx, attr, args):
@@ -421,6 +433,8 @@ class Object(Node):
                 self.base_repr(), info=self)).value
     def iter(self, ctx):
         return self.dispatch(ctx, '__iter__', [])
+    def get_item(self, ctx, item):
+        return self.dispatch(ctx, '__getitem__', [item])
     def overload(self, ctx, attr, args):
         # Operator overloading
         cls = self.get_attr(ctx, '__class__')
@@ -527,15 +541,7 @@ class GetItem(Node):
     def eval(self, ctx):
         obj = self.obj.eval(ctx)
         index = self.item.eval(ctx)
-        try:
-            item = obj[index]
-        except KeyError:
-            self.error('key not in dict: %s' % index.repr(ctx), ctx=ctx)
-        except IndexError:
-            self.error('list index out of range: %s' % index.repr(ctx), ctx=ctx)
-        if item is None:
-            self.error('bad arg for getitem: %s' % index.repr(ctx), ctx=ctx)
-        return item
+        return obj.get_item(ctx, index)
     def repr(self, ctx):
         return '%s[%s]' % (self.obj.repr(ctx), self.item.repr(ctx))
 
