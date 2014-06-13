@@ -102,8 +102,8 @@ class Node:
     def eval_call(self, ctx, args, kwargs):
         self.error('__call__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
 
-ARG_REG, ARG_EDGE, ARG_EDGE_LIST = list(range(3))
-arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
+ARG_REG, ARG_EDGE, ARG_EDGE_LIST, ARG_EDGE_DICT = range(4)
+arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST, '#': ARG_EDGE_DICT}
 
 # Weird decorator: a given arg string represents a standard form for arguments
 # to Node subclasses. We use these notations:
@@ -133,6 +133,9 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
                     assert isinstance(v, Node)
                 elif arg_type == ARG_EDGE_LIST:
                     assert isinstance(v, list) and all(isinstance(i, Node) for i in v)
+                elif arg_type == ARG_EDGE_DICT:
+                    assert isinstance(v, dict) and all(isinstance(key, Node) and
+                        isinstance(value, Node) for key, value in v.items())
                 setattr(self, arg_name, v)
 
             if info is None:
@@ -163,9 +166,12 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
                     edge = getattr(self, arg_name)
                     yield from edge.iterate_tree()
                 elif arg_type == ARG_EDGE_LIST:
-                    edge_list = getattr(self, arg_name)
-                    for edge in edge_list:
+                    for edge in getattr(self, arg_name):
                         yield from edge.iterate_tree()
+                elif arg_type == ARG_EDGE_DICT:
+                    for k, v in getattr(self, arg_name).items():
+                        yield from k.iterate_tree()
+                        yield from v.iterate_tree()
 
         # If the compare flag is set, we delegate the comparison to the
         # Python object in the 'value' attribute
@@ -349,7 +355,7 @@ class List(Node):
     def __hash__(self):
         return hash(tuple(self.items))
 
-@node('items')
+@node('#items')
 class Dict(Node):
     def eval(self, ctx):
         return Dict({k.eval(ctx): v.eval(ctx) for k, v in
