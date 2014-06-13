@@ -99,6 +99,8 @@ class Node:
         return iter(self)
     def overload(self, ctx, attr, args):
         return None
+    def eval_call(self, ctx, args, kwargs):
+        self.error('__call__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
 
 ARG_REG, ARG_EDGE, ARG_EDGE_LIST = list(range(3))
 arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST}
