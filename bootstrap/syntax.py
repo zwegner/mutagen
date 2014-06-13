@@ -953,6 +953,8 @@ class Function(Node):
                 check_obj_type(self, 'return value', ctx, r.value, self.rt_eval)
             return r.value
         return None_(info=self)
+    def __eq__(self, other):
+        return Boolean(self is other, info=self)
     def repr(self, ctx):
         ret_str = ' -> %s' % self.return_type.repr(ctx) if self.return_type else ''
         return 'def %s(%s)%s%s' % (self.name, self.params.repr(ctx),
