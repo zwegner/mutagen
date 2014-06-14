@@ -73,6 +73,11 @@ kw_dict = {'a': 1, 'b': 2, 'c': 3}
 def pass_kwparams(**x): return x
 assert pass_kwparams(**kw_dict) == kw_dict
 
+# Test fat-arrow lambdas
+test_lambda = (x, y, exp=2) => x ** exp + y ** exp
+assert test_lambda(3, 4) == 25
+assert test_lambda(3, 4, exp=3) == 91
+
 # Test lambda lifting--static closures mean variables capture value at time of
 # definition
 items = list(range(4))

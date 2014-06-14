@@ -141,7 +141,7 @@ rule_table += [
     ['not_test', 'comparison', ('NOT not_test', lambda p: UnaryOp('not', p[1]))],
     ['and_test', ('not_test (AND not_test)*', reduce_binop)],
     ['or_test', ('and_test (OR and_test)*', reduce_binop)],
-    ['test', 'or_test|lambda'],
+    ['test', 'or_test|lambda|lambda_fatarrow'],
 
     ['for_assn_base', 'IDENTIFIER', ('LBRACKET for_assn_list RBRACKET',
         lambda p: p[1])],
@@ -241,6 +241,9 @@ def parse_params(p):
 rule_table += [
     ['decorator', ('AT test delims', lambda p: p[1])],
     ['return_type', ('[RARROW test]', lambda p: p[0][1] if p[0] else None)],
+    ['lambda_fatarrow', ('params RFATARROW test',
+        lambda p: Scope(Function('lambda', p[0], None,
+            Block([Return(p[2])], info=p.get_info(1)), info=p.get_info(1))))],
     ['lambda', ('LAMBDA params return_type block',
         lambda p: Scope(Function('lambda', p[1], p[2], p[3], info=p.get_info(0))))],
     ['class_stmt', ('CLASS IDENTIFIER params block',
