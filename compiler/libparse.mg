@@ -73,7 +73,7 @@ class Alternation(items):
 class Optional(item):
     def parse(self, fn_table, tokenizer):
         result = self.item.parse(fn_table, tokenizer)
-        return result or [None, None]
+        return result or [tokenizer, None, None]
     def __str__(self):
         return 'opt({})'.format(self.item)
 
@@ -120,7 +120,8 @@ def parse_rule_atom(parse_rule_expr, tokenizer):
     else:
         [tokenizer, token] = tokenizer.accept('LBRACKET')
         if token:
-            result = Optional(parse_rule_expr(parse_rule_expr, tokenizer))
+            [tokenizer, result] = parse_rule_expr(parse_rule_expr, tokenizer)
+            result = Optional(result)
             [tokenizer, _] = tokenizer.expect('RBRACKET')
         # Otherwise, it must be a regular identifier
         else:
@@ -168,7 +169,7 @@ rule_tokens = {
     'RPAREN':     '\\)',
     'STAR':       '\\*',
     'PLUS':       '\\+',
-    'WHITESPACE': [' ', lambda(p) { return None; }],
+    'WHITESPACE': [' ', (p) => None],
 }
 rule_lexer = liblex.Lexer(rule_tokens)
 
