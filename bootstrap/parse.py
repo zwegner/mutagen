@@ -239,7 +239,7 @@ def parse_params(p):
 
 # Function/class defs
 rule_table += [
-    ['decorator', ('AT test delims', lambda p: p[1])],
+    ['decorator', ('AT test (NEWLINE|SEMICOLON)+', lambda p: p[1])],
     ['return_type', ('[RARROW test]', lambda p: p[0][1] if p[0] else None)],
     ['lambda_fatarrow', ('params RFATARROW test',
         lambda p: Scope(Function('lambda', p[0], None,
