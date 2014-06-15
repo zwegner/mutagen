@@ -13,6 +13,8 @@ class Token(type, value, info=None):
         if value == None: value = self.value
         if info == None: info = self.info
         return type_(self)(type, value, info=info)
+    def __str__(self):
+        return 'Token({}, {}, info={})'.format(self.type, self.value, self.info)
 
 class Info(filename, lineno):
     pass
@@ -35,14 +37,14 @@ class LexerContext(tokens, pos=0):
 
     def expect(self, t):
         if not self.peek() or self.peek().type != t:
-            assert False
+            error('got {} instead of {}'.format('\n'.join(map(str, self.tokens[self.pos:self.pos+40])), t))
         return self.next()
 
 class Lexer:
     def __init__(token_list):
         token_matchers = []
         if isinstance(token_list, dict):
-            token_list = sorted(token_list, key=lambda(item){ return -len(item[1]); })
+            token_list = sorted(token_list, key=(item) => -len(item[1]))
         token_fns = {}
         for [k, v] in token_list:
             if isinstance(v, list):

@@ -171,9 +171,12 @@ def process_indentation(tokens):
 
 lexer = liblex.Lexer(token_map)
 
-def lex_input(input, filename=None):
-    tokens = lexer.lex_input(input, filename)
+def lex_input(text, filename=None):
+    tokens = lexer.lex_input(text, filename)
     tokens = process_newlines(tokens)
     tokens = process_whitespace(tokens)
     tokens = process_indentation(tokens)
     return tokens
+
+def input(text, filename=None):
+    return liblex.LexerContext(list(lex_input(text, filename=filename)))
