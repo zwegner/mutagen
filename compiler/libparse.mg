@@ -25,7 +25,7 @@ class Identifier(name: str):
             return [tokenizer, token.value, token.info]
         return None
     def __str__(self):
-        return '"%s"' % self.name
+        return '"{}"'.format(self.name)
 
 # Parse a rule repeated at least <min> number of times (used for * and + in EBNF)
 class Repeat(item, min=0):
@@ -40,7 +40,7 @@ class Repeat(item, min=0):
             return [tokenizer, results, None]
         return None
     def __str__(self):
-        return 'rep(%s)' % self.item
+        return 'rep({})'.format(self.item)
 
 # Parse a sequence of multiple consecutive rules
 class Sequence(items):
@@ -56,7 +56,7 @@ class Sequence(items):
             infos = infos + [info]
         return [tokenizer, results, infos]
     def __str__(self):
-        return 'seq(%s)' % ','.join(map(str, self.items))
+        return 'seq({})'.format(','.join(map(str, self.items)))
 
 # Parse one of a choice of multiple rules
 class Alternation(items):
@@ -67,7 +67,7 @@ class Alternation(items):
                 return result
         return None
     def __str__(self):
-        return 'alt(%s)' % ','.join(map(str, self.items))
+        return 'alt({})'.format(','.join(map(str, self.items)))
 
 # Either parse a rule or not
 class Optional(item):
@@ -75,7 +75,7 @@ class Optional(item):
         result = self.item.parse(fn_table, tokenizer)
         return result or [None, None]
     def __str__(self):
-        return 'opt(%s)' % self.item
+        return 'opt({})'.format(self.item)
 
 # Parse a and then call a user-defined function on the result
 class FnWrapper:
@@ -199,9 +199,9 @@ class Parser:
         prod = self.fn_table[self.start]
         result = prod.parse(self.fn_table, tokenizer)
         if not result:
-            error('bad parse near token %s' % tokenizer.peek())
+            error('bad parse near token {}'.format(tokenizer.peek()))
         [tokenizer, result, info] = result
         if tokenizer.peek() != None:
-            error('parser did not consume entire input, near token %s' %
-                tokenizer.peek())
+            error('parser did not consume entire input, near token {}'.format(
+                tokenizer.peek()))
         return result
