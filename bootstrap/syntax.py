@@ -673,6 +673,11 @@ class IfElse(Node):
             else_block = '\nelse%s' % self.else_block.repr(ctx)
         return 'if %s%s%s' % (self.expr.repr(ctx), self.if_block.repr(ctx), else_block)
 
+class CondExpr(IfElse):
+    def repr(self, ctx):
+        return '(%s if %s else %s)' % (self.if_block.repr(ctx), self.expr.repr(ctx),
+            self.else_block.repr(ctx))
+
 @node('&target, &expr, &block')
 class For(Node):
     def eval(self, ctx):

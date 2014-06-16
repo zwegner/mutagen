@@ -1,3 +1,11 @@
+# Test conditional expressions
+def test_cond_expr(cond, x, y):
+    return x if cond else y
+assert test_cond_expr(True, 1, 2) == 1
+assert test_cond_expr(False, 1, 2) == 2
+# Make sure they're parsed properly
+assert 0 and 0 if False else 1 or 0 if True else 0 and 1
+
 # Test dictionary iteration. This test needs all keys/values to have
 # commutative operations, so just use ints. Note that dictionary iteration
 # is different from Python so we have to compare against hardcoded results.

@@ -141,8 +141,16 @@ rule_table += [
     ['not_test', 'comparison', ('NOT not_test', lambda p: UnaryOp('not', p[1]))],
     ['and_test', ('not_test (AND not_test)*', reduce_binop)],
     ['or_test', ('and_test (OR and_test)*', reduce_binop)],
-    ['test', 'lambda_fatarrow|or_test|lambda'],
+    ['test', 'lambda_fatarrow', 'lambda'],
+]
 
+@libparse.rule_fn(rule_table, 'test', 'or_test [IF or_test ELSE test]')
+def parse_test(p):
+    if p[1]:
+        return CondExpr(p[1][1], p[0], p[1][3])
+    return p[0]
+
+rule_table += [
     ['for_assn_base', 'IDENTIFIER', ('LBRACKET for_assn_list RBRACKET',
         lambda p: p[1])],
     ['for_assn_list', ('for_assn_base (COMMA for_assn_base)*', reduce_list)],
