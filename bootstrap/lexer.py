@@ -55,7 +55,6 @@ keywords = [
     'or',
     'pass',
     'return',
-    'syntax',
     'union',
     'while',
     'yield',
