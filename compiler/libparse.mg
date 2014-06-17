@@ -78,18 +78,16 @@ class Optional(item):
         return 'opt({})'.format(self.item)
 
 # Parse a and then call a user-defined function on the result
-class FnWrapper:
-    def __init__(prod, fn):
-        # Make sure top-level rules are a sequence. When we pass parse results
-        # to the user-defined function, it must be returned in an array, so we
-        # can use the ParserResults class and have access to the parse info
-        if not isinstance(prod, Sequence):
-            prod = Sequence([prod])
-        return {'prod': prod, 'fn': fn}
+class FnWrapper(prod, fn):
     def parse(self, fn_table, tokenizer):
         result = self.prod.parse(fn_table, tokenizer)
         if result:
             [tokenizer, result, info] = result
+            # Make sure top-level rules are a sequence. When we pass parse results
+            # to the user-defined function, it must be returned in an array, so we
+            # can use the ParserResults class and have access to the parse info
+            if not isinstance(self.prod, Sequence):
+                [result, info] = [[result], [info]]
             return [tokenizer, self.fn(ParseResult(result, info)), None]
         return None
     def __str__(self):
@@ -179,7 +177,9 @@ class Parser:
         if fn != None:
             prod = FnWrapper(prod, fn)
         if rule not in fn_table:
-            fn_table = fn_table + {rule: Alternation([prod])}
+            fn_table = fn_table + {rule: prod}
+        elif not isinstance(fn_table[rule], Alternation):
+            fn_table = fn_table + {rule: Alternation([fn_table[rule], prod])}
         else:
             prev_items = fn_table[rule].items
             fn_table = fn_table + {rule: Alternation(prev_items + [prod])}
