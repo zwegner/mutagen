@@ -48,16 +48,12 @@ class Context:
     def store(self, name, value):
         self.syms[name] = value
     def load(self, node, name):
-        if name in self.syms:
-            return self.syms[name]
-        if self.parent_ctx and name in self.parent_ctx.syms:
-            return self.parent_ctx.syms[name]
+        for ctx in [self, self.parent_ctx]:
+            if ctx and name in ctx.syms:
+                return ctx.syms[name]
         node.error('identifier %s not found' % name, ctx=self)
     def get_stack_trace(self):
-        if self.callsite_ctx:
-            result = self.callsite_ctx.get_stack_trace()
-        else:
-            result = []
+        result = self.callsite_ctx.get_stack_trace() if self.callsite_ctx else []
         if self.current_node:
             info = self.current_node.info
             result.append(' at %s in %s, line %s' % (self.name, info.filename,
