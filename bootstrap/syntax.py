@@ -403,7 +403,7 @@ class Dict(Node):
     def __hash__(self):
         return hash(tuple(self.items.items()))
 
-@node('items')
+@node('#items')
 class Object(Node):
     def eval(self, ctx):
         return Object({k.eval(ctx): v.eval(ctx) for k, v
@@ -1185,7 +1185,7 @@ class Import(Node):
         if self.names is None:
             attrs = {String(k, info=self): v for k, v in self.ctx.syms.items()}
             # Set the type of modules, and make sure we evaluate it at least once
-            attrs['__class__'] = ModuleClass.eval(ctx)
+            attrs[String('__class__', info=self)] = ModuleClass.eval(ctx)
             obj = Object(attrs, info=self)
             self.parent_ctx.store(self.name, obj)
         else:
