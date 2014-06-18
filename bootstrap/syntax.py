@@ -627,14 +627,9 @@ class Continue(Node):
 @node('&expr')
 class Return(Node):
     def eval(self, ctx):
-        if self.expr:
-            expr = self.expr.eval(ctx)
-        else:
-            expr = None_(info=self)
-        raise ReturnExc(expr)
+        raise ReturnExc(self.expr.eval(ctx))
     def repr(self, ctx):
-        return 'return%s' % (' %s' % self.expr.repr(ctx) if
-                self.expr else '')
+        return 'return %s' % self.expr.repr(ctx)
 
 @node('&expr')
 class Yield(Node):
@@ -836,13 +831,13 @@ class Params(Node):
         if self.var_params:
             if len(args) < len(self.params):
                 self.error('wrong number of arguments to %s, '
-                'expected at least %s' % (obj.name, len(self.params)), ctx=ctx)
+                    'expected at least %s' % (obj.name, len(self.params)), ctx=ctx)
             pos_args = args[:len(self.params)]
             var_args = List(args[len(self.params):], info=self)
         else:
             if len(args) != len(self.params):
                 self.error('wrong number of arguments to %s, '
-                'expected %s' % (obj.name, len(self.params)), ctx=ctx)
+                    'expected %s' % (obj.name, len(self.params)), ctx=ctx)
             pos_args = args
 
         # Check argument types
