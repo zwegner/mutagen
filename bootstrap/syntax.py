@@ -110,8 +110,8 @@ class Node:
     def eval_call(self, ctx, args, kwargs):
         self.error('__call__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
 
-ARG_REG, ARG_EDGE, ARG_EDGE_LIST, ARG_EDGE_DICT = range(4)
-arg_map = {'&': ARG_EDGE, '*': ARG_EDGE_LIST, '#': ARG_EDGE_DICT}
+ARG_REG, ARG_EDGE, ARG_EDGE_OPT, ARG_EDGE_LIST, ARG_EDGE_DICT = range(5)
+arg_map = {'&': ARG_EDGE, '?': ARG_EDGE_OPT, '*': ARG_EDGE_LIST, '#': ARG_EDGE_DICT}
 
 # Weird decorator: a given arg string represents a standard form for arguments
 # to Node subclasses. We use these notations:
@@ -139,6 +139,8 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
             for (arg_type, arg_name), v in zip(args, iargs):
                 if arg_type == ARG_EDGE:
                     assert isinstance(v, Node)
+                elif arg_type == ARG_EDGE_OPT:
+                    assert v is None or isinstance(v, Node)
                 elif arg_type == ARG_EDGE_LIST:
                     assert isinstance(v, list) and all(isinstance(i, Node) for i in v)
                 elif arg_type == ARG_EDGE_DICT:
@@ -173,6 +175,10 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
                 if arg_type == ARG_EDGE:
                     edge = getattr(self, arg_name)
                     yield from edge.iterate_tree()
+                elif arg_type == ARG_EDGE_OPT:
+                    edge = getattr(self, arg_name)
+                    if edge is not None:
+                        yield from edge.iterate_tree()
                 elif arg_type == ARG_EDGE_LIST:
                     for edge in getattr(self, arg_name):
                         yield from edge.iterate_tree()
@@ -937,8 +943,7 @@ class Scope(Node):
 
         return glob
 
-# XXX return_type should be an edge
-@node('name, &params, return_type, &block')
+@node('name, &params, ?return_type, &block')
 class Function(Node):
     def setup(self):
         # Check if this is a generator and not a function
