@@ -2,6 +2,10 @@ import copy
 
 import sprdpl.lex
 
+# XXX HACK?
+import sys
+sys.setrecursionlimit(10000)
+
 # This is a list, since order matters--backslashes must come first!
 inv_str_escapes = [
     ['\\', '\\\\'],
