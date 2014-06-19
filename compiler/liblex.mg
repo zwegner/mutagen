@@ -14,10 +14,11 @@ class Token(type, value, info=None):
         if info == None: info = self.info
         return type_(self)(type, value, info=info)
     def __str__(self):
-        return 'Token({}, {}, info={})'.format(self.type, self.value, self.info)
+        return 'Token({}, {}, info={})'.format(repr(self.type), repr(self.value), self.info)
 
 class Info(filename, lineno):
-    pass
+    def __str__(self):
+        return 'Info({}, {})'.format(repr(self.filename), self.lineno)
 
 class LexerContext(tokens, pos=0):
     def peek(self):
