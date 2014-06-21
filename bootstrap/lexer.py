@@ -91,7 +91,6 @@ token_map = {
     'RARROW':          r'->',
     'RBRACE':          r'}',
     'RBRACKET':        r']',
-    'RFATARROW':       r'=>',
     'RPAREN':          r'\)',
     'SEMICOLON':       r';',
     'SHIFT_LEFT':      r'<<',

@@ -135,7 +135,7 @@ def fixed_point(fn):
     return recurse(call)
 
 # Super fucking slow selection sort!
-def sorted(iterable, key=lambda(p) { return p; }):
+def sorted(iterable, key=lambda(x): x):
     iterable = list(iterable)
     for i in range(len(iterable)):
         best = 0

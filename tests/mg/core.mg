@@ -32,9 +32,9 @@ test_scoping()
 # Test parameter errors
 def test_fn(a: int, b: str):
     return str(a) + b
-assert_call_fails(lambda { test_fn('a', 'b'); })
-assert_call_fails(lambda {
-    assert_call_fails(lambda { test_fn(1, 'b'); }); })
+assert_call_fails(lambda: test_fn('a', 'b'))
+assert_call_fails(lambda:
+    assert_call_fails(lambda: test_fn(1, 'b')))
 
 # Test return types
 test_types = ['abc', 123, True, False]
@@ -81,8 +81,8 @@ kw_dict = {'a': 1, 'b': 2, 'c': 3}
 def pass_kwparams(**x): return x
 assert pass_kwparams(**kw_dict) == kw_dict
 
-# Test fat-arrow lambdas
-test_lambda = (x, y, exp=2) => x ** exp + y ** exp
+# Test lambdas
+test_lambda = lambda(x, y, exp=2): x ** exp + y ** exp
 assert test_lambda(3, 4) == 25
 assert test_lambda(3, 4, exp=3) == 91
 
@@ -91,7 +91,7 @@ assert test_lambda(3, 4, exp=3) == 91
 items = list(range(4))
 lambdas = []
 for x in items:
-    lambdas = lambdas + [lambda { return x; }]
+    lambdas = lambdas + [lambda: x]
 
 for [v, l] in zip(items, lambdas):
     assert v == l()
@@ -101,7 +101,7 @@ for [v, l] in zip(items, lambdas):
 lambdas = []
 for x in items:
     for y in items:
-        lambdas = lambdas + [lambda (z) { assert z == x * len(items) + y; }]
+        lambdas = lambdas + [def(z) { assert z == x * len(items) + y; }]
 
 for [v, l] in zip(range(16), lambdas):
     l(v)

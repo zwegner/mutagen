@@ -45,7 +45,7 @@ class Lexer:
     def __init__(token_list):
         token_matchers = []
         if isinstance(token_list, dict):
-            token_list = sorted(token_list, key=(item) => -len(item[1]))
+            token_list = sorted(token_list, key=lambda(item): -len(item[1]))
         token_fns = {}
         for [k, v] in token_list:
             if isinstance(v, list):

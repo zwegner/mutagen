@@ -167,7 +167,7 @@ rule_tokens = {
     'RPAREN':     '\\)',
     'STAR':       '\\*',
     'PLUS':       '\\+',
-    'WHITESPACE': [' ', (p) => None],
+    'WHITESPACE': [' ', lambda(p): None],
 }
 rule_lexer = liblex.Lexer(rule_tokens)
 

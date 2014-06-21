@@ -36,7 +36,7 @@ test_list = [1, 2, 3, 4, 5]
 
 # Test zip
 assert list(zip()) == []
-assert list(zip(test_list)) == list(map(lambda(x) { return[x]; }, test_list))
+assert list(zip(test_list)) == list(map(lambda(x): [x], test_list))
 assert list(zip(test_list)) != test_list
 assert list(zip(test_list, test_list)) == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
 assert list(zip('abc', 'def')) == [['a', 'd'], ['b', 'e'], ['c', 'f']]
@@ -109,7 +109,7 @@ test_sorted_list = [8, 1, -7, 3, 5, 9, 2, -10, -2, 0]
 assert list(sorted(test_sorted_list)) == [-10, -7, -2, 0, 1, 2, 3, 5, 8, 9]
 assert list(sorted(test_sorted_list, key=abs)) == [
     0, 1, 2, -2, 3, 5, -7, 8, 9, -10]
-assert list(sorted(test_sorted_list, key=lambda(x) { return -x // 4; })) == [
+assert list(sorted(test_sorted_list, key=lambda(x): -x // 4)) == [
     9, 8, 5, 1, 3, 2, -2, 0, -7, -10]
 
 # Test set

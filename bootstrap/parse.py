@@ -141,7 +141,7 @@ rule_table += [
     ['not_test', 'comparison', ('NOT not_test', lambda p: UnaryOp('not', p[1]))],
     ['and_test', ('not_test (AND not_test)*', reduce_binop)],
     ['or_test', ('and_test (OR and_test)*', reduce_binop)],
-    ['test', 'lambda_fatarrow', 'lambda'],
+    ['test', 'lambdef', 'def_expr'],
 ]
 
 @libparse.rule_fn(rule_table, 'test', 'or_test [IF or_test ELSE test]')
@@ -249,10 +249,10 @@ def parse_params(p):
 rule_table += [
     ['decorator', ('AT test (NEWLINE|SEMICOLON)+', lambda p: p[1])],
     ['return_type', ('[RARROW test]', lambda p: p[0][1] if p[0] else None)],
-    ['lambda_fatarrow', ('params RFATARROW test',
-        lambda p: Scope(Function('lambda', p[0], None,
-            Block([Return(p[2])], info=p.get_info(1)), info=p.get_info(1))))],
-    ['lambda', ('LAMBDA params return_type block',
+    ['lambdef', ('LAMBDA params COLON test',
+        lambda p: Scope(Function('lambda', p[1], None,
+            Block([Return(p[3])], info=p.get_info(0)), info=p.get_info(0))))],
+    ['def_expr', ('DEF params return_type block',
         lambda p: Scope(Function('lambda', p[1], p[2], p[3], info=p.get_info(0))))],
     ['class_stmt', ('CLASS IDENTIFIER params block',
         lambda p: Assignment(Target([p[1]], info=p.get_info(1)),

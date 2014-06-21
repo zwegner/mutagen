@@ -25,18 +25,18 @@ def parse_import(p, module, names, path):
 
 rules = [
     # Atoms
-    ['identifier', ['IDENTIFIER', (p) => Identifier(p[0], info=p.get_info(0))]],
-    ['none', ['NONE', (p) => None_(info=p.get_info(0))]],
-    ['boolean', ['TRUE|FALSE', (p) =>
+    ['identifier', ['IDENTIFIER', lambda(p): Identifier(p[0], info=p.get_info(0))]],
+    ['none', ['NONE', lambda(p): None_(info=p.get_info(0))]],
+    ['boolean', ['TRUE|FALSE', lambda(p):
         Boolean({'True': True, 'False': False}[p[0]], info=p.get_info(0))]],
-    ['integer', ['INTEGER', (p) => Integer(p[0], info=p.get_info(0))]],
-    ['string', ['STRING', (p) => String(p[0], info=p.get_info(0))]],
-    ['parenthesized', ['LPAREN test RPAREN', (p) => p[1]]],
+    ['integer', ['INTEGER', lambda(p): Integer(p[0], info=p.get_info(0))]],
+    ['string', ['STRING', lambda(p): String(p[0], info=p.get_info(0))]],
+    ['parenthesized', ['LPAREN test RPAREN', lambda(p): p[1]]],
     ['atom', 'identifier|none|boolean|integer|string|parenthesized|list_comp|' +
         'dict_comp|set_comp'],
 
     ['list_comp', ['LBRACKET [test (comp_iter+|(COMMA test)* [COMMA])] RBRACKET',
-        lambda(p) {
+        def(p) {
             if p[1] {
                 items = p[1];
                 l = [items[0]];
@@ -53,7 +53,7 @@ rules = [
 
     ['dict_comp', ['LBRACE [test COLON test (comp_iter+|' +
         '(COMMA test COLON test)* [COMMA])] RBRACE',
-        lambda(p) {
+        def(p) {
             if p[1] {
                 items = p[1];
                 [key, value] = [items[0], items[2]];
@@ -71,14 +71,14 @@ rules = [
         }]],
 
     ['set_comp', ['LBRACE test (COMMA test)* [COMMA] RBRACE',
-        lambda(p) {
+        def(p) {
             set_items = [p[1]] + [p[1] for item in p[2]];
             return Call(Identifier('set', info=p.get_info(0)),
                 [List(set_items, info=p.get_info(0))]);
         }]],
 
     ['arg', ['test [EQUALS test]',
-        lambda(p) {
+        def(p) {
             if p[1] {
                 assert isinstance(p[0], Identifier);
                 return KeywordArg(p[0].name, p[1][1]);
@@ -87,11 +87,11 @@ rules = [
         }]],
 
     ['subscript', ['[test] [COLON [test] [COLON [test]]]]',
-        lambda(p) {
+        def(p) {
             [start, stop, step] = [None_(info=NULL_INFO)] * 3;
             if p[0] {
                 if p[1] == None {
-                    return (expr) => GetItem(expr, p[0]);
+                    return lambda(expr): GetItem(expr, p[0]);
                 }
                 start = p[0];
             }
@@ -102,22 +102,22 @@ rules = [
             if p[1][2] != None and p[1][2][1] != None {
                 step = p[1][2][1];
             }
-            return (expr) => Call(Identifier('slice', info=NULL_INFO),
+            return lambda(expr): Call(Identifier('slice', info=NULL_INFO),
                 [expr, start, stop, step]);
         }]],
 
     # Function calls, subscripts, attribute accesses
-    ['vararg', ['STAR test', (p) => VarArg(p[1])]],
-    ['kwvararg', ['STAR_STAR test', (p) => KeywordVarArg(p[1])]],
+    ['vararg', ['STAR test', lambda(p): VarArg(p[1])]],
+    ['kwvararg', ['STAR_STAR test', lambda(p): KeywordVarArg(p[1])]],
     ['args', ['(arg|vararg|kwvararg) (COMMA (arg|vararg|kwvararg))*', reduce_list]],
     # Since the trailer rules don't have access to the left-hand side, return lambdas
-    ['call', ['LPAREN [args] RPAREN', (p) => (expr) => Call(expr, p[1] or [])]],
-    ['getitem', ['LBRACKET subscript RBRACKET', (p) => p[1]]],
-    ['getattr', ['PERIOD IDENTIFIER', (p) => (expr) => GetAttr(expr, p[1])]],
+    ['call', ['LPAREN [args] RPAREN', lambda(p): lambda(expr): Call(expr, p[1] or [])]],
+    ['getitem', ['LBRACKET subscript RBRACKET', lambda(p): p[1]]],
+    ['getattr', ['PERIOD IDENTIFIER', lambda(p): lambda(expr): GetAttr(expr, p[1])]],
     ['trailer', 'call|getitem|getattr'],
 
     ['power', ['atom trailer* [STAR_STAR factor]',
-        lambda(p) {
+        def(p) {
             r = p[0];
             for trailer in p[1] {
                 r = trailer(r);
@@ -129,7 +129,7 @@ rules = [
         }]],
 
     # Binary ops
-    ['factor', 'power', ['(PLUS|MINUS|INVERSE) factor', (p) => UnaryOp(p[0], p[1])]],
+    ['factor', 'power', ['(PLUS|MINUS|INVERSE) factor', lambda(p): UnaryOp(p[0], p[1])]],
     ['term', ['factor ((STAR|FLOORDIV|MODULO) factor)*', reduce_binop]],
     ['arith_expr', ['term ((PLUS|MINUS) term)*', reduce_binop]],
     ['shift_expr', ['arith_expr ((SHIFT_LEFT|SHIFT_RIGHT) arith_expr)*', reduce_binop]],
@@ -141,7 +141,7 @@ rules = [
     # XXX chaining comparisons?
     ['comparison', ['or_expr ((EQUALS_EQUALS|NOT_EQUALS|' +
         'GREATER|GREATER_EQUALS|LESS|LESS_EQUALS|IN|NOT IN) or_expr)*',
-        lambda(p) {
+        def(p) {
             r = p[0];
             for item in p[1] {
                 if item[0] == 'in' {
@@ -157,33 +157,33 @@ rules = [
             return r;
         }]],
 
-    ['not_test', 'comparison', ['NOT not_test', (p) => UnaryOp('not', p[1])]],
+    ['not_test', 'comparison', ['NOT not_test', lambda(p): UnaryOp('not', p[1])]],
     ['and_test', ['not_test (AND not_test)*', reduce_binop]],
     ['or_test', ['and_test (OR and_test)*', reduce_binop]],
-    ['test', 'lambda_fatarrow|or_test|lambda'],
+    ['test', 'or_test|lambdef|def_expr'],
 
     ['for_assn_base', 'IDENTIFIER', ['LBRACKET for_assn_list RBRACKET',
-        (p) => p[1]]],
+        lambda(p): p[1]]],
     ['for_assn_list', ['for_assn_base (COMMA for_assn_base)*', reduce_list]],
-    ['for_assn', ['for_assn_base', (p) => Target([p[0]], info=NULL_INFO)]],
-    ['comp_iter', ['FOR for_assn IN test', (p) => CompIter(p[1], p[3])]],
+    ['for_assn', ['for_assn_base', lambda(p): Target([p[0]], info=NULL_INFO)]],
+    ['comp_iter', ['FOR for_assn IN test', lambda(p): CompIter(p[1], p[3])]],
 
     # Statements
-    ['pass', ['PASS', (p) => None]],
+    ['pass', ['PASS', lambda(p): None]],
     ['small_stmt', '(expr_stmt|pass|break|continue|return|yield|import|assert)'],
-    ['simple_stmt', ['small_stmt (NEWLINE|SEMICOLON)', (p) => p[0]]],
+    ['simple_stmt', ['small_stmt (NEWLINE|SEMICOLON)', lambda(p): p[0]]],
     ['stmt', ['(simple_stmt|if_stmt|for_stmt|while_stmt|def_stmt|class_stmt) ' +
-        '(NEWLINE|SEMICOLON)*', (p) => p[0]]],
-    ['stmt_list', ['stmt*', (p) => list(filter((x) => x != None, p[0]))]],
+        '(NEWLINE|SEMICOLON)*', lambda(p): p[0]]],
+    ['stmt_list', ['stmt*', lambda(p): listlambda filter((x: x != None, p[0]))]],
 
-    ['break', ['BREAK', (p) => Break(info=p.get_info(0))]],
-    ['continue', ['CONTINUE', (p) => Continue(info=p.get_info(0))]],
-    ['return', ['RETURN test', (p) => Return(p[1])]],
-    ['yield', ['YIELD test', (p) => Yield(p[1])]],
-    ['assert', ['ASSERT test', (p) => Assert(p[1])]],
+    ['break', ['BREAK', lambda(p): Break(info=p.get_info(0))]],
+    ['continue', ['CONTINUE', lambda(p): Continue(info=p.get_info(0))]],
+    ['return', ['RETURN test', lambda(p): Return(p[1])]],
+    ['yield', ['YIELD test', lambda(p): Yield(p[1])]],
+    ['assert', ['ASSERT test', lambda(p): Assert(p[1])]],
 
     ['expr_stmt', ['test (EQUALS test)*',
-        lambda(p) {
+        def(p) {
             @fixed_point;
             def deconstruct_lhs(deconstruct_lhs, lhs) {
                 if isinstance(lhs, Identifier) {
@@ -204,18 +204,18 @@ rules = [
         }]],
 
     # Blocks
-    ['delims', ['NEWLINE+', (p) => None]],
+    ['delims', ['NEWLINE+', lambda(p): None]],
     ['small_stmt_list', ['small_stmt (SEMICOLON small_stmt)*',
-        (p) => list(filter((x) => x != None, reduce_list(p)))]],
+        lambda(p): listlambda filter((x: x != None, reduce_list(p)))]],
     ['block',
-        ['COLON delims INDENT stmt_list DEDENT', (p) => Block(p[3], info=p.get_info(0))],
-        ['COLON small_stmt_list NEWLINE', (p) => Block(p[1], info=p.get_info(0))],
-        ['LBRACE stmt_list RBRACE', (p) => Block(p[1], info=p.get_info(0))]],
-    ['for_stmt', ['FOR for_assn IN test block', (p) => For(p[1], p[3], p[4])]],
-    ['while_stmt', ['WHILE test block', (p) => While(p[1], p[2])]],
+        ['COLON delims INDENT stmt_list DEDENT', lambda(p): Block(p[3], info=p.get_info(0))],
+        ['COLON small_stmt_list NEWLINE', lambda(p): Block(p[1], info=p.get_info(0))],
+        ['LBRACE stmt_list RBRACE', lambda(p): Block(p[1], info=p.get_info(0))]],
+    ['for_stmt', ['FOR for_assn IN test block', lambda(p): For(p[1], p[3], p[4])]],
+    ['while_stmt', ['WHILE test block', lambda(p): While(p[1], p[2])]],
 
     ['if_stmt', ['IF test block (ELIF test block)* [ELSE block]',
-        lambda(p) {
+        def(p) {
             else_block = p[4][1] if p[4] else Block([], info=p.get_info(0));
             for elif_stmt in reversed(p[3]) {
                 else_block = IfElse(elif_stmt[1], elif_stmt[2], else_block);
@@ -225,14 +225,14 @@ rules = [
 
     # Params
     ['param', ['IDENTIFIER [COLON test] [EQUALS test]',
-        (p) => [p[0], p[1][1] if p[1] else None, p[2][1] if p[2] else None]]],
+        lambda(p): [p[0], p[1][1] if p[1] else None, p[2][1] if p[2] else None]]],
 
-    ['param', ['STAR IDENTIFIER', (p) => VarParams(p[1], info=p.get_info(0))],
-        ['STAR_STAR IDENTIFIER', (p) => KeywordVarParams(p[1], info=p.get_info(0))]],
+    ['param', ['STAR IDENTIFIER', lambda(p): VarParams(p[1], info=p.get_info(0))],
+        ['STAR_STAR IDENTIFIER', lambda(p): KeywordVarParams(p[1], info=p.get_info(0))]],
     ['param_list', ['param (COMMA param)*', reduce_list]],
 
     ['params', ['[LPAREN [param_list] RPAREN]',
-        lambda(p) {
+        def(p) {
             [params, types, var_params, kwparams, kw_var_params] = [[], [], None, [], None];
             if p[0] and p[0][1] {
                 for item in p[0][1] {
@@ -262,19 +262,19 @@ rules = [
         }]],
 
     # Function/class defs
-    ['decorator', ['AT test delims', (p) => p[1]]],
-    ['return_type', ['[RARROW test]', (p) => p[0][1] if p[0] else None]],
-    ['lambda_fatarrow', ['params RFATARROW test',
-        (p) => Scope(Function('lambda', p[0], None,
-            Block([Return(p[2])], info=p.get_info(1)), info=p.get_info(1)))]],
-    ['lambda', ['LAMBDA params return_type block',
-        (p) => Scope(Function('lambda', p[1], p[2], p[3], info=p.get_info(0)))]],
+    ['decorator', ['AT test delims', lambda(p): p[1]]],
+    ['return_type', ['[RARROW test]', lambda(p): p[0][1] if p[0] else None]],
+    ['lambdef', ['LAMBDA params COLON test',
+        lambda(p): Scope(Function('lambda', p[1], None,
+            Block([Return(p[3])], info=p.get_info(0)), info=p.get_info(0)))]],
+    ['def_expr', ['DEF params return_type block',
+        lambda(p): Scope(Function('lambda', p[1], p[2], p[3], info=p.get_info(0)))]],
     ['class_stmt', ['CLASS IDENTIFIER params block',
-        (p) => Assignment(Target([p[1]], info=p.get_info(1)),
+        lambda(p): Assignment(Target([p[1]], info=p.get_info(1)),
             Scope(Class(p[1], p[2], p[3], info=p.get_info(0))))]],
 
     ['def_stmt', ['decorator* DEF IDENTIFIER params return_type block',
-        lambda(p) {
+        def(p) {
             fn = Scope(Function(p[2], p[3], p[4], p[5], info=p.get_info(1)));
             for dec in p[0] {
                 fn = Call(dec, [fn]);
@@ -284,11 +284,11 @@ rules = [
 
     ['ident_list', ['IDENTIFIER (COMMA IDENTIFIER)*', reduce_list]],
     ['import', ['IMPORT IDENTIFIER [FROM STRING]',
-            (p) => parse_import(p, p[1], None, p[2][1] if p[2] else None)],
+            lambda(p): parse_import(p, p[1], None, p[2][1] if p[2] else None)],
         ['FROM IDENTIFIER IMPORT ident_list',
-            (p) => parse_import(p, p[1], p[3], None)],
+            lambda(p): parse_import(p, p[1], p[3], None)],
         ['FROM IDENTIFIER IMPORT STAR',
-            (p) => parse_import(p, p[1], [], None)]],
+            lambda(p): parse_import(p, p[1], [], None)]],
 ]
 
 parser = libparse.Parser(rules, 'stmt_list')

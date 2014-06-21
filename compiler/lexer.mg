@@ -90,7 +90,6 @@ token_map = {
     'PLUS':            '\\+',
     'RBRACE':          '}',
     'RBRACKET':        ']',
-    'RFATARROW':       '=>',
     'RPAREN':          '\\)',
     'SEMICOLON':       ';',
     'SHIFT_LEFT':      '<<',
