@@ -91,15 +91,6 @@ union Maybe(Nothing, Just: class(value)):
 nothing = Maybe.Nothing()
 just = Maybe.Just(7)
 ```
-* Braces can also be used to delimit blocks, interchangeably with indentation-based blocks as in Python. To use brace-delimited blocks, semicolons must be explicity used between statements (since newlines are ignored inside braces, as in Python), and the trailing colon beginning the block must be omitted. For example, these blocks are equivalent:
-
-```python
-if x == y:
-    x = 0
-    y = 1
-
-if x == y { x = 0; y = 1; }
-```
 * Imports have a special syntactic form for allowing relative imports:
 
 ```python
@@ -124,17 +115,33 @@ for [k, v] in d:
 # a 1
 # b 2
 ```
-* `lambda` is just a synonym for a `def` without a function identifier, not a limited expression as in Python. Thus, if used in an expression, it will usually require braces instead of indentation, semicolons as statement delimiters, and an explicit return statement:
+* `lambda` is very slightly modified, in that the lambda parameters have parentheses around them. This is to keep the grammar simple, as well as to allow lambda parameters to have type annotations.
 
 ```python
-lambda(x) { return x + 1; }
+plus_one = lambda(x: int): x + 1
+```
+* To deal with the 'lambda problem' from Python (that is, `lambda` only allows a single expression and not any statements), a special form of `def` is available. When `def` is used without a function identifier, the entire def is treated as an expression. In this case, it will usually require braces instead of indentation, semicolons as statement delimiters, and an explicit return statement (see the next item for more on this). A simple example:
+
+```python
+check_x = def(x) {
+    assert x > 0;
+}
+```
+* Braces can also be used to delimit blocks, interchangeably with indentation-based blocks as in Python. To use brace-delimited blocks, semicolons must be used to delimit statements (since newlines are ignored inside braces, as in Python), and the trailing colon beginning the block must be omitted. Now, before the Python community beheads me for even considering this blasphemous proposal, I will note that indentation-based blocks are still greatly preferred, and should be considered idiomatic. Brace-delimited blocks generally are only useful in cases such as lists/dictionaries of functions, where `lambda` is insufficient, and indentation is not possible (since Mutagen, like Python, ignores newlines/indentation inside braces, brackets, and parentheses). To demonstrate this new brace syntax, these example blocks are equivalent:
+
+```python
+if x == y:
+    x = 0
+    y = 1
+
+if x == y { x = 0; y = 1; }
 ```
 * Closures are supported, but the captured values are static. That is, whenever the inner function definition is evaluated, the values of variables in parent scopes are bound to the function at that point. This makes metaprogramming somewhat simpler, and since any benefits of dynamic scoping would require mutable variables, there is little downside given a purely functional environment. An example of this behavior:
 
 ```python
 lambdas = []
 for x in [0, 1]:
-    lambdas = lambdas + [lambda { return x; }]
+    lambdas = lambdas + [lambda: x]
 for l in lambdas:
     print(l())
 
