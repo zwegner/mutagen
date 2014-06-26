@@ -174,7 +174,7 @@ rules = [
     ['simple_stmt', ['small_stmt (NEWLINE|SEMICOLON)', lambda(p): p[0]]],
     ['stmt', ['(simple_stmt|if_stmt|for_stmt|while_stmt|def_stmt|class_stmt) ' +
         '(NEWLINE|SEMICOLON)*', lambda(p): p[0]]],
-    ['stmt_list', ['stmt*', lambda(p): listlambda filter((x: x != None, p[0]))]],
+    ['stmt_list', ['stmt*', lambda(p): list(filter(lambda(x): x != None, p[0]))]],
 
     ['break', ['BREAK', lambda(p): Break(info=p.get_info(0))]],
     ['continue', ['CONTINUE', lambda(p): Continue(info=p.get_info(0))]],
@@ -206,7 +206,7 @@ rules = [
     # Blocks
     ['delims', ['NEWLINE+', lambda(p): None]],
     ['small_stmt_list', ['small_stmt (SEMICOLON small_stmt)*',
-        lambda(p): listlambda filter((x: x != None, reduce_list(p)))]],
+        lambda(p): list(filter(lambda(x): x != None, reduce_list(p)))]],
     ['block',
         ['COLON delims INDENT stmt_list DEDENT', lambda(p): Block(p[3], info=p.get_info(0))],
         ['COLON small_stmt_list NEWLINE', lambda(p): Block(p[1], info=p.get_info(0))],
