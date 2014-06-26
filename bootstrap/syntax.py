@@ -136,7 +136,6 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
     # Decorators must return a function. This adds __init__ and some other methods
     # to a Node subclass
     def attach(node):
-        nonlocal ops
         def __init__(self, *iargs, info=None):
             assert len(iargs) == len(args), 'bad args, expected %s(%s)' % (node.__name__, argstr)
 
@@ -171,25 +170,31 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
         def iterate_tree(self):
             yield self
             if not isinstance(self, Scope):
-                yield from self.iterate_subtree()
+                for I in self.iterate_subtree():
+                    yield I
 
         # Again, but just the subtree(s) below the node.
         def iterate_subtree(self):
             for (arg_type, arg_name) in args:
                 if arg_type == ARG_EDGE:
                     edge = getattr(self, arg_name)
-                    yield from edge.iterate_tree()
+                    for I in edge.iterate_tree():
+                        yield I
                 elif arg_type == ARG_EDGE_OPT:
                     edge = getattr(self, arg_name)
                     if edge is not None:
-                        yield from edge.iterate_tree()
+                        for I in edge.iterate_tree():
+                            yield I
                 elif arg_type == ARG_EDGE_LIST:
                     for edge in getattr(self, arg_name):
-                        yield from edge.iterate_tree()
+                        for I in edge.iterate_tree():
+                            yield I
                 elif arg_type == ARG_EDGE_DICT:
                     for k, v in getattr(self, arg_name).items():
-                        yield from k.iterate_tree()
-                        yield from v.iterate_tree()
+                        for I in k.iterate_tree():
+                            yield I
+                        for I in v.iterate_tree():
+                            yield I
 
         # If the compare flag is set, we delegate the comparison to the
         # Python object in the 'value' attribute
@@ -207,15 +212,17 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
             node.__hash__ = __hash__
 
             # Fucking Python default arguments
-            ops = ops + ['ge', 'gt', 'le', 'lt']
+            all_ops = ops + ['ge', 'gt', 'le', 'lt']
+        else:
+            all_ops = ops
 
         # Generate wrappers for builtin operations without having to write
         # a shitload of boilerplate. If you're asking why we don't just
         # derive from int/str/whatever, well, we want to whitelist functionality
         # like this, and make it slightly more Python-agnostic
-        if ops:
+        if all_ops:
             assert base_type
-            for op in ops:
+            for op in all_ops:
                 full_op = '__%s__' % op
                 op_fn = getattr(base_type, full_op)
                 # Ugh, seriously fuck lexical scoping. Better than dynamic I guess,
@@ -341,7 +348,8 @@ class List(Node):
     def repr(self, ctx):
         return '[%s]' % ', '.join(s.repr(ctx) for s in self.items)
     def __iter__(self):
-        yield from self.items
+        for I in self.items:
+            yield I
     def __getitem__(self, item):
         if isinstance(item, Integer):
             return self.items[item.value]
@@ -650,7 +658,8 @@ class Block(Node):
         return None_(info=self)
     def eval_gen(self, ctx):
         for stmt in self.stmts:
-            yield from stmt.eval_gen(ctx)
+            for I in stmt.eval_gen(ctx):
+                yield I
     def repr(self, ctx):
         block = [s.repr(ctx) for s in self.stmts]
         block = ['\n    '.join(s for s in b.splitlines()) for b in block]
@@ -665,7 +674,8 @@ class IfElse(Node):
     def eval_gen(self, ctx):
         expr = self.expr.eval(ctx).bool(ctx)
         block = self.if_block if expr else self.else_block
-        yield from block.eval_gen(ctx)
+        for I in block.eval_gen(ctx):
+            yield I
     def repr(self, ctx):
         else_block = ''
         if isinstance(self.else_block, IfElse):
@@ -697,7 +707,8 @@ class For(Node):
         for i in expr.iter(ctx):
             try:
                 self.target.assign_values(ctx, i)
-                yield from self.block.eval_gen(ctx)
+                for I in self.block.eval_gen(ctx):
+                    yield I
             except BreakExc:
                 break
             except ContinueExc:
@@ -722,11 +733,13 @@ class Comprehension(Node):
             for values in comp_iter.expr.eval(self.ctx).iter(self.ctx):
                 comp_iter.target.assign_values(self.ctx, values)
                 if iters:
-                    yield from iter_states(iters)
+                    for I in iter_states(iters):
+                        yield I
                 else:
                     yield self.ctx
 
-        yield from iter_states(self.comp_iters)
+        for I in iter_states(self.comp_iters):
+            yield I
 
 @node('&expr, *comp_iters')
 class ListComprehension(Comprehension):
@@ -761,7 +774,8 @@ class While(Node):
     def eval_gen(self, ctx):
         while self.expr.eval(ctx).bool(ctx):
             try:
-                yield from self.block.eval_gen(ctx)
+                for I in self.block.eval_gen(ctx):
+                    yield I
             except BreakExc:
                 break
             except ContinueExc:
@@ -890,7 +904,8 @@ class Params(Node):
             params.append('**%s' % self.kw_var_params)
         return ', '.join(params)
     def __iter__(self):
-        yield from self.params
+        for I in self.params:
+            yield I
         if self.var_params:
             yield self.var_params
         for p in self.kwparams:
@@ -988,7 +1003,8 @@ class Generator(Node):
     def __iter__(self):
         if self.exhausted:
             self.error('generator exhausted', ctx=self.ctx)
-        yield from self.block.eval_gen(self.ctx)
+        for I in self.block.eval_gen(self.ctx):
+            yield I
         self.exhausted = True
 
 @node('name, fn')
