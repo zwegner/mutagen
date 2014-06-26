@@ -3,8 +3,6 @@ import sys
 
 import sprdpl.lex as liblex
 
-import syntax
-
 str_escapes = {
     'n': '\n',
     't': '\t',
