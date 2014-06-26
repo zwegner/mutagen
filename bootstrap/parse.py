@@ -364,9 +364,13 @@ def interpret(path, print_program=False):
         print(e.msg, file=sys.stderr)
         sys.exit(1)
 
-print_program = False
-if sys.argv[1] == '--print':
-    print_program = True
-    sys.argv.pop(1)
+def main(args):
+    print_program = False
+    if args[1] == '--print':
+        print_program = True
+        args.pop(1)
 
-interpret(sys.argv[1], print_program=print_program)
+    interpret(args[1], print_program=print_program)
+
+if __name__ == '__main__':
+    main(sys.argv)
