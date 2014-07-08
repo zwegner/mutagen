@@ -22,6 +22,35 @@ class BasicBlock(insts):
         # Be sure to put the list back in forward order
         return list(reversed(live_sets))
 
+class VirtualRegister(index: int):
+    def __str__(self):
+        return 'VReg({})'.format(self.index)
+
+def get_liveness(blocks):
+    block_outs = {block_id: {} for [block_id, block] in enumerate(blocks)}
+    phi_reg_assns = {}
+    n_phis = 0
+
+    for [block_id, block] in enumerate(blocks):
+        phi_regs = []
+        for inst in block.insts:
+            [opcode, args] = [inst[0], inst[1:]]
+            if opcode == 'phi':
+                reg = VirtualRegister(n_phis)
+                n_phis = n_phis + 1
+                phi_regs = phi_regs + [reg]
+                # Go through all operands, which consist of a block and an
+                # operand within that block, and make sure we add them to the
+                # live outs of the proper block, and mark the assigned register.
+                for [src_block_id, src_op] in args:
+                    if src_op not in block_outs[src_block_id]:
+                        outs = block_outs[src_block_id] + {src_op: reg}
+                        block_outs = block_outs + {src_block_id: outs}
+
+        phi_reg_assns = phi_reg_assns + {block_id: phi_regs}
+
+    return [block_outs, phi_reg_assns]
+
 # This is slower than necessary. Interesting case for syntax/state handling.
 @fixed_point
 def postorder_traverse(postorder_traverse, succs, start, used):
@@ -63,15 +92,14 @@ def get_block_dominance(start, preds, succs):
                 changed = True
     return doms
 
+def is_register(reg):
+    return (isinstance(reg, asm.Register) or isinstance(reg, VirtualRegister))
+
 def gen_insts(blocks):
     block_insts = []
-    block_outs = {block_id: {} for [block_id, block] in enumerate(blocks)}
-    # Go through blocks in reverse order. Right now, assuming no loops, and
-    # the blocks are in physical order, so are an implicit topographical ordering.
-    # This means we can go through backwards and assign registers to phis, and
-    # then in predecessor blocks make sure all block outs are pre-assigned to
-    # those registers.
-    for [block_id, block] in reversed(list(enumerate(blocks))):
+    [block_outs, phi_reg_assns] = get_liveness(blocks)
+
+    for [block_id, block] in enumerate(blocks):
         insts = [asm.Label('block{}'.format(block_id), False)]
 
         live_sets = block.get_live_sets(set(block_outs[block_id].keys()))
@@ -87,16 +115,8 @@ def gen_insts(blocks):
             if opcode == 'literal':
                 reg_assns = reg_assns + {i: args[0]}
             elif opcode == 'phi':
-                # Assign a register
-                [free_regs, reg] = free_regs.pop()
-                reg_assns = reg_assns + {i: asm.Register(reg)}
-                # Go through all operands, which consist of a block and an
-                # operand within that block, and make sure we add them to the
-                # live outs of the proper block, and mark the assigned register.
-                for [src_block_id, src_op] in args:
-                    if src_op not in block_outs[src_block_id]:
-                        outs = block_outs[src_block_id] + {src_op: reg}
-                        block_outs = block_outs + {src_block_id: outs}
+                # Just use the virtual register assigned during liveness analysis.
+                reg_assns = reg_assns + {i: phi_reg_assns[block_id][i]}
             elif asm.is_jump_op(opcode):
                 # Make sure only the last instruction is a control flow op
                 assert i == len(block.insts) - 1
@@ -111,10 +131,10 @@ def gen_insts(blocks):
                 # Handle destructive ops first, which might need a move into
                 # a new register. Do this before we return any registers to the
                 # free set, since the inserted move comes before the instruction.
-                destructive = False
-                if (asm.is_destructive_op(opcode) and
-                    isinstance(arg_regs[0], asm.Register)):
-                    destructive = True
+                destructive = (asm.is_destructive_op(opcode) and
+                    is_register(arg_regs[0]))
+
+                if destructive:
                     # See if we can clobber the register. If not, copy it
                     # into another register and change the assignment so
                     # later ops can see it.
@@ -123,36 +143,36 @@ def gen_insts(blocks):
                     # This also needs to interact with coalescing, when we have that.
                     if args[0] in live_set:
                         [free_regs, reg] = free_regs.pop()
-                        insts = insts + [asm.Instruction('mov64',
-                            asm.Register(reg), arg_regs[0])]
+                        reg = asm.Register(reg)
+                        insts = insts + [asm.Instruction('mov64', reg, arg_regs[0])]
+                        arg_regs = [reg] + arg_regs[1:]
                     else:
-                        reg = arg_regs[0].index
+                        reg = arg_regs[0]
 
-                # Return any now-unused sources to the free set. We create a new
-                # set of free registers, since
-                for [arg, dest] in list(zip(args, arg_regs))[1:]:
-                    if isinstance(dest, asm.Register) and arg not in live_set:
-                        free_regs = {dest.index} | free_regs
+                # Return any now-unused sources to the free set.
+                for [arg, src] in list(zip(args, arg_regs))[1:]:
+                    if is_register(src) and arg not in live_set:
+                        free_regs = {src.index} | free_regs
 
                 if not destructive and asm.needs_register(opcode):
                     # Non-destructive ops need a register assignment for their
-                    # implicit destination
+                    # implicit destination.
                     # First, check if this operand is a live out of the block,
                     # in which case the register is already assigned.
-                    # XXX only valid now with no loops
                     if i in block_outs[block_id]:
                         reg = block_outs[block_id][i]
                     else:
                         [free_regs, reg] = free_regs.pop()
-                    arg_regs = [asm.Register(reg)] + arg_regs
+                        reg = asm.Register(reg)
+                    arg_regs = [reg] + arg_regs
 
-                reg_assns = reg_assns + {i: asm.Register(reg)}
+                reg_assns = reg_assns + {i: reg}
 
                 # And now return the destination of the instruction to the
                 # free registers, although this only happens when the result
                 # is never used...
                 if i not in live_set:
-                    free_regs =  {arg_regs[0].index} | free_regs
+                    free_regs = {arg_regs[0].index} | free_regs
 
                 insts = insts + [asm.Instruction(opcode, *arg_regs)]
             else:
@@ -160,7 +180,7 @@ def gen_insts(blocks):
 
         block_insts = block_insts + [insts]
 
-    return sum(reversed(block_insts), [])
+    return sum(block_insts, [])
 
 # Determine all predecessor and successor blocks
 def get_block_linkage(blocks):
