@@ -22,6 +22,47 @@ class BasicBlock(insts):
         # Be sure to put the list back in forward order
         return list(reversed(live_sets))
 
+# This is slower than necessary. Interesting case for syntax/state handling.
+@fixed_point
+def postorder_traverse(postorder_traverse, succs, start, used):
+    if start not in used:
+        used = used | {start}
+        for succ in succs[start]:
+            for b in postorder_traverse(succs, succ, used):
+                used = used | {b}
+                yield b
+        yield start
+
+# Dominance algorithm from http://www.cs.rice.edu/~keith/EMBED/dom.pdf
+def get_block_dominance(start, preds, succs):
+    # Get postorder traversal minus the first block
+    postorder = list(postorder_traverse(succs, start, set()))
+    post_id = {b: i for [i, b] in enumerate(postorder)}
+
+    # Function to find the common dominator between two blocks
+    def intersect(doms, b1, b2):
+        while b1 != b2:
+            while post_id[b1] < post_id[b2]:
+                b1 = doms[b1]
+            while post_id[b1] > post_id[b2]:
+                b2 = doms[b2]
+        return b1
+
+    doms = {b: None for b in preds.keys()} + {start: start}
+    changed = True
+    while changed:
+        changed = False
+        for b in reversed(postorder[:-1]):
+            [new_idom, rest] = [preds[b][0], preds[b][1:]]
+            assert doms[new_idom] != None
+            for p in rest:
+                if doms[p] != None:
+                    new_idom = intersect(doms, new_idom, p)
+            if doms[b] != new_idom:
+                doms = doms + {b: new_idom}
+                changed = True
+    return doms
+
 def gen_insts(blocks):
     block_insts = []
     block_outs = {block_id: {} for [block_id, block] in enumerate(blocks)}
@@ -123,7 +164,8 @@ def gen_insts(blocks):
 
 # Determine all predecessor and successor blocks
 def get_block_linkage(blocks):
-    succs = preds = {i: [] for i in range(len(blocks))}
+    preds = {i: [] for i in range(len(blocks))}
+    succs = {}
 
     for [i, block] in enumerate(blocks):
         last_inst = block.insts[-1]
@@ -140,52 +182,11 @@ def get_block_linkage(blocks):
             dests = [i + 1]
 
         # Link up blocks
+        succs = succs + {i: dests}
         for dest in dests:
-            succs = succs + {i: succs[i] + [dest]}
             preds = preds + {dest: preds[dest] + [i]}
 
     return [preds, succs]
-
-# This is slower than necessary. Interesting case for syntax/state handling.
-@fixed_point
-def postorder_traverse(postorder_traverse, succs, start, used):
-    if start not in used:
-        used = used | {start}
-        for succ in succs[start]:
-            for b in postorder_traverse(succs, succ, used):
-                used = used | {b}
-                yield b
-        yield start
-
-# Dominance algorithm from http://www.cs.rice.edu/~keith/EMBED/dom.pdf
-def get_block_dominance(start, preds, succs):
-    # Get postorder traversal minus the first block
-    postorder = list(postorder_traverse(succs, start, set()))
-    post_id = {b: i for [i, b] in enumerate(postorder)}
-
-    # Function to find the common dominator between two blocks
-    def intersect(doms, b1, b2):
-        while b1 != b2:
-            while post_id[b1] < post_id[b2]:
-                b1 = doms[b1]
-            while post_id[b1] > post_id[b2]:
-                b2 = doms[b2]
-        return b1
-
-    doms = {b: None for b in preds.keys()} + {start: start}
-    changed = True
-    while changed:
-        changed = False
-        for b in reversed(postorder[:-1]):
-            [new_idom, rest] = [preds[b][0], preds[b][1:]]
-            assert doms[new_idom] != None
-            for p in rest:
-                if doms[p] != None:
-                    new_idom = intersect(doms, new_idom, p)
-            if doms[b] != new_idom:
-                doms = doms + {b: new_idom}
-                changed = True
-    return doms
 
 blocks = [
     BasicBlock([
@@ -196,15 +197,36 @@ blocks = [
     ]),
     BasicBlock([
         ['literal', 22],
+        ['literal', 17],
         ['mov64', 0],
+        ['mov64', 1],
+        ['je', 1],
     ]),
     BasicBlock([
-        ['phi', [0, 1], [1, 1]],
+        ['phi', [0, 1], [1, 2]],
+        ['phi', [0, 1], [1, 3]],
         ['literal', 33],
-        ['add64', 0, 1],
+        ['add64', 0, 2],
+        ['add64', 0, 2],
+        ['add64', 1, 3],
         ['ret'],
     ]),
 ]
+
+# "tests"
+[preds, succs] = get_block_linkage(blocks)
+assert preds == {0: [], 1: [0, 1], 2: [0, 1]}
+assert succs == {0: [2, 1], 1: [1, 2], 2: []}
+
+preds = {0: [], 1: [0], 2: [0], 3: [1, 4], 4: [2, 3]}
+succs = {0: [1, 2], 1: [3], 2: [4], 3: [4], 4: [3]}
+assert get_block_dominance(0, preds, succs) == {0: 0, 1: 0, 2: 0, 3: 0, 4: 0}
+preds = {0: [], 1: [0], 2: [0], 3: [1, 4], 4: [2, 3, 5], 5: [2, 4]}
+succs = {0: [1, 2], 1: [3], 2: [4, 5], 3: [4], 4: [3, 5], 5: [4]}
+assert get_block_dominance(0, preds, succs) == {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+preds = {6: [], 5: [6], 4: [6], 1: [5, 2], 2: [4, 1, 3], 3: [4, 2]}
+succs = {6: [4, 5], 5: [1], 4: [3, 2], 1: [2], 2: [1, 3], 3: [2]}
+assert get_block_dominance(6, preds, succs) == {1: 6, 2: 6, 3: 6, 4: 6, 5: 6, 6: 6}
 
 insts = gen_insts(blocks)
 
@@ -213,3 +235,6 @@ for inst in insts:
         print('{}:'.format(inst.name))
     else:
         print('    {}'.format(inst))
+
+elf_file = elf.create_elf_file(*asm.build(insts))
+write_binary_file('elfout.o', elf_file)
