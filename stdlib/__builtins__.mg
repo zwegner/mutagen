@@ -134,16 +134,23 @@ def fixed_point(fn):
         return partial(fn, inner)
     return recurse(call)
 
-# Super fucking slow selection sort!
 def sorted(iterable, key=lambda(x): x):
-    iterable = list(iterable)
-    for i in range(len(iterable)):
-        best = 0
-        for j in range(1, len(iterable)):
-            if key(iterable[j]) < key(iterable[best]):
-                best = j
-        yield iterable[best]
-        iterable = iterable[:best] + iterable[best + 1:]
+    @fixed_point
+    def mergesort(mergesort, items):
+        if len(items) <= 1:
+            return items
+        mid = len(items) >> 1
+        low = mergesort(items[:mid])
+        high = mergesort(items[mid:])
+        i = 0
+        result = []
+        for item in low:
+            while i < len(high) and key(high[i]) < key(item):
+                result = result + [high[i]]
+                i = i + 1
+            result = result + [item]
+        return result + high[i:]
+    return mergesort(list(iterable))
 
 # This shit's slow
 # XXX recursion
