@@ -7,33 +7,20 @@ class BraunHeap(data, left, right):
     def is_empty(self):
         return False
 
-    def diff(self, n):
-        if n == 0:
-            return 1
-        if n & 1:
-            return self.left.diff((n - 1) // 2)
-        return self.right.diff((n - 2) // 2)
-
-    def size(self):
-        m = self.right.size()
-        return 2 * m + 1 + self.left.diff(m)
-
-    def get(self, i):
-        if i == 0:
-            return self.data
-        if i & 1:
-            return self.left.get((i - 1) // 2)
-        return self.right.get((i - 2) // 2)
+    def get_min(self):
+        return self.data
 
     def replace_min(self, item):
         return type(self)(item, self.left, self.right).sift_down()
 
+    # Make sure the root element is the lowest one, by potentially swapping it
+    # with one of the children
     def sift_down(self):
         [data, left, right] = [self.data, self.left, self.right]
-        if (self.left.is_empty() or self.data < self.left.data and
-            (self.right.is_empty() or self.data < self.right.data)):
+        if (left.is_empty() or (data < left.data and
+            (right.is_empty() or data < right.data))):
             return self
-        if (self.right.is_empty() or self.left.data < self.right.data):
+        if (right.is_empty() or left.data < right.data):
             [data, left] = [left.data, left.replace_min(data)]
         else:
             [data, right] = [right.data, right.replace_min(data)]
@@ -54,6 +41,21 @@ class BraunHeap(data, left, right):
             [data, right] = [right.data, right.replace_min(data)]
         return type(self)(data, right, self.left.delete_min())
 
+    # Return the difference in size between this tree and the number n, which
+    # is the size of this tree's right sibling. Relies on the Braun Tree property
+    # of the left/right sizes differing by at most one.
+    def diff(self, n):
+        if n == 0:
+            return 1
+        if n & 1:
+            return self.left.diff((n - 1) // 2)
+        return self.right.diff((n - 2) // 2)
+
+    def size(self):
+        m = self.right.size()
+        return 2 * m + 1 + self.left.diff(m)
+
+    # Helper method to make sure our heap is consistent
     def check(self):
         # Check Braun Tree invariant: sizes are equal or left is one bigger
         [ls, rs] = [self.left.size(), self.right.size()]
@@ -75,7 +77,7 @@ class EmptyBraunHeap:
         return 0
     def size(self):
         return 0
-    def get(self, i):
+    def get_min(self):
         assert False
     def replace_min(self):
         assert False
@@ -106,6 +108,6 @@ class PriorityQueue(heap):
     def put(self, item):
         return type(self)(self.heap.insert(item))
     def get(self):
-        return [type(self)(self.heap.delete_min()), self.heap.get(0)]
+        return [type(self)(self.heap.delete_min()), self.heap.get_min()]
     def __str__(self):
         return 'PriorityQueue({})'.format(self.heap)
