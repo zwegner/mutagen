@@ -1,6 +1,8 @@
 import asm
 import elf
 
+all_registers = set(range(16))
+
 class BasicBlock(insts):
     def get_live_sets(self, outs):
         # Generate the set of live vars at each point in the instruction list
@@ -95,18 +97,18 @@ def get_block_dominance(start, preds, succs):
 def is_register(reg):
     return (isinstance(reg, asm.Register) or isinstance(reg, VirtualRegister))
 
-def gen_insts(blocks):
-    block_insts = []
+def color_registers(blocks):
+    new_blocks = []
     [block_outs, phi_reg_assns] = get_liveness(blocks)
 
     for [block_id, block] in enumerate(blocks):
-        insts = [asm.Label('block{}'.format(block_id), False)]
+        insts = []
 
         live_sets = block.get_live_sets(set(block_outs[block_id].keys()))
 
         # Now make a run through the instructions. Since we're assuming
         # spill/fill has been taken care of already, this can be done linearly.
-        free_regs = set(range(16))
+        free_regs = all_registers
         reg_assns = {}
         for [i, [inst, live_set]] in enumerate(zip(block.insts, live_sets)):
             [opcode, args] = [inst[0], inst[1:]]
@@ -118,13 +120,7 @@ def gen_insts(blocks):
                 # Just use the virtual register assigned during liveness analysis.
                 reg_assns = reg_assns + {i: phi_reg_assns[block_id][i]}
             elif asm.is_jump_op(opcode):
-                # Make sure only the last instruction is a control flow op
-                assert i == len(block.insts) - 1
-                # XXX take a flags argument, and make sure it's from the latest
-                # flags-writing instruction
-                [dest_block_id] = args
-                dest = asm.Label('block{}'.format(dest_block_id), False)
-                insts = insts + [asm.Instruction(opcode, dest)]
+                insts = insts + [[opcode] + args]
             elif args:
                 arg_regs = [reg_assns[i] for i in args]
 
@@ -144,7 +140,7 @@ def gen_insts(blocks):
                     if args[0] in live_set:
                         [free_regs, reg] = free_regs.pop()
                         reg = asm.Register(reg)
-                        insts = insts + [asm.Instruction('mov64', reg, arg_regs[0])]
+                        insts = insts + [['mov64', reg, arg_regs[0]]]
                         arg_regs = [reg] + arg_regs[1:]
                     else:
                         reg = arg_regs[0]
@@ -174,13 +170,34 @@ def gen_insts(blocks):
                 if i not in live_set:
                     free_regs = {arg_regs[0].index} | free_regs
 
-                insts = insts + [asm.Instruction(opcode, *arg_regs)]
+                insts = insts + [[opcode] + arg_regs]
             else:
-                insts = insts + [asm.Instruction(opcode)]
+                insts = insts + [[opcode]]
 
-        block_insts = block_insts + [insts]
+        new_blocks = new_blocks + [BasicBlock(insts)]
 
-    return sum(block_insts, [])
+    return new_blocks
+
+def gen_insts(blocks):
+    blocks = color_registers(blocks)
+    insts = []
+
+    for [block_id, block] in enumerate(blocks):
+        insts = insts + [asm.Label('block{}'.format(block_id), False)]
+        for [i, inst] in enumerate(block.insts):
+            [opcode, args] = [inst[0], inst[1:]]
+            if asm.is_jump_op(opcode):
+                # Make sure only the last instruction is a control flow op
+                assert i == len(block.insts) - 1
+                # XXX take a flags argument, and make sure it's from the latest
+                # flags-writing instruction
+                [dest_block_id] = args
+                dest = asm.Label('block{}'.format(dest_block_id), False)
+                insts = insts + [asm.Instruction(opcode, dest)]
+            else:
+                insts = insts + [asm.Instruction(opcode, *args)]
+
+    return insts
 
 # Determine all predecessor and successor blocks
 def get_block_linkage(blocks):
