@@ -47,6 +47,10 @@ def gen_insts(name, blocks):
             # We already dealt with phis above
             elif opcode == 'phi':
                 pass
+            # Hacky dup pseudo-op: used to simplify store handling. Just copy a register assignment.
+            elif opcode == 'dup':
+                [arg] = args
+                reg_assns = reg_assns + {block_id: reg_assns[block_id] + {i: reg_assns[block_id][arg]}}
             # Return: optionally move the argument into eax and jump to the exit block.
             # We jump since we need to take care of the stack but we don't yet know how
             # much space we allocate.
@@ -154,14 +158,14 @@ blocks = [
     ]),
 ]
 
-insts = gen_insts('_test', blocks)
-
-if 1:
+def print_insts(insts):
     for inst in insts:
         if isinstance(inst, asm.Label):
             print('{}:'.format(inst.name))
         else:
             print('    {}'.format(inst))
 
-elf_file = elf.create_elf_file(*asm.build(insts))
-write_binary_file('elfout.o', elf_file)
+def export_function(file, name, blocks):
+    insts = gen_insts(name, blocks)
+    elf_file = elf.create_elf_file(*asm.build(insts))
+    write_binary_file(file, elf_file)
