@@ -34,10 +34,6 @@ def gen_insts(name, fn):
 
                 # Add it to the phi list of each phi argument
                 for [src_block, src_inst] in args:
-                    # Meh, recurse through dup pseudo-ops
-                    if fn.blocks[src_block].insts[src_inst][0] == 'dup':
-                        src_inst = fn.blocks[src_block].insts[src_inst][1]
-
                     if src_inst in phi_reg_assns[src_block]:
                         old = phi_reg_assns[src_block][src_inst]
                     else:
@@ -59,10 +55,6 @@ def gen_insts(name, fn):
             # We already dealt with phis above
             elif opcode == 'phi':
                 pass
-            # Hacky dup pseudo-op: used to simplify store handling. Just copy a register assignment.
-            elif opcode == 'dup':
-                arg = reg_assns[block_id][args[0]]
-                reg_assns = reg_assns + {block_id: reg_assns[block_id] + {inst_id: arg}}
             # Return: optionally move the argument into eax and jump to the exit block.
             # We jump since we need to take care of the stack but we don't yet know how
             # much space we allocate.

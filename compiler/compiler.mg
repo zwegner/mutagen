@@ -53,9 +53,11 @@ def gen_ssa(fn):
     stmts = [Store(name, Parameter(i)) for [i, name] in enumerate(fn.parameters)] + fn.blocks[0].insts
     blocks = [dumb_regalloc.BasicBlock(stmts)] + fn.blocks[1:]
 
+    id_remap = {}
     exit_states = {}
     new_blocks = []
     for [block_id, block] in enumerate(blocks):
+        block_map = {}
         current_syms = {}
         phis = []
         insts = []
@@ -65,9 +67,8 @@ def gen_ssa(fn):
             [opcode, args] = [inst[0], inst[1:]]
             if opcode == 'store':
                 [name, value] = args
-                current_syms = current_syms + {name: i}
-                # Placeholder to keep IDs the same after this
-                insts = insts + [['dup', value]]
+                current_syms = current_syms + {name: value}
+                block_map = block_map + {i: block_map[value]}
             else:
                 new_args = []
                 for arg in args:
@@ -81,9 +82,11 @@ def gen_ssa(fn):
                             phis = phis + [arg]
                     else:
                         new_args = new_args + [arg]
+                block_map = block_map + {i: len(insts)}
                 insts = insts + [[opcode] + new_args]
         new_blocks = new_blocks + [SSABasicBlock(phis, insts)]
         exit_states = exit_states + {block_id: current_syms}
+        id_remap = id_remap + {block_id: block_map}
 
     [preds, succs] = regalloc.get_block_linkage(new_blocks)
 
@@ -95,8 +98,8 @@ def gen_ssa(fn):
         for phi in block.phis:
             phi_args = []
             for pred in preds[block_id]:
-                phi_args = phi_args + [[pred, exit_states[pred][phi] +
-                    len(blocks[pred].phis)]]
+                src_inst = id_remap[pred][exit_states[pred][phi]] + len(blocks[pred].phis)
+                phi_args = phi_args + [[pred, src_inst]]
             insts = insts + [['phi'] + phi_args]
 
         # Ugh, add an offset for each block's instruction IDs to account for all the phis
@@ -105,7 +108,7 @@ def gen_ssa(fn):
             if opcode != 'literal':
                 args = [arg[1] if isinstance(arg, list) else (
                     arg if isinstance(arg, asm.Label) else
-                    arg + len(block.phis)) for arg in args]
+                    id_remap[block_id][arg] + len(block.phis)) for arg in args]
             insts = insts + [[opcode] + args]
         new_blocks = new_blocks + [dumb_regalloc.BasicBlock(insts)]
 
@@ -121,9 +124,6 @@ def ret(a):
     return Inst('ret', a)
 
 def add64(a, b):
-    # Hacky instruction selection logic
-    if isinstance(a, int):
-        a = mov64(a)
     return Inst('add64', a, b)
 
 def sub64(a, b):
