@@ -1,7 +1,12 @@
 import dumb_regalloc
-import regalloc
+# XXX work around weird importing behavior
+regalloc = dumb_regalloc.regalloc
+asm = regalloc.asm
 
 class SSABasicBlock(phis, insts):
+    pass
+
+class Parameter(index):
     pass
 
 class Store(name, value):
@@ -22,6 +27,10 @@ def flatten_block(block):
             return [results + [['literal', inst]], len(results)]
         elif isinstance(inst, str):
             return [results, inst]
+        elif isinstance(inst, Parameter):
+            return [results + [['parameter', inst.index]], len(results)]
+        elif isinstance(inst, regalloc.asm.Label):
+            return [results, inst]
         elif isinstance(inst, Store):
             [results, ref] = rec_flatten(results, inst.value)
             return [results + [['store', inst.name, ref]], inst.name]
@@ -38,11 +47,15 @@ def flatten_block(block):
 
     return results
 
-def gen_ssa(blocks):
+def gen_ssa(fn):
+    # Add the parameters to the first block.
+    # HACK: add them to the first block instead of a new block since our liveness analysis sucks
+    stmts = [Store(name, Parameter(i)) for [i, name] in enumerate(fn.parameters)] + fn.blocks[0].insts
+    blocks = [dumb_regalloc.BasicBlock(stmts)] + fn.blocks[1:]
+
     exit_states = {}
     new_blocks = []
     for [block_id, block] in enumerate(blocks):
-        phi_syms = set()
         current_syms = {}
         phis = []
         insts = []
@@ -61,6 +74,8 @@ def gen_ssa(blocks):
                     if isinstance(arg, str):
                         if arg in current_syms:
                             new_args = new_args + [current_syms[arg]]
+                        elif arg in phis:
+                            new_args = new_args + [['phi', phis.index(arg)]]
                         else:
                             new_args = new_args + [['phi', len(phis)]]
                             phis = phis + [arg]
@@ -77,26 +92,33 @@ def gen_ssa(blocks):
     new_blocks = []
     for [block_id, block] in enumerate(blocks):
         insts = []
-        phi_args = []
         for phi in block.phis:
+            phi_args = []
             for pred in preds[block_id]:
                 phi_args = phi_args + [[pred, exit_states[pred][phi] +
-                    len(new_blocks[pred].phis)]]
+                    len(blocks[pred].phis)]]
             insts = insts + [['phi'] + phi_args]
 
         # Ugh, add an offset for each block's instruction IDs to account for all the phis
         for inst in block.insts:
             [opcode, args] = [inst[0], inst[1:]]
             if opcode != 'literal':
-                args = [arg[1] if isinstance(arg, list) else
-                    arg + len(block.phis) for arg in args]
+                args = [arg[1] if isinstance(arg, list) else (
+                    arg if isinstance(arg, asm.Label) else
+                    arg + len(block.phis)) for arg in args]
             insts = insts + [[opcode] + args]
         new_blocks = new_blocks + [dumb_regalloc.BasicBlock(insts)]
 
-    return new_blocks
+    return dumb_regalloc.Function(fn.parameters, new_blocks)
 
 def mov64(a):
     return Inst('mov64', a)
+
+def jnz(a):
+    return Inst('jnz', a)
+
+def ret(a):
+    return Inst('ret', a)
 
 def add64(a, b):
     # Hacky instruction selection logic
@@ -104,10 +126,21 @@ def add64(a, b):
         a = mov64(a)
     return Inst('add64', a, b)
 
-blocks = [dumb_regalloc.BasicBlock([
-        Store('x', mov64(1)),
-        Store('x', add64(add64(add64('x', 2), 4), add64(mov64(4), 8))),
-    ]),
-]
+def sub64(a, b):
+    return Inst('sub64', a, b)
 
-dumb_regalloc.export_function('elfout.o', '_test', gen_ssa(blocks))
+fn = dumb_regalloc.Function(['count'], [
+    dumb_regalloc.BasicBlock([
+        Store('x', mov64(0)),
+    ]),
+    dumb_regalloc.BasicBlock([
+        Store('x', add64('x', 'count')),
+        Store('count', sub64('count', 1)),
+        jnz(asm.Label(1, False)),
+    ]),
+    dumb_regalloc.BasicBlock([
+        ret('x'),
+    ]),
+])
+
+dumb_regalloc.export_function('elfout.o', '_test', gen_ssa(fn))

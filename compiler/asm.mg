@@ -1,6 +1,6 @@
 import struct
 
-class Label(name: str, is_global: bool):
+class Label(name, is_global: bool):
     def __str__(self):
         return '<{}>'.format(self.name)
 
@@ -38,6 +38,8 @@ class Address(base: int, scale: int, index: int, disp: int):
         if self.disp:
             parts = parts + [self.disp]
         return '{}[{}]'.format(size_str, '+'.join(map(str, parts)))
+    def __repr__(self):
+        return 'Address({}, {}, {}, {})'.format(self.base, self.scale, self.index, self.disp)
 
 def fits_8bit(imm):
     return -128 <= imm and imm <= 127

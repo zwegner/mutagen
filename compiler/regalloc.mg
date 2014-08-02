@@ -210,7 +210,11 @@ def get_block_linkage(blocks):
         dests = []
         # Jump: add the destination block and the fall-through block
         if asm.is_jump_op(opcode):
-            dests = args
+            [dest] = args
+            # XXX Look for labels
+            if isinstance(dest, asm.Label):
+                dest = dest.name
+            dests = [dest]
             if opcode != 'jmp':
                 assert i + 1 < len(blocks)
                 dests = dests + [i + 1]

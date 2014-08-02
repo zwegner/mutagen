@@ -1,23 +1,28 @@
-import asm
+import regalloc
 import elf
+# XXX work around weird importing behavior
+asm = regalloc.asm
+
+class Function(parameters, blocks):
+    pass
 
 class BasicBlock(insts):
     pass
 
 param_regs = [7, 6, 2]
 
-def gen_insts(name, blocks):
+def gen_insts(name, fn):
     stack_slot = -8
     insts = []
 
     [rsp, rbp] = [asm.Register(4), asm.Register(5)]
     all_registers = set(range(16)) - set(param_regs) - {rsp.index, rbp.index}
 
-    phi_reg_assns = reg_assns = {i: {} for i in range(len(blocks))}
+    phi_reg_assns = reg_assns = {i: {} for i in range(len(fn.blocks))}
 
     # Assign phi stack slots. Since multiple phis can read the same value, we
     # need to maintain a list of slot assignments, not just one.
-    for [block_id, block] in enumerate(blocks):
+    for [block_id, block] in enumerate(fn.blocks):
         for [inst_id, inst] in enumerate(block.insts):
             [opcode, args] = [inst[0], inst[1:]]
             if opcode == 'phi':
@@ -43,7 +48,7 @@ def gen_insts(name, blocks):
             else:
                 break
 
-    for [block_id, block] in enumerate(blocks):
+    for [block_id, block] in enumerate(fn.blocks):
         insts = insts + [asm.Label('block{}'.format(block_id), False)]
         for [inst_id, inst] in enumerate(block.insts):
             [opcode, args] = [inst[0], inst[1:]]
@@ -152,7 +157,7 @@ def print_insts(insts):
         else:
             print('    {}'.format(inst))
 
-def export_function(file, name, blocks):
-    insts = gen_insts(name, blocks)
+def export_function(file, name, fn):
+    insts = gen_insts(name, fn)
     elf_file = elf.create_elf_file(*asm.build(insts))
     write_binary_file(file, elf_file)
