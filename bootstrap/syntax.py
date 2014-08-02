@@ -1152,6 +1152,9 @@ class BuiltinList(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return List(list(arg), info=arg)
+    def index(obj, ctx, args):
+        [self, item] = args
+        return Integer(self.items.index(item), info=self)
 
 ListClass = BuiltinList('list')
 
