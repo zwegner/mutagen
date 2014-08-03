@@ -72,6 +72,9 @@ class ProgramError(Exception):
         self.msg = msg
 
 class Node:
+    def copy(self):
+        assert isinstance(self, (List, Dict, Object))
+        return type(self)(self.items.copy(), info=self)
     def eval(self, ctx):
         return self
     def eval_gen(self, ctx):
@@ -345,6 +348,9 @@ class Boolean(Node):
 class List(Node):
     def eval(self, ctx):
         return List([i.eval(ctx) for i in self.items], info=self)
+    def set_item(self, ctx, item, value):
+        assert isinstance(item, Integer)
+        self.items[item.value] = value
     def repr(self, ctx):
         return '[%s]' % ', '.join(s.repr(ctx) for s in self.items)
     def __iter__(self):
@@ -386,6 +392,8 @@ class Dict(Node):
     def eval(self, ctx):
         return Dict({k.eval(ctx): v.eval(ctx) for k, v in
             self.items.items()}, info=self)
+    def set_item(self, ctx, item, value):
+        self.items[item] = value
     def repr(self, ctx):
         return '{%s}' % ', '.join('%s: %s' % (k.repr(ctx), v.repr(ctx))
             for k, v in self.items.items())
@@ -420,6 +428,10 @@ class Object(Node):
     def eval(self, ctx):
         return Object({k.eval(ctx): v.eval(ctx) for k, v
             in self.items.items()}, info=self)
+    def set_attr(self, ctx, name, value):
+        if name not in self.items:
+            self.error('bad attribute for modification: %s' % name, ctx=ctx)
+        self.items[name] = value
     def get_attr(self, ctx, attr):
         if attr in self.items:
             return self.items[attr]
@@ -610,6 +622,40 @@ class Assignment(Node):
         return value
     def repr(self, ctx):
         return '%s = %s' % (self.target.repr(ctx), self.rhs.repr(ctx))
+
+@node('&item')
+class ModItem(Node):
+    def eval_mod(self, ctx, expr, value):
+        expr.set_item(ctx, self.item.eval(ctx), value)
+    def eval_get(self, ctx, expr):
+        return expr.get_item(ctx, self.item.eval(ctx))
+
+@node('name')
+class ModAttr(Node):
+    def eval_mod(self, ctx, expr, value):
+        expr.set_attr(ctx, self.name, value)
+    def eval_get(self, ctx, expr):
+        return expr.get_attr(ctx, self.name)
+
+@node('*items, &value')
+class ModItems(Node):
+    def eval_mod(self, ctx, expr):
+        def rec_eval_mod(expr, items, value):
+            item, *items = items
+            if items:
+                sub_item = item.eval_get(ctx, expr).copy()
+                rec_eval_mod(sub_item, items, value)
+                value = sub_item
+            return item.eval_mod(ctx, expr, value)
+        rec_eval_mod(expr, self.items, self.value.eval(ctx))
+
+@node('&expr, *mods')
+class Modification(Node):
+    def eval(self, ctx):
+        expr = self.expr.eval(ctx).copy()
+        for mod in self.mods:
+            mod.eval_mod(ctx, expr)
+        return expr
 
 # Exception for backing up the eval stack on break/continue/return
 class BreakExc(Exception):

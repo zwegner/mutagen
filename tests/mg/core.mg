@@ -19,6 +19,23 @@ assert value_sum == 75
 assert key_sum == sum(test_dict.keys(), 0)
 assert value_sum == sum(test_dict.values(), 0)
 
+test_list = test_list_2 = [0, [0, [0, [0]]]]
+test_list = test_list <- [1][1][1][0] = 1, [0] = 1
+assert test_list == [1, [0, [0, [1]]]]
+assert test_list_2 == [0, [0, [0, [0]]]]
+assert 1 in test_list_2 <- [0] = 1
+
+test_dict = {'a': 1, 'b': 2, 'c': 3}
+test_dict = test_dict <- ['d'] = 4, ['e'] = 5
+assert test_dict == {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
+
+class TestClass(a, b):
+    pass
+test_obj = TestClass(0, [TestClass(0, 0)])
+test_obj = test_obj <- .a = 1, .b[0].b = 2
+assert test_obj == TestClass(1, [TestClass(0, 2)])
+assert_call_fails(def() { test_obj <- .c = 0; })
+
 # Test that scoping works properly for assignments and for loops, that is,
 # both of them should put their targets in the set of locals.
 def test_scoping():

@@ -120,12 +120,22 @@ rule_table += [
     ['and_expr', ('shift_expr (BIT_AND shift_expr)*', reduce_binop)],
     ['xor_expr', ('and_expr (BIT_XOR and_expr)*', reduce_binop)],
     ['or_expr', ('xor_expr (BIT_OR xor_expr)*', reduce_binop)],
-    ['expr', 'or_expr'],
+    ['mod_setitem', ('LBRACKET test RBRACKET', lambda p: ModItem(p[1], info=p.get_info(0)))],
+    ['mod_setattr', ('PERIOD IDENTIFIER', lambda p: ModAttr(p[1], info=p.get_info(0)))],
+    ['mod', ('(mod_setitem|mod_setattr)+ EQUALS test', lambda p: ModItems(p[0], p[2]))],
+    ['expr', 'mod_expr'],
 ]
 
+@libparse.rule_fn(rule_table, 'mod_expr', 'or_expr [LARROW mod (COMMA mod)*]')
+def parse_mod_expr(p):
+    expr = p[0]
+    if p[1]:
+        return Modification(expr, [p[1][1]] + [item[1] for item in p[1][2]])
+    return expr
+
 # XXX chaining comparisons?
-@libparse.rule_fn(rule_table, 'comparison', 'or_expr ((EQUALS_EQUALS|NOT_EQUALS|'
-    'GREATER|GREATER_EQUALS|LESS|LESS_EQUALS|IN|NOT IN) or_expr)*')
+@libparse.rule_fn(rule_table, 'comparison', 'expr ((EQUALS_EQUALS|NOT_EQUALS|'
+    'GREATER|GREATER_EQUALS|LESS|LESS_EQUALS|IN|NOT IN) expr)*')
 def parse_comparison(p):
     r = p[0]
     for item in p[1]:

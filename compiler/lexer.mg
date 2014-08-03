@@ -77,6 +77,7 @@ token_map = {
     'GREATER':         '>',
     'GREATER_EQUALS':  '>=',
     'INVERSE':         '~',
+    'LARROW':          '<-',
     'LBRACE':          '{',
     'LBRACKET':        '\\[',
     'LESS':            '<',

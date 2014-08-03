@@ -75,6 +75,7 @@ token_map = {
     'INTEGER':         (r'((0x[0-9a-fA-F]*)|([0-9]+))',
         lambda t: t.copy(value=int(t.value, 0))),
     'INVERSE':         r'~',
+    'LARROW':          r'<-',
     'LBRACE':          r'{',
     'LBRACKET':        r'\[',
     'LESS':            r'<',
