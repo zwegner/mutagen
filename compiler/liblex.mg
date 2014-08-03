@@ -28,8 +28,7 @@ class LexerContext(tokens, pos=0):
 
     # XXX recursion
     def next(self):
-        token = self.peek()
-        return [type(self)(self.tokens, pos=self.pos + 1), token]
+        return [(self <- .pos = self.pos + 1), self.peek()]
 
     def accept(self, t):
         if self.peek() and self.peek().type == t:

@@ -65,7 +65,7 @@ class Pattern(states, groups):
         def add_state(ss, sps, s, sp):
             if s not in sps:
                 ss = ss + [s]
-                sps = sps + {s: sp}
+                sps = sps <- [s] = sp
             return [ss, sps]
         save = [None] * len(self.groups) * 2
         states = [0]
@@ -93,7 +93,7 @@ class Pattern(states, groups):
                     [states, save_points] = add_state(states, save_points,
                         state_id + state.offset2, save)
                 elif isinstance(state, Save):
-                    save = save[:state.index] + [i] + save[state.index+1:]
+                    save = save <- [state.index] = i
                     [states, save_points] = add_state(states, save_points,
                         state_id + 1, save)
                 elif isinstance(state, Done):

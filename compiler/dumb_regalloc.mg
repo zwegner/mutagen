@@ -30,7 +30,7 @@ def gen_insts(name, fn):
                 dest = asm.Address(rbp.index, 0, 0, stack_slot)
                 stack_slot = stack_slot - 8
                 assert inst_id not in reg_assns[block_id]
-                reg_assns = reg_assns + {block_id: reg_assns[block_id] + {inst_id: dest}}
+                reg_assns = reg_assns <- [block_id][inst_id] = dest
 
                 # Add it to the phi list of each phi argument
                 for [src_block, src_inst] in args:
@@ -38,8 +38,7 @@ def gen_insts(name, fn):
                         old = phi_reg_assns[src_block][src_inst]
                     else:
                         old = []
-                    phi_reg_assns = phi_reg_assns + {src_block: phi_reg_assns[src_block] +
-                        {src_inst: old + [dest]}}
+                    phi_reg_assns = phi_reg_assns <- [src_block][src_inst] = old + [dest]
             # Phis are always at the beginning
             else:
                 break
@@ -51,7 +50,7 @@ def gen_insts(name, fn):
             # Special literal opcode: just a placeholder so we can differentiate
             # instruction indices and just literal ints/strs/whatever.
             if opcode == 'literal':
-                reg_assns = reg_assns + {block_id: reg_assns[block_id] + {inst_id: args[0]}}
+                reg_assns = reg_assns <- [block_id][inst_id] = args[0]
             # We already dealt with phis above
             elif opcode == 'phi':
                 pass
@@ -72,7 +71,7 @@ def gen_insts(name, fn):
                         insts = insts + [asm.Instruction('mov64', phi, arg)]
                 dest = asm.Address(rbp.index, 0, 0, stack_slot)
                 stack_slot = stack_slot - 8
-                reg_assns = reg_assns + {block_id: reg_assns[block_id] + {inst_id: dest}}
+                reg_assns = reg_assns <- [block_id][inst_id] = dest
                 insts = insts + [asm.Instruction('mov64', dest, arg)]
             elif asm.is_jump_op(opcode):
                 # Make sure only the last instruction is a control flow op
@@ -101,7 +100,7 @@ def gen_insts(name, fn):
                 # Assign a stack slot
                 dest = asm.Address(rbp.index, 0, 0, stack_slot)
                 stack_slot = stack_slot - 8
-                reg_assns = reg_assns + {block_id: reg_assns[block_id] + {inst_id: dest}}
+                reg_assns = reg_assns <- [block_id][inst_id] = dest
 
                 # Assign a destination to 3-operand instructions
                 destructive = (asm.is_destructive_op(opcode) and

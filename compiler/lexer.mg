@@ -36,14 +36,13 @@ keywords = [
 
 # Special token-transforming functions
 def t_identifier(t):
-    r = t
     for k in keywords:
         if t.value == k:
-            r = liblex.Token(k.upper(), t.value)
-    return r
+            return t <- .type = k.upper()
+    return t
 
 def t_integer(t):
-    return liblex.Token(t.type, int(t.value, 0))
+    return t <- .value = int(t.value, 0)
 
 def t_string(t):
     i = 1

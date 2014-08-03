@@ -53,11 +53,10 @@ def gen_ssa(fn):
     stmts = [Store(name, Parameter(i)) for [i, name] in enumerate(fn.parameters)] + fn.blocks[0].insts
     blocks = [dumb_regalloc.BasicBlock(stmts)] + fn.blocks[1:]
 
-    id_remap = {}
+    id_remap = {i: {} for i in range(len(blocks))}
     exit_states = {}
     new_blocks = []
     for [block_id, block] in enumerate(blocks):
-        block_map = {}
         current_syms = {}
         phis = []
         insts = []
@@ -68,7 +67,7 @@ def gen_ssa(fn):
             if opcode == 'store':
                 [name, value] = args
                 current_syms = current_syms + {name: value}
-                block_map = block_map + {i: block_map[value]}
+                id_remap = id_remap <- [block_id][i] = id_remap[block_id][value]
             else:
                 new_args = []
                 for arg in args:
@@ -82,11 +81,10 @@ def gen_ssa(fn):
                             phis = phis + [arg]
                     else:
                         new_args = new_args + [arg]
-                block_map = block_map + {i: len(insts)}
+                id_remap = id_remap <- [block_id][i] = len(insts)
                 insts = insts + [[opcode] + new_args]
         new_blocks = new_blocks + [SSABasicBlock(phis, insts)]
         exit_states = exit_states + {block_id: current_syms}
-        id_remap = id_remap + {block_id: block_map}
 
     [preds, succs] = regalloc.get_block_linkage(new_blocks)
 
