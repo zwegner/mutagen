@@ -10,7 +10,7 @@ import mg_builtins
 from syntax import *
 
 # XXX
-NULL_INFO = liblex.Info('???', 0)
+NULL_INFO = liblex.Info('???')
 
 def reduce_binop(p):
     r = p[0]
@@ -19,7 +19,8 @@ def reduce_binop(p):
     return r
 
 def reduce_list(p):
-    return [p[0]] + [item[1] for item in p[1]]
+    return libparse.ParseResult([p[0]] + [item[1] for item in p[1]],
+        [p.info[0]] + [p.info[1][i][1] for i in range(len(p[1]))])
 
 rule_table = [
     # Atoms
@@ -71,7 +72,8 @@ def parse_set(p):
 @libparse.rule_fn(rule_table, 'arg', 'test [EQUALS test]')
 def parse_arg(p):
     if p[1]:
-        assert isinstance(p[0], Identifier)
+        if not isinstance(p[0], Identifier):
+            p.error('invalid keyword argument', 0)
         return KeywordArg(p[0].name, p[1][1])
     return p[0]
 
@@ -82,7 +84,8 @@ def parse_subscript(p):
         if p[1] is None:
             return lambda expr: GetItem(expr, p[0])
         start = p[0]
-    assert p[1]
+    if not p[1]:
+        p.error('could not parse subscript')
     if p[1][1] is not None:
         stop = p[1][1]
     if p[1][2] is not None and p[1][2][1] is not None:
@@ -184,24 +187,26 @@ rule_table += [
 
 @libparse.rule_fn(rule_table, 'expr_stmt', 'test (EQUALS test)*')
 def parse_expr_stmt(p):
-    def deconstruct_lhs(lhs):
+    def deconstruct_lhs(lhs, p, index):
         if isinstance(lhs, Identifier):
             return lhs.name
         elif isinstance(lhs, List):
-            return [deconstruct_lhs(i) for i in lhs]
-        lhs.error('invalid lhs for assignment')
-    if p[1]:
-        all_items = reduce_list(p)
-        [targets, expr] = [all_items[:-1], all_items[-1]]
-        return Assignment(Target([deconstruct_lhs(t) for t in targets],
+            return [deconstruct_lhs(item, p, index) for i, item in enumerate(lhs)]
+        p.error('invalid lhs for assignment', index)
+    # XXX HACK
+    r = reduce_list(p)
+    all_items = r.items
+    [targets, expr] = [all_items[:-1], all_items[-1]]
+    if targets:
+        return Assignment(Target([deconstruct_lhs(t, r, i) for i, t in enumerate(targets)],
             info=NULL_INFO), expr)
-    return p[0]
+    return expr
 
 rule_table += [
     # Blocks
     ['delims', ('NEWLINE+', lambda p: None)],
     ['small_stmt_list', ('small_stmt (SEMICOLON small_stmt)*',
-        lambda p: [x for x in reduce_list(p) if x is not None])],
+        lambda p: [x for x in reduce_list(p).items if x is not None])],
     ['block', ('COLON (delims INDENT stmt_list DEDENT|small_stmt_list NEWLINE)',
         lambda p: Block(p[1][2] if len(p[1]) == 4 else p[1][0],
             info=p.get_info(0))),
@@ -233,23 +238,25 @@ rule_table += [
 def parse_params(p):
     params, types, var_params, kwparams, kw_var_params = [], [], None, [], None
     if p[0] and p[0][1]:
-        for item in p[0][1]:
+        for i, item in enumerate(p[0][1]):
+            indices = [0, 1, i]
             if isinstance(item, VarParams):
-                assert not var_params
-                assert not kwparams
-                assert not kw_var_params
+                if var_params:
+                    p.error('only one varparam (*) allowed', *indices)
+                if kwparams or kw_var_params:
+                    p.error('a varparam (*) must come before keyword parameters', *indices)
                 var_params = item.name
             elif isinstance(item, KeywordVarParams):
                 kw_var_params = item.name
             elif item[2]:
-                assert not kw_var_params
-                # XXX no typed keyword arguments yet
-                assert not item[1]
+                if kw_var_params:
+                    p.error('keyword parameters cannot come after keyword varparams (**)', *indices)
+                if item[1]:
+                    p.error('typed keyword parameters are not currently supported', *indices)
                 kwparams.append(KeywordArg(item[0], item[2]))
             else:
-                assert not var_params
-                assert not kwparams
-                assert not kw_var_params
+                if var_params or kwparams or kw_var_params:
+                    p.error('positional arguments must appear before varparams or keyword parameters', *indices)
                 params.append(item[0])
                 types.append(item[1] or None_(info=NULL_INFO))
     return Params(params, types, var_params, kwparams, kw_var_params,

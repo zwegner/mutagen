@@ -186,4 +186,4 @@ class Lexer(liblex.Lexer):
         tokens = self.lex_input(text, filename)
         # Big ass chain of generators
         tokens = list(process_indentation(process_whitespace(process_newlines(tokens))))
-        return liblex.LexerContext(tokens)
+        return liblex.LexerContext(text, tokens)

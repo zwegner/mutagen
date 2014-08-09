@@ -1100,7 +1100,7 @@ class Class(Node):
     def __hash__(self):
         return hash((self.name, self.params, self.block))
 
-builtin_info = sprdpl.lex.Info('__builtins__', 1)
+builtin_info = sprdpl.lex.Info('__builtins__')
 
 class BuiltinClass(Class):
     def __init__(self, name):
