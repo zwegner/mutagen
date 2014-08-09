@@ -11,7 +11,8 @@ python = 'python3'
 
 passes = fails = 0
 
-test_set = set(sys.argv[1:])
+exclude_set, test_set = [set(arg.replace('-', '') for arg in sys.argv[1:]
+    if arg.startswith('-') ^ exclude) for exclude in range(2)]
 
 # Mutagen tests: these should just not throw any errors
 mg_tests = ['builtins', 'core']
@@ -26,10 +27,11 @@ raw_test_dir = 'tests/raw'
 
 start = time.time()
 
+def active_tests(tests):
+    return [test for test in tests if (not test_set or test in test_set) and test not in exclude_set]
+
 # Run mutagen tests
-for test in mg_tests:
-    if test_set and test not in test_set:
-        continue
+for test in active_tests(mg_tests):
     try:
         path = '%s.mg' % (test)
         subprocess.check_output([mutagen, path], cwd=mg_test_dir)
@@ -38,10 +40,7 @@ for test in mg_tests:
         fails += 1
         print('MUTAGEN TEST %s FAILED!' % test)
 
-for test in py_tests:
-    if test_set and test not in test_set:
-        continue
-
+for test in active_tests(py_tests):
     outputs = []
     for [interpreter, ext] in [[python, 'py'], [mutagen, 'mg']]:
         path = '%s.%s' % (test, ext)
@@ -66,10 +65,7 @@ for test in py_tests:
     else:
         passes += 1
 
-for test in raw_tests:
-    if test_set and test not in test_set:
-        continue
-
+for test in active_tests(raw_tests):
     # Run python script, just check the output code
     try:
         path = '%s.py' % (test)
