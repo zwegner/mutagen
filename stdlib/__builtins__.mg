@@ -189,4 +189,4 @@ class set:
     def __repr__(self):
         if not self.items:
             return 'set()'
-        return '{{{}}}'.format(', '.join(map(str, self.items)))
+        return '{{{}}}'.format(', '.join(map(repr, self.items)))
