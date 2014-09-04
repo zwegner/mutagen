@@ -496,6 +496,37 @@ class UnaryOp(Node):
     def repr(self, ctx):
         return '(%s %s)' % (self.type, self.rhs.repr(ctx))
 
+def eval_binary_op(self, ctx, operator, lhs, rhs):
+    # This is a bit of an abuse of Python operator overloading! Oh well...
+    operator = '__%s__' % {
+        '==': 'eq',
+        '!=': 'ne',
+        '>':  'gt',
+        '>=': 'ge',
+        '>>': 'rshift',
+        '<':  'lt',
+        '<=': 'le',
+        '<<': 'lshift',
+        '+':  'add',
+        '-':  'sub',
+        '*':  'mul',
+        '**': 'pow',
+        '//': 'floordiv',
+        '%':  'mod',
+        '&':  'and',
+        '|':  'or',
+        '^':  'xor',
+        'in': 'contains',
+    }[operator]
+
+    overloaded = lhs.overload(ctx, operator, [rhs])
+    if overloaded is not None:
+        return overloaded
+    elif not hasattr(lhs, operator):
+        self.error('object of type %s cannot handle operator %s' % (
+            get_type_name(ctx, lhs), operator), ctx=ctx)
+    return getattr(lhs, operator)(rhs)
+
 @node('type, &lhs, &rhs')
 class BinaryOp(Node):
     def eval(self, ctx):
@@ -510,38 +541,7 @@ class BinaryOp(Node):
             if test:
                 return self.rhs.eval(ctx)
             return lhs
-
-        rhs = self.rhs.eval(ctx)
-        # This is a bit of an abuse of Python operator overloading! Oh well...
-        operator = {
-            '==': 'eq',
-            '!=': 'ne',
-            '>':  'gt',
-            '>=': 'ge',
-            '>>': 'rshift',
-            '<':  'lt',
-            '<=': 'le',
-            '<<': 'lshift',
-            '+':  'add',
-            '-':  'sub',
-            '*':  'mul',
-            '**': 'pow',
-            '//': 'floordiv',
-            '%':  'mod',
-            '&':  'and',
-            '|':  'or',
-            '^':  'xor',
-            'in': 'contains',
-        }[self.type]
-        operator = '__%s__' % operator
-
-        overloaded = lhs.overload(ctx, operator, [rhs])
-        if overloaded is not None:
-            return overloaded
-        elif not hasattr(lhs, operator):
-            self.error('object of type %s cannot handle operator %s' % (
-                get_type_name(ctx, lhs), operator), ctx=ctx)
-        return getattr(lhs, operator)(rhs)
+        return eval_binary_op(self, ctx, self.type, lhs, self.rhs.eval(ctx))
     def repr(self, ctx):
         return '(%s %s %s)' % (self.lhs.repr(ctx), self.type, self.rhs.repr(ctx))
 
@@ -642,15 +642,23 @@ class ModAttr(Node):
     def eval_get(self, ctx, expr):
         return expr.get_attr(ctx, self.name)
 
-@node('*items, &value')
+@node('op, *items, &value')
 class ModItems(Node):
     def eval_mod(self, ctx, expr):
         def rec_eval_mod(expr, items, value):
             item, *items = items
+            # If this is not the last attribute/item access in this chain, we
+            # must copy the child object and recursively modify it
             if items:
                 sub_item = item.eval_get(ctx, expr).copy()
                 rec_eval_mod(sub_item, items, value)
                 value = sub_item
+            # At the innermost layer, check if we need to perform a binary op
+            # on the value. XXX rather hackulant
+            elif self.op != '=':
+                op = self.op[:-1]
+                sub_item = item.eval_get(ctx, expr)
+                value = eval_binary_op(self, ctx, op, sub_item, value)
             return item.eval_mod(ctx, expr, value)
         rec_eval_mod(expr, self.items, self.value.eval(ctx))
 

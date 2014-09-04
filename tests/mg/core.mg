@@ -35,6 +35,10 @@ test_obj = TestClass(0, [TestClass(0, 0)])
 test_obj = test_obj <- .a = 1, .b[0].b = 2
 assert test_obj == TestClass(1, [TestClass(0, 2)])
 assert_call_fails(def() { test_obj <- .c = 0; })
+test_obj = test_obj <- .b[0].a += 3, .b += [TestClass(1, -1)]
+assert test_obj == TestClass(1, [TestClass(3, 2), TestClass(1, -1)])
+assert_call_fails(def() { test_obj <- .b[0] += 0; })
+assert_call_fails(def() { test_obj <- .b[0].b += 'a'; })
 
 # Test that scoping works properly for assignments and for loops, that is,
 # both of them should put their targets in the set of locals.

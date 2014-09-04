@@ -87,6 +87,7 @@ token_map = {
     'NOT_EQUALS':      r'!=',
     'PERIOD':          r'\.',
     'PLUS':            r'\+',
+    'PLUS_EQUALS':     r'\+=',
     'RARROW':          r'->',
     'RBRACE':          r'}',
     'RBRACKET':        r']',
