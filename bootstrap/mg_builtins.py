@@ -75,6 +75,10 @@ def mgb_slice(ctx, seq, *args):
         return List(seq.items[start:stop:step], info=seq)
     return seq.error('slice on unsliceable type %s' % type(seq).__name__, ctx=ctx)
 
+@mg_builtin([Node, String])
+def mgb_hasattr(ctx, arg, attr):
+    return Boolean(get_attr(ctx, arg, attr.value) is not None, info=arg)
+
 # XXX remove this, just temporarily added to test stuff that should fail.
 # Need to work out semantics of any exceptions/error handling first.
 @mg_builtin(None)

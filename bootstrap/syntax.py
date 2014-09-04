@@ -545,19 +545,24 @@ class BinaryOp(Node):
     def repr(self, ctx):
         return '(%s %s %s)' % (self.lhs.repr(ctx), self.type, self.rhs.repr(ctx))
 
+def get_attr(ctx, obj, attr):
+    item = obj.get_attr(ctx, attr)
+    # If the attribute doesn't exist, create a bound method with the attribute
+    # from the object's class, assuming it exists.
+    if item is None:
+        method = obj.get_attr(ctx, '__class__').get_attr(ctx, attr)
+        if method is not None:
+            return BoundFunction(method, [obj])
+    return item
+
 @node('&obj, attr')
 class GetAttr(Node):
     def eval(self, ctx):
         obj = self.obj.eval(ctx)
-        item = obj.get_attr(ctx, self.attr)
-        # If the attribute doesn't exist, create a bound method with the attribute
-        # from the object's class, assuming it exists.
+        item = get_attr(ctx, obj, self.attr)
         if item is None:
-            method = obj.get_attr(ctx, '__class__').get_attr(ctx, self.attr)
-            if method is None:
-                self.error("object of type '%s' has no attribute '%s'" %
-                        (get_type_name(ctx, obj), self.attr), ctx=ctx)
-            item = BoundFunction(method, [obj])
+            self.error("object of type '%s' has no attribute '%s'" %
+                    (get_type_name(ctx, obj), self.attr), ctx=ctx)
         return item
     def repr(self, ctx):
         return '%s.%s' % (self.obj.repr(ctx), self.attr)
