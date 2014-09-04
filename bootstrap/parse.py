@@ -65,7 +65,7 @@ def parse_dict(p):
 
 @libparse.rule_fn(rule_table, 'set_comp', 'LBRACE test (COMMA test)* [COMMA] RBRACE')
 def parse_set(p):
-    set_items = [p[1]] + [p[1] for item in p[2]]
+    set_items = [p[1]] + [item[1] for item in p[2]]
     return Call(Identifier('set', info=p.get_info(0)),
         [List(set_items, info=p.get_info(0))])
 
