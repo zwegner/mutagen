@@ -6,7 +6,7 @@ asm = regalloc.asm
 class Function(parameters, blocks):
     pass
 
-class BasicBlock(insts):
+class BasicBlock(name, phis, insts):
     pass
 
 param_regs = [7, 6, 2]
@@ -44,16 +44,26 @@ def gen_insts(name, fn):
                 break
 
     for [block_id, block] in enumerate(fn.blocks):
-        insts = insts + [asm.Label('block{}'.format(block_id), False)]
+        insts = insts + [asm.Label(block.name, False)]
         for [inst_id, inst] in enumerate(block.insts):
             [opcode, args] = [inst[0], inst[1:]]
             # Special literal opcode: just a placeholder so we can differentiate
             # instruction indices and just literal ints/strs/whatever.
             if opcode == 'literal':
                 reg_assns = reg_assns <- [block_id][inst_id] = args[0]
-            # We already dealt with phis above
+            # We assigned stack slots for phis above, but we delegate the responsibility
+            # of writing to the slot to the source instructions in all predecessor blocks.
+            # Given that, we need to check if this phi is a source for another phi.
             elif opcode == 'phi':
-                pass
+                if inst_id in phi_reg_assns[block_id]:
+                    [_, reg] = all_registers.pop()
+                    reg = asm.Register(reg)
+                    # For each phi that reads this phi value, we need two movs, since
+                    # x86 doesn't have mem->mem copies.
+                    for phi in phi_reg_assns[block_id][inst_id]:
+                        insts = insts + [asm.Instruction('mov64', reg,
+                                reg_assns[block_id][inst_id]),
+                            asm.Instruction('mov64', phi, reg)]
             # Return: optionally move the argument into eax and jump to the exit block.
             # We jump since we need to take care of the stack but we don't yet know how
             # much space we allocate.
@@ -81,7 +91,7 @@ def gen_insts(name, fn):
                 [dest_block_id] = args
                 if isinstance(dest_block_id, asm.Label):
                     dest_block_id = dest_block_id.name
-                dest = asm.Label('block{}'.format(dest_block_id), False)
+                dest = asm.Label(dest_block_id, False)
                 insts = insts + [asm.Instruction(opcode, dest)]
             elif args:
                 # Load all arguments from the corresponding stack locations
@@ -97,20 +107,21 @@ def gen_insts(name, fn):
                     else:
                         arg_regs = arg_regs + [arg]
 
-                # Assign a stack slot
-                dest = asm.Address(rbp.index, 0, 0, stack_slot)
-                stack_slot = stack_slot - 8
-                reg_assns = reg_assns <- [block_id][inst_id] = dest
+                if asm.needs_register(opcode):
+                    # Assign a stack slot
+                    dest = asm.Address(rbp.index, 0, 0, stack_slot)
+                    stack_slot = stack_slot - 8
+                    reg_assns = reg_assns <- [block_id][inst_id] = dest
 
-                # Assign a destination to 3-operand instructions
-                destructive = (asm.is_destructive_op(opcode) and
-                    isinstance(arg_regs[0], asm.Register))
-                if not destructive and asm.needs_register(opcode):
-                    [free_regs, reg] = free_regs.pop()
-                    reg = asm.Register(reg)
-                    arg_regs = [reg] + arg_regs
-                else:
-                    reg = arg_regs[0]
+                    # Assign a destination to 3-operand instructions
+                    destructive = (asm.is_destructive_op(opcode) and
+                        isinstance(arg_regs[0], asm.Register))
+                    if not destructive:
+                        [free_regs, reg] = free_regs.pop()
+                        reg = asm.Register(reg)
+                        arg_regs = [reg] + arg_regs
+                    else:
+                        reg = arg_regs[0]
 
                 # Add the instruction as well as a store into our stack slot
                 insts = insts + [asm.Instruction(opcode, *arg_regs)]
@@ -118,11 +129,12 @@ def gen_insts(name, fn):
                 # Store the result on the stack
                 if asm.needs_register(opcode):
                     insts = insts + [asm.Instruction('mov64', dest, reg)]
-
-                # ...and again for any phi that references it
-                if inst_id in phi_reg_assns[block_id]:
-                    for phi in phi_reg_assns[block_id][inst_id]:
-                        insts = insts + [asm.Instruction('mov64', phi, reg)]
+                    # ...and again for any phi that references it
+                    if inst_id in phi_reg_assns[block_id]:
+                        for phi in phi_reg_assns[block_id][inst_id]:
+                            insts = insts + [asm.Instruction('mov64', phi, reg)]
+                else:
+                    assert inst_id not in phi_reg_assns[block_id]
             else:
                 insts = insts + [asm.Instruction(opcode)]
 
@@ -148,7 +160,9 @@ def print_insts(insts):
         else:
             print('    {}'.format(inst))
 
-def export_function(file, name, fn):
-    insts = gen_insts(name, fn)
+def export_functions(file, fns):
+    all_insts = []
+    for [name, fn] in fns:
+        all_insts = all_insts + gen_insts(name, fn)
     elf_file = elf.create_elf_file(*asm.build(insts))
     write_binary_file(file, elf_file)

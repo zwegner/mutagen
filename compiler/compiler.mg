@@ -1,20 +1,20 @@
-import dumb_regalloc
+from dumb_regalloc import *
 # XXX work around weird importing behavior
-regalloc = dumb_regalloc.regalloc
 asm = regalloc.asm
-
-class SSABasicBlock(phis, insts):
-    pass
 
 class Parameter(index):
     pass
 
+class PhiRef(index):
+    def __repr__(self):
+        return 'Phi({})'.format(self.index)
+
 class Store(name, value):
-    def __str__(self):
+    def __repr__(self):
         return '{} = {}'.format(self.name, self.value)
 
 class Inst(opcode, *args):
-    def __str__(self):
+    def __repr__(self):
         return '{}({})'.format(self.opcode, ', '.join(map(str, self.args)))
 
 # Given a block that contains a list of top-level expression trees, flatten out
@@ -45,100 +45,89 @@ def flatten_block(block):
     for inst in block.insts:
         [results, ref] = rec_flatten(results, inst)
 
-    return results
+    return block <- .insts = results
+
+@fixed_point
+def ensure_symbol_in_block(ensure_symbol_in_block, blocks, exit_states, preds,
+    block_id, sym):
+    if sym not in exit_states[block_id]:
+        exit_states = exit_states <- [block_id][sym] = PhiRef(len(blocks[block_id].phis))
+        blocks = blocks <- [block_id].phis += [sym]
+        for pred in preds[blocks[block_id].name]:
+            [blocks, exit_states] = ensure_symbol_in_block(blocks, exit_states,
+                preds, pred, sym)
+    return [blocks, exit_states]
 
 def gen_ssa(fn):
     # Add the parameters to the first block.
-    # HACK: add them to the first block instead of a new block since our liveness analysis sucks
-    stmts = [Store(name, Parameter(i)) for [i, name] in enumerate(fn.parameters)] + fn.blocks[0].insts
-    blocks = [dumb_regalloc.BasicBlock(stmts)] + fn.blocks[1:]
+    stmts = [Store(name, Parameter(i)) for [i, name] in enumerate(fn.parameters)]
+    blocks = fn.blocks
+    if stmts:
+        blocks = [BasicBlock('prelude', [], stmts)] + blocks
 
-    id_remap = {i: {} for i in range(len(blocks))}
-    exit_states = {}
-    new_blocks = []
+    blocks = list(map(flatten_block, blocks))
+
+    [preds, succs] = regalloc.get_block_linkage(blocks)
+
+    exit_states = id_remap = {i: {} for i in range(len(blocks))}
     for [block_id, block] in enumerate(blocks):
-        current_syms = {}
-        phis = []
         insts = []
         # Look for any symbol references in the blocks, and keep track of where they
         # are last assigned to
-        for [i, inst] in enumerate(flatten_block(block)):
+        for [i, inst] in enumerate(block.insts):
             [opcode, args] = [inst[0], inst[1:]]
+            # For stores, we hackily remap IDs to simplify downstream processing
             if opcode == 'store':
                 [name, value] = args
-                current_syms = current_syms + {name: value}
+                assert isinstance(value, int)
+                exit_states = exit_states <- [block_id][name] = value
                 id_remap = id_remap <- [block_id][i] = id_remap[block_id][value]
             else:
                 new_args = []
                 for arg in args:
                     if isinstance(arg, str):
-                        if arg in current_syms:
-                            new_args = new_args + [current_syms[arg]]
-                        elif arg in phis:
-                            new_args = new_args + [['phi', phis.index(arg)]]
-                        else:
-                            new_args = new_args + [['phi', len(phis)]]
-                            phis = phis + [arg]
+                        [blocks, exit_states] = ensure_symbol_in_block(blocks,
+                            exit_states, preds, block_id, arg)
+                        new_args = new_args + [exit_states[block_id][arg]]
                     else:
                         new_args = new_args + [arg]
                 id_remap = id_remap <- [block_id][i] = len(insts)
                 insts = insts + [[opcode] + new_args]
-        new_blocks = new_blocks + [SSABasicBlock(phis, insts)]
-        exit_states = exit_states + {block_id: current_syms}
+        blocks = blocks <- [block_id].insts = insts
 
-    [preds, succs] = regalloc.get_block_linkage(new_blocks)
+    for [block_id, block] in enumerate(blocks):
+        phis = [['phi'] + [[pred, exit_states[pred][phi]]
+            for pred in preds[block.name]] for phi in block.phis]
 
-    # Fix up phis now that all blocks have been flattened
-    blocks = new_blocks
-    new_blocks = []
+        blocks = blocks <- [block_id].phis = phis
+
+    # Ugh, add an offset for each block's instruction IDs to account for all the phis
     for [block_id, block] in enumerate(blocks):
         insts = []
         for phi in block.phis:
-            phi_args = []
-            for pred in preds[block_id]:
-                src_inst = id_remap[pred][exit_states[pred][phi]] + len(blocks[pred].phis)
-                phi_args = phi_args + [[pred, src_inst]]
-            insts = insts + [['phi'] + phi_args]
+            [opcode, args] = [phi[0], phi[1:]]
+            assert opcode == 'phi'
+            args = [[pred, (arg.index if isinstance(arg, PhiRef) else
+                id_remap[pred][arg] + len(blocks[pred].phis))] for [pred, arg] in args]
+            insts = insts + [[opcode] + args]
 
-        # Ugh, add an offset for each block's instruction IDs to account for all the phis
         for inst in block.insts:
             [opcode, args] = [inst[0], inst[1:]]
             if opcode != 'literal':
-                args = [arg[1] if isinstance(arg, list) else (
+                args = [arg.index if isinstance(arg, PhiRef) else (
                     arg if isinstance(arg, asm.Label) else
                     id_remap[block_id][arg] + len(block.phis)) for arg in args]
             insts = insts + [[opcode] + args]
-        new_blocks = new_blocks + [dumb_regalloc.BasicBlock(insts)]
+        blocks = blocks <- [block_id].insts = insts
 
-    return dumb_regalloc.Function(fn.parameters, new_blocks)
+    return Function(fn.parameters, blocks)
 
-def mov64(a):
-    return Inst('mov64', a)
-
-def jnz(a):
-    return Inst('jnz', a)
-
-def ret(a):
-    return Inst('ret', a)
-
-def add64(a, b):
-    return Inst('add64', a, b)
-
-def sub64(a, b):
-    return Inst('sub64', a, b)
-
-fn = dumb_regalloc.Function(['count'], [
-    dumb_regalloc.BasicBlock([
-        Store('x', mov64(0)),
-    ]),
-    dumb_regalloc.BasicBlock([
-        Store('x', add64('x', 'count')),
-        Store('count', sub64('count', 1)),
-        jnz(asm.Label(1, False)),
-    ]),
-    dumb_regalloc.BasicBlock([
-        ret('x'),
-    ]),
-])
-
-dumb_regalloc.export_function('elfout.o', '_test', gen_ssa(fn))
+def test64(a, b): return Inst('test64', a, b)
+def jz(a): return Inst('jz', a)
+def jnz(a): return Inst('jnz', a)
+def jmp(a): return Inst('jmp', a)
+def ret(a): return Inst('ret', a)
+def mov64(a): return Inst('mov64', a)
+def add64(a, b): return Inst('add64', a, b)
+def sub64(a, b): return Inst('sub64', a, b)
+def call(fn, *args): return Inst('call', fn, *args)
