@@ -164,5 +164,5 @@ def export_functions(file, fns):
     all_insts = []
     for [name, fn] in fns:
         all_insts = all_insts + gen_insts(name, fn)
-    elf_file = elf.create_elf_file(*asm.build(insts))
+    elf_file = elf.create_elf_file(*asm.build(all_insts))
     write_binary_file(file, elf_file)
