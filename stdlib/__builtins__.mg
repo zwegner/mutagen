@@ -123,16 +123,12 @@ def partial(fn, *args1, **kwargs1):
         return fn(*args1, *args2, **kwargs1, **kwargs2)
     return applied
 
-# XXX would be nice to use macro magic to add the name of the function as an
-# implicit first parameter, so we wouldn't have to have an explicit alias name
 def fixed_point(fn):
-    def recurse(x):
-        return x(x)
     def call(c):
         def inner(*args, **kwargs):
             return c(c)(*args, **kwargs)
         return partial(fn, inner)
-    return recurse(call)
+    return call(call)
 
 def sorted(iterable, key=lambda(x): x):
     @fixed_point
