@@ -15,7 +15,7 @@ class Store(name, value):
 
 class Inst(opcode, *args):
     def __repr__(self):
-        return '{}({})'.format(self.opcode, ', '.join(map(str, self.args)))
+        return '{}({})'.format(self.opcode, ', '.join(map(repr, self.args)))
 
 # Given a block that contains a list of top-level expression trees, flatten out
 # the list so that every expression tree is only one ply deep, with back references to
@@ -79,9 +79,14 @@ def gen_ssa(fn):
             # For stores, we hackily remap IDs to simplify downstream processing
             if opcode == 'store':
                 [name, value] = args
-                assert isinstance(value, int)
-                exit_states = exit_states <- [block_id][name] = value
-                id_remap = id_remap <- [block_id][i] = id_remap[block_id][value]
+                if isinstance(value, str):
+                    [blocks, exit_states] = ensure_symbol_in_block(blocks,
+                        exit_states, preds, block_id, value)
+                    exit_states = exit_states <- [block_id][name] = exit_states[block_id][value]
+                    # XXX what to do with id_remap here?
+                else:
+                    exit_states = exit_states <- [block_id][name] = value
+                    id_remap = id_remap <- [block_id][i] = id_remap[block_id][value]
             else:
                 new_args = []
                 for arg in args:
