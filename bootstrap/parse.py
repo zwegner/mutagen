@@ -272,9 +272,6 @@ rule_table += [
             Block([Return(p[3])], info=p.get_info(0)), info=p.get_info(0))))],
     ['def_expr', ('DEF params return_type block',
         lambda p: Scope(Function('lambda', p[1], p[2], p[3], info=p.get_info(0))))],
-    ['class_stmt', ('CLASS IDENTIFIER params block',
-        lambda p: Assignment(Target([p[1]], info=p.get_info(1)),
-            Scope(Class(p[1], p[2], p[3], info=p.get_info(0)))))],
 ]
 
 @libparse.rule_fn(rule_table,
@@ -284,6 +281,14 @@ def parse_def_stmt(p):
     for dec in p[0]:
         fn = Call(dec, [fn])
     return Assignment(Target([p[2]], info=p.get_info(2)), fn)
+
+@libparse.rule_fn(rule_table,
+    'class_stmt', 'decorator* CLASS IDENTIFIER params block')
+def parse_class_stmt(p):
+    cls = Scope(Class(p[2], p[3], p[4], info=p.get_info(1)))
+    for dec in p[0]:
+        cls = Call(dec, [cls])
+    return Assignment(Target([p[2]], info=p.get_info(2)), cls)
 
 # Imports
 def parse_import(p, module, names, path):
