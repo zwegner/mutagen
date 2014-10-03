@@ -106,7 +106,15 @@ def print(*args):
     return putstr(' '.join(map(str, args)) + '\n')
 
 def isinstance(obj, cls):
-    return type(obj) == cls
+    t = type(obj)
+    while t != cls and hasattr(t, '__parent__'):
+        t = t.__parent__
+    return t == cls
+
+def hacky_inherit(parent):
+    def decorate(cls):
+        return hacky_inherit_from(parent, cls)
+    return decorate
 
 def sum(iterable, base):
     for item in iterable:

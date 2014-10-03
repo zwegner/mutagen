@@ -141,3 +141,18 @@ for i in [-1, 'asdf', 99]:
 assert len(s) == len(items_1)
 assert len(t) == len(items_2)
 assert len(u) == 2 * len(items_2)
+
+# Test hacky inheritance
+class A: r = 0
+@hacky_inherit(A)
+class B: r = 1; t = 0
+@hacky_inherit(B)
+class C: t = 1
+
+a = A(); b = B(); c = C()
+assert     isinstance(a, A) and     isinstance(b, A) and isinstance(c, A)
+assert not isinstance(a, B) and     isinstance(b, B) and isinstance(c, B)
+assert not isinstance(a, C) and not isinstance(b, C) and isinstance(c, C)
+assert A.r == 0 and B.r == 1 and C.r == 1
+assert B.t == 0 and C.t == 1
+assert_call_fails(lambda: A.t)

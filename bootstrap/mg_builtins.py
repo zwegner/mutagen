@@ -79,6 +79,15 @@ def mgb_slice(ctx, seq, *args):
 def mgb_hasattr(ctx, arg, attr):
     return Boolean(get_attr(ctx, arg, attr.value) is not None, info=arg)
 
+# XXX nasty. Directly modifies the class, amongst other bad things
+@mg_builtin([Class, Class])
+def hacky_inherit_from(ctx, parent, cls):
+    for attr in parent.cls.items:
+        if attr not in cls.cls.items:
+            cls.cls.items[attr] = parent.cls.items[attr]
+    cls.cls.items[String('__parent__', info=builtin_info)] = parent
+    return cls
+
 # XXX remove this, just temporarily added to test stuff that should fail.
 # Need to work out semantics of any exceptions/error handling first.
 @mg_builtin(None)
