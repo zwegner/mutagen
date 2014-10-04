@@ -61,6 +61,15 @@ class GetItem(expr, item, **k): pass
 class GetAttr(expr, attr, **k):
     def __str__(self): return '{}.{}'.format(self.expr, self.attr)
 class Call(fn, args, **k):
+    def gen_insts(self):
+        # Stupid temporary hack
+        assert isinstance(self.fn, Identifier)
+        fn = self.fn.name
+        if fn in {'test'}:
+            fn = asm.ExternLabel('_' + fn)
+        [insts, args] = list(zip(*[arg.gen_insts() for arg in self.args]))
+        insts = sum(insts, [])
+        return [insts, compiler.call(fn, *args)]
     def __str__(self): return '{}({})'.format(self.fn, ', '.join(map(str, self.args)))
 class KeywordArg(*a,**k): pass
 class VarArg(*a,**k): pass

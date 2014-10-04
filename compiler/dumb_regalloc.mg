@@ -83,6 +83,28 @@ def gen_insts(name, fn):
                 stack_slot = stack_slot - 8
                 reg_assns = reg_assns <- [block_id][inst_id] = dest
                 insts = insts + [asm.Instruction('mov64', dest, arg)]
+            elif opcode == 'call':
+                [fn, args] = [args[0], args[1:]]
+                assert len(args) <= len(param_regs)
+                # Load all arguments from the corresponding stack locations
+                for [arg, reg] in zip(args, param_regs):
+                    arg = reg_assns[block_id][arg]
+                    assert isinstance(arg, asm.Address)
+                    insts = insts + [asm.Instruction('mov64', asm.Register(reg), arg)]
+                insts = insts + [asm.Instruction(opcode, fn)]
+
+                # Assign a stack slot
+                dest = asm.Address(rbp.index, 0, 0, stack_slot)
+                stack_slot = stack_slot - 8
+                reg_assns = reg_assns <- [block_id][inst_id] = dest
+
+                # Store the result on the stack
+                reg = rax
+                insts = insts + [asm.Instruction('mov64', dest, reg)]
+                # ...and again for any phi that references it
+                if inst_id in phi_reg_assns[block_id]:
+                    for phi in phi_reg_assns[block_id][inst_id]:
+                        insts = insts + [asm.Instruction('mov64', phi, reg)]
             elif asm.is_jump_op(opcode):
                 # Make sure only the last instruction is a control flow op
                 assert inst_id == len(block.insts) - 1
