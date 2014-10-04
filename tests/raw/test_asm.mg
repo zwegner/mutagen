@@ -31,14 +31,14 @@ indices = list(range(4)) + list(range(5, 16)) # index can't be RSP
 # as they appear in the objdump output. So no negative numbers for now.
 imms = [0, 1, 7, 37, 0xFF, 0x100, 0xFFFFFF]
 
-labels = [asm.Label(l, False) for l in ['_start', '_end']]
+labels = [asm.LocalLabel(l) for l in ['_start', '_end']]
 
 # Generate a bunch of random instructions. Should make sure this hits every
 # instruction somehow (random.shuffle?). This is also a good case for figuring
 # out some way to thread a stream of random numbers through for every place
 # that needs one.
 inst_specs = list(asm.get_inst_specs())
-insts = [asm.Label('_start', True)]
+insts = [asm.GlobalLabel('_start')]
 for rand in gen_rand_64(1000):
     [inst_spec, rand] = rand_select(inst_specs, rand)
     args = []
@@ -65,7 +65,7 @@ for rand in gen_rand_64(1000):
     insts = insts + [asm.Instruction(inst_spec[0], *args)]
 
 # Add the end label, plus an extra instruction, so objdump still prints it
-insts = insts + [asm.Label('_end', True), asm.Instruction('ret')]
+insts = insts + [asm.GlobalLabel('_end'), asm.Instruction('ret')]
 
 elf_file = elf.create_elf_file(*asm.build(insts))
 write_binary_file('elfout.o', elf_file)

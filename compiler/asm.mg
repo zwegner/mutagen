@@ -1,10 +1,23 @@
 import struct
 
-class Label(name, is_global: bool):
+# "Abstract" base class: since our inheritance is wack, we don't provide any
+# class attributes here so it probably won't get instantiated...
+class Label:
     def __str__(self):
         return '<{}>'.format(self.name)
+    def __repr__(self):
+        return '{}({})'.format(type(self).__name__, repr(self.name))
 
-class Relocation(label: Label, size: int):
+@hacky_inherit(Label)
+class LocalLabel(name): pass
+
+@hacky_inherit(Label)
+class GlobalLabel(name): pass
+
+@hacky_inherit(Label)
+class ExternLabel(name): pass
+
+class Relocation(label, size: int):
     pass
 
 class Register(index: int):
@@ -25,7 +38,7 @@ class Register(index: int):
         return prefix + names[self.index + 1]
 
 class Address(base: int, scale: int, index: int, disp: int):
-    def to_str(self, use_size_prefix, size):
+    def to_str(self, use_size_prefix: bool, size: int):
         if use_size_prefix:
             size_str = {8: 'BYTE', 16: 'WORD', 32: 'DWORD', 64: 'QWORD'}[size]
             size_str = size_str + ' PTR '
@@ -41,16 +54,16 @@ class Address(base: int, scale: int, index: int, disp: int):
     def __repr__(self):
         return 'Address({}, {}, {}, {})'.format(self.base, self.scale, self.index, self.disp)
 
-def fits_8bit(imm):
+def fits_8bit(imm: int):
     return -128 <= imm and imm <= 127
 
-def pack8(imm):
+def pack8(imm: int):
     return struct.pack('<b', imm)
 
-def pack32(imm):
+def pack32(imm: int):
     return struct.pack('<i', imm)
 
-def pack64(imm):
+def pack64(imm: int):
     return struct.pack('<q', imm)
 
 def mod_rm_sib(reg, rm):
@@ -388,25 +401,35 @@ def is_jump_op(opcode):
 
 def build(insts):
     bytes = []
-    labels = []
-    global_labels = []
+    local_labels = global_labels = extern_labels = []
     relocations = []
     for inst in insts:
-        if isinstance(inst, Label):
-            labels = labels + [[inst.name, len(bytes)]]
-            if inst.is_global:
-                global_labels = global_labels + [inst.name]
+        if isinstance(inst, LocalLabel):
+            local_labels = local_labels + [[inst.name, len(bytes)]]
+        elif isinstance(inst, GlobalLabel):
+            global_labels = global_labels + [[inst.name, len(bytes)]]
         else:
             for byte in inst.to_bytes():
                 if isinstance(byte, Relocation):
-                    relocations = relocations + [[byte, len(bytes)]]
-                    bytes = bytes + [0] * byte.size
+                    # If the relocation is to a an external symbol, pass it on
+                    if isinstance(byte.label, ExternLabel):
+                        assert byte.size == 4
+                        extern_labels = extern_labels + [[byte.label.name, len(bytes)]]
+                        # HACKish: assume the relocation is at the end of an instruction.
+                        # Since the PC will be 4 bytes after the end of this value when the
+                        # instruction executes, and the linker will calculate the offset from
+                        # the beginning of the value, put an offset of -4 here that the linker
+                        # will add in.
+                        bytes = bytes + pack32(-4)
+                    else:
+                        relocations = relocations + [[byte, len(bytes)]]
+                        bytes = bytes + [0] * byte.size
                 else:
                     bytes = bytes + [byte]
 
     # Fill in relocations
     if relocations:
-        label_dict = dict(labels)
+        label_dict = dict(local_labels + global_labels)
         new_bytes = []
         last_offset = 0
         for [rel, offset] in relocations:
@@ -418,7 +441,7 @@ def build(insts):
             last_offset = offset + rel.size
         bytes = new_bytes + bytes[last_offset:]
 
-    return [bytes, labels, global_labels]
+    return [bytes, local_labels, global_labels, extern_labels]
 
 # Create a big list of possible instructions with possible operands
 def get_inst_specs():

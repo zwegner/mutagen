@@ -9,13 +9,13 @@ class Function(parameters, blocks):
 class BasicBlock(name, phis, insts):
     pass
 
-param_regs = [7, 6, 2]
+param_regs = [7, 6, 2, 1]
 
 def gen_insts(name, fn):
     stack_slot = -8
     insts = []
 
-    [rsp, rbp] = [asm.Register(4), asm.Register(5)]
+    [rsp, rbp, rax] = [asm.Register(4), asm.Register(5), asm.Register(0)]
     all_registers = set(range(16)) - set(param_regs) - {rsp.index, rbp.index}
 
     phi_reg_assns = reg_assns = {i: {} for i in range(len(fn.blocks))}
@@ -44,7 +44,7 @@ def gen_insts(name, fn):
                 break
 
     for [block_id, block] in enumerate(fn.blocks):
-        insts = insts + [asm.Label(block.name, False)]
+        insts = insts + [asm.LocalLabel(block.name)]
         for [inst_id, inst] in enumerate(block.insts):
             [opcode, args] = [inst[0], inst[1:]]
             # Special literal opcode: just a placeholder so we can differentiate
@@ -71,7 +71,7 @@ def gen_insts(name, fn):
                 if args:
                     arg = reg_assns[block_id][args[0]]
                     insts = insts + [asm.Instruction('mov64', asm.Register(0), arg)]
-                insts = insts + [asm.Instruction('jmp', asm.Label('exit', False))]
+                insts = insts + [asm.Instruction('jmp', asm.LocalLabel('exit'))]
             # Parameter: load a value from the proper register given standard C ABI
             elif opcode == 'parameter':
                 [arg] = args
@@ -91,7 +91,7 @@ def gen_insts(name, fn):
                 [dest_block_id] = args
                 if isinstance(dest_block_id, asm.Label):
                     dest_block_id = dest_block_id.name
-                dest = asm.Label(dest_block_id, False)
+                dest = asm.LocalLabel(dest_block_id)
                 insts = insts + [asm.Instruction(opcode, dest)]
             elif args:
                 # Load all arguments from the corresponding stack locations
@@ -140,12 +140,12 @@ def gen_insts(name, fn):
 
     # Now that we know the total amount of stack space allocated, add a preamble and postamble
     stack_size = -8 - stack_slot
-    insts = [asm.Label(name, True),
+    insts = [asm.GlobalLabel(name),
         asm.Instruction('push64', rbp),
         asm.Instruction('mov64', rbp, rsp),
         asm.Instruction('sub64', rsp, stack_size)
     ] + insts + [
-        asm.Label('exit', False),
+        asm.LocalLabel('exit'),
         asm.Instruction('add64', rsp, stack_size),
         asm.Instruction('pop64', rbp),
         asm.Instruction('ret')
@@ -163,6 +163,7 @@ def print_insts(insts):
 def export_functions(file, fns):
     all_insts = []
     for [name, fn] in fns:
-        all_insts = all_insts + gen_insts(name, fn)
+        insts = gen_insts(name, fn)
+        all_insts = all_insts + insts
     elf_file = elf.create_elf_file(*asm.build(all_insts))
     write_binary_file(file, elf_file)

@@ -1,6 +1,8 @@
 # XXX Obviously this file is just a stupid shell of an implementation
 
 import compiler
+# XXX work around weird importing behavior
+asm = compiler.asm
 
 def block_name(block_id):
     return 'block{}'.format(block_id)
@@ -92,8 +94,8 @@ class While(test, block, **k):
 
         [prelude, test] = self.test.gen_insts()
         blocks = [compiler.BasicBlock(pre_block, [], prelude + [gen_test(test),
-            compiler.jz(compiler.asm.Label(exit_block, False))])] + while_blocks + [
-            compiler.BasicBlock(post_block, [], [compiler.jmp(compiler.asm.Label(pre_block, False))])]
+            compiler.jz(asm.LocalLabel(exit_block))])] + while_blocks + [
+            compiler.BasicBlock(post_block, [], [compiler.jmp(asm.LocalLabel(pre_block))])]
         return [blocks, block_id]
 
 class IfElse(*a,**k): pass

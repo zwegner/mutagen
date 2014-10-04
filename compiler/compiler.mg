@@ -29,7 +29,7 @@ def flatten_block(block):
             return [results, inst]
         elif isinstance(inst, Parameter):
             return [results + [['parameter', inst.index]], len(results)]
-        elif isinstance(inst, regalloc.asm.Label):
+        elif isinstance(inst, asm.Label):
             return [results, inst]
         elif isinstance(inst, Store):
             [results, ref] = rec_flatten(results, inst.value)
@@ -58,11 +58,17 @@ def ensure_symbol_in_block(ensure_symbol_in_block, blocks, exit_states, preds,
                 preds, pred, sym)
     return [blocks, exit_states]
 
+def print_blocks(blocks):
+    for [block_id, block] in enumerate(blocks):
+        print('block', block_id)
+        for inst in block.phis + block.insts:
+            print('  ', inst)
+
 def gen_ssa(fn):
     # Add the parameters to the first block.
-    stmts = [Store(name, Parameter(i)) for [i, name] in enumerate(fn.parameters)]
     blocks = fn.blocks
-    if stmts:
+    if fn.parameters:
+        stmts = [Store(name, Parameter(i)) for [i, name] in enumerate(fn.parameters)]
         blocks = [BasicBlock('prelude', [], stmts)] + blocks
 
     blocks = list(map(flatten_block, blocks))
@@ -100,6 +106,8 @@ def gen_ssa(fn):
                 insts = insts + [[opcode] + new_args]
         blocks = blocks <- [block_id].insts = insts
 
+    # Link up phis: take a list of variable names that are live at the beginning
+    # of a block, and look at where they are last assigned in each of the predecessors
     for [block_id, block] in enumerate(blocks):
         phis = [['phi'] + [[pred, exit_states[pred][phi]]
             for pred in preds[block.name]] for phi in block.phis]
@@ -118,12 +126,12 @@ def gen_ssa(fn):
 
         for inst in block.insts:
             [opcode, args] = [inst[0], inst[1:]]
-            if opcode != 'literal':
+            if opcode not in {'literal', 'parameter'}:
                 args = [arg.index if isinstance(arg, PhiRef) else (
                     arg if isinstance(arg, asm.Label) else
                     id_remap[block_id][arg] + len(block.phis)) for arg in args]
             insts = insts + [[opcode] + args]
-        blocks = blocks <- [block_id].insts = insts
+        blocks = blocks <- [block_id].insts = insts, [block_id].phis = []
 
     return Function(fn.parameters, blocks)
 

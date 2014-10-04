@@ -10,33 +10,43 @@ def create_string_table(strings):
         table = table + s.encode('ascii') + [0]
     return [table, offsets]
 
-def create_elf_file(code, labels, global_labels):
-    section_names = ['.text', '.shstrtab', '.strtab', '.symtab']
-    section_types = [1, 3, 3, 2]
+def create_elf_file(code, local_labels, global_labels, extern_labels):
+    section_names = ['.text', '.shstrtab', '.strtab', '.symtab', '.reltext']
+    section_types = [1, 3, 3, 2, 9]
+    [code_idx, shstrtab_idx, strtab_idx, symtab_idx] = list(range(1, 5))
+
     [shstrtab, shstrtab_offsets] = create_string_table(section_names)
 
-    strings = []
-    for [label, address] in labels:
-        strings = strings + [label]
+    strings = [label for [label, address] in local_labels + global_labels + extern_labels]
     [strtab, strtab_offsets] = create_string_table(strings)
 
+    # Create symbol table section--just a list of labels for now
     symtab = [0] * 24 # First symbol is reserved
-    n_local_syms = 0
-    for [i, [label, address]] in enumerate(labels):
-        for [flag, use_globals] in [[0, False], [0x10, True]]:
-            if (label in global_labels) == use_globals:
-                if not use_globals:
-                    n_local_syms = n_local_syms + 1
-                symtab = symtab + struct.pack('<IBBHQQ',
-                    strtab_offsets[i], # Name offset in string table
-                    flag, # type/binding (for us, specify local or global)
-                    0, # reserved/unused
-                    1, # section index of code section
-                    address, # value of symbol (an address)
-                    0 # size
-                )
+    i = 0
+    for [flag, labels] in [[0, local_labels], [0x10, global_labels], [0x20, extern_labels]]:
+        for [label, address] in labels:
+            if flag == 0x20:
+                section = address = 0
+            else:
+                section = code_idx
+            symtab = symtab + struct.pack('<IBBHQQ',
+                strtab_offsets[i], # Name offset in string table
+                flag, # type/binding (for us, specify local or global)
+                0, # reserved/unused
+                section, # section index of definition
+                address, # value of symbol (offset into code section)
+                0 # size
+            )
+            i = i + 1
 
-    sections = [code, shstrtab, strtab, symtab]
+    # Create relocation table
+    relocations = []
+    extern_sym_idx = len(local_labels) + len(global_labels) + 1
+    for [label, address] in extern_labels:
+        relocations = relocations + struct.pack('<QII', address, 2, extern_sym_idx)
+        extern_sym_idx = extern_sym_idx + 1
+
+    sections = [code, shstrtab, strtab, symtab, relocations]
 
     elf_header = '\x7fELF'.encode('ascii') + [ # magic
         2, # class (elf64)
@@ -57,7 +67,7 @@ def create_elf_file(code, labels, global_labels):
         0, 0, # size/number of program header entries
         64, # size of section header entry
         len(sections) + 1, # number of section header entries (+1 for reserved)
-        2 # section index of section name string table
+        shstrtab_idx # section index of section name string table
     )
 
     reserved_section = [0] * 64
@@ -67,7 +77,9 @@ def create_elf_file(code, labels, global_labels):
     elf_data = []
     for [i, [data, section_type]] in enumerate(zip(sections, section_types)):
         if section_type == 2: # .symtab has special handling
-            [link, alignment, size, info] = [3, 4, 24, n_local_syms]
+            [link, alignment, size, info] = [strtab_idx, 4, 24, len(local_labels)]
+        elif section_type == 9:
+            [link, alignment, size, info] = [symtab_idx, 1, 16, code_idx]
         else:
             [link, alignment, size, info] = [0, 1, 0, 0]
         section_header = struct.pack('<IIQQQQIIQQ',
