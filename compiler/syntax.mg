@@ -34,7 +34,12 @@ class BinaryOp(op, lhs, rhs, **k):
     def gen_insts(self):
         [lhs_insts, lhs] = self.lhs.gen_insts()
         [rhs_insts, rhs] = self.rhs.gen_insts()
-        fn = {'+': compiler.add64, '-': compiler.sub64}[self.op]
+        fn = {
+            '+': compiler.add64,
+            '-': compiler.sub64,
+            '&': compiler.and64,
+            '|': compiler.or64,
+        }[self.op]
         return [lhs_insts + rhs_insts, fn(lhs, rhs)]
     def __str__(self): return '({} {} {})'.format(self.lhs, self.op, self.rhs)
 class UnaryOp(*a,**k): pass
