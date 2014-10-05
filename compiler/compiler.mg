@@ -60,7 +60,7 @@ def ensure_symbol_in_block(ensure_symbol_in_block, blocks, exit_states, preds,
 
 def print_blocks(blocks):
     for [block_id, block] in enumerate(blocks):
-        print('block', block_id)
+        print('block {}: {}'.format(block_id, block.name))
         for inst in block.phis + block.insts:
             print('  ', inst)
 

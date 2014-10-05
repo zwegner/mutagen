@@ -72,39 +72,7 @@ def gen_insts(name, fn):
                     arg = reg_assns[block_id][args[0]]
                     insts = insts + [asm.Instruction('mov64', asm.Register(0), arg)]
                 insts = insts + [asm.Instruction('jmp', asm.LocalLabel('exit'))]
-            # Parameter: load a value from the proper register given standard C ABI
-            elif opcode == 'parameter':
-                [arg] = args
-                arg = asm.Register(param_regs[arg])
-                if inst_id in phi_reg_assns[block_id]:
-                    for phi in phi_reg_assns[block_id][inst_id]:
-                        insts = insts + [asm.Instruction('mov64', phi, arg)]
-                dest = asm.Address(rbp.index, 0, 0, stack_slot)
-                stack_slot = stack_slot - 8
-                reg_assns = reg_assns <- [block_id][inst_id] = dest
-                insts = insts + [asm.Instruction('mov64', dest, arg)]
-            elif opcode == 'call':
-                [fn, args] = [args[0], args[1:]]
-                assert len(args) <= len(param_regs)
-                # Load all arguments from the corresponding stack locations
-                for [arg, reg] in zip(args, param_regs):
-                    arg = reg_assns[block_id][arg]
-                    assert isinstance(arg, asm.Address)
-                    insts = insts + [asm.Instruction('mov64', asm.Register(reg), arg)]
-                insts = insts + [asm.Instruction(opcode, fn)]
-
-                # Assign a stack slot
-                dest = asm.Address(rbp.index, 0, 0, stack_slot)
-                stack_slot = stack_slot - 8
-                reg_assns = reg_assns <- [block_id][inst_id] = dest
-
-                # Store the result on the stack
-                reg = rax
-                insts = insts + [asm.Instruction('mov64', dest, reg)]
-                # ...and again for any phi that references it
-                if inst_id in phi_reg_assns[block_id]:
-                    for phi in phi_reg_assns[block_id][inst_id]:
-                        insts = insts + [asm.Instruction('mov64', phi, reg)]
+            # Jump instructions
             elif asm.is_jump_op(opcode):
                 # Make sure only the last instruction is a control flow op
                 assert inst_id == len(block.insts) - 1
@@ -115,41 +83,57 @@ def gen_insts(name, fn):
                     dest_block_id = dest_block_id.name
                 dest = asm.LocalLabel(dest_block_id)
                 insts = insts + [asm.Instruction(opcode, dest)]
-            elif args:
-                # Load all arguments from the corresponding stack locations
-                free_regs = all_registers
-                arg_regs = []
-                for arg in args:
-                    arg = reg_assns[block_id][arg]
-                    if isinstance(arg, asm.Address):
-                        [free_regs, reg] = free_regs.pop()
-                        reg = asm.Register(reg)
-                        arg_regs = arg_regs + [reg]
-                        insts = insts + [asm.Instruction('mov64', reg, arg)]
-                    else:
-                        arg_regs = arg_regs + [arg]
+            # 0-operand instructions: just add it here and don't bother with registers
+            elif not args:
+                insts = insts + [asm.Instruction(opcode)]
+            # All other opcode types: we 
+            else:
+                # Parameter: load a value from the proper register given standard C ABI
+                if opcode == 'parameter':
+                    [arg] = args
+                    reg = asm.Register(param_regs[arg])
+                elif opcode == 'call':
+                    [fn, args] = [args[0], args[1:]]
+                    assert len(args) <= len(param_regs)
+                    # Load all arguments from the corresponding stack locations
+                    for [arg, reg] in zip(args, param_regs):
+                        arg = reg_assns[block_id][arg]
+                        assert isinstance(arg, asm.Address)
+                        insts = insts + [asm.Instruction('mov64', asm.Register(reg), arg)]
+                    insts = insts + [asm.Instruction(opcode, fn)]
+                    # C ABI dictates the return value from function is in rax
+                    reg = rax
+                elif args:
+                    # Load all arguments from the corresponding stack locations
+                    free_regs = all_registers
+                    arg_regs = []
+                    for arg in args:
+                        arg = reg_assns[block_id][arg]
+                        if isinstance(arg, asm.Address):
+                            [free_regs, reg] = free_regs.pop()
+                            reg = asm.Register(reg)
+                            arg_regs = arg_regs + [reg]
+                            insts = insts + [asm.Instruction('mov64', reg, arg)]
+                        else:
+                            arg_regs = arg_regs + [arg]
 
+                    # Assign a destination to 3-operand instructions
+                    if asm.needs_register(opcode) and not (asm.is_destructive_op(opcode) and
+                            isinstance(arg_regs[0], asm.Register)):
+                        [free_regs, reg] = free_regs.pop()
+                        arg_regs = [asm.Register(reg)] + arg_regs
+                    reg = arg_regs[0]
+
+                    # Add the instruction as well as a store into our stack slot
+                    insts = insts + [asm.Instruction(opcode, *arg_regs)]
+
+                # Store the result on the stack
                 if asm.needs_register(opcode):
                     # Assign a stack slot
                     dest = asm.Address(rbp.index, 0, 0, stack_slot)
                     stack_slot = stack_slot - 8
                     reg_assns = reg_assns <- [block_id][inst_id] = dest
 
-                    # Assign a destination to 3-operand instructions
-                    destructive = (asm.is_destructive_op(opcode) and
-                        isinstance(arg_regs[0], asm.Register))
-                    if not destructive:
-                        [free_regs, reg] = free_regs.pop()
-                        reg = asm.Register(reg)
-                        arg_regs = [reg] + arg_regs
-                    else:
-                        reg = arg_regs[0]
-
-                # Add the instruction as well as a store into our stack slot
-                insts = insts + [asm.Instruction(opcode, *arg_regs)]
-
-                # Store the result on the stack
-                if asm.needs_register(opcode):
                     insts = insts + [asm.Instruction('mov64', dest, reg)]
                     # ...and again for any phi that references it
                     if inst_id in phi_reg_assns[block_id]:
@@ -157,8 +141,6 @@ def gen_insts(name, fn):
                             insts = insts + [asm.Instruction('mov64', phi, reg)]
                 else:
                     assert inst_id not in phi_reg_assns[block_id]
-            else:
-                insts = insts + [asm.Instruction(opcode)]
 
     # Now that we know the total amount of stack space allocated, add a preamble and postamble
     stack_size = -8 - stack_slot
@@ -186,6 +168,7 @@ def export_functions(file, fns):
     all_insts = []
     for [name, fn] in fns:
         insts = gen_insts(name, fn)
+        print_insts(insts)
         all_insts = all_insts + insts
     elf_file = elf.create_elf_file(*asm.build(all_insts))
     write_binary_file(file, elf_file)

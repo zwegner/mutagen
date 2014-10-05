@@ -300,6 +300,5 @@ rules = [
 parser = libparse.Parser(rules, 'stmt_list')
 line = read_file('new.mg')
 x = parser.parse(lexer.input(line))
-print(x[0])
 
 compiler.export_functions('elfout.o', gen_insts(x))
