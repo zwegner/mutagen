@@ -27,8 +27,10 @@ def gen_blocks_from_stmts(stmts, block_id):
         block_id = block_id + 1
     return [blocks, block_id]
 
-def gen_test(value):
-    return compiler.test64(value, value)
+def gen_test_block(test, test_block_name, exit_block_name):
+    [prelude, test] = test.gen_insts()
+    return [compiler.BasicBlock(test_block_name, [], prelude + [compiler.test64(test, test),
+        compiler.jz(asm.LocalLabel(exit_block_name))])]
 
 class BinaryOp(op, lhs, rhs, **k):
     def gen_insts(self):
@@ -99,20 +101,38 @@ class Block(stmts, **k): pass
 class For(*a,**k): pass
 class While(test, block, **k):
     def gen_blocks(self, block_id):
-        pre_block = block_name(block_id)
+        test_block_name = block_name(block_id)
         [while_blocks, block_id] = gen_blocks_from_stmts(self.block.stmts, block_id + 1)
-        post_block = block_name(block_id)
+        post_block_name = block_name(block_id)
         block_id = block_id + 1
         # HACK: assume another block comes after this...
-        exit_block = block_name(block_id)
+        exit_block_name = block_name(block_id)
 
-        [prelude, test] = self.test.gen_insts()
-        blocks = [compiler.BasicBlock(pre_block, [], prelude + [gen_test(test),
-            compiler.jz(asm.LocalLabel(exit_block))])] + while_blocks + [
-            compiler.BasicBlock(post_block, [], [compiler.jmp(asm.LocalLabel(pre_block))])]
+        blocks = gen_test_block(self.test, test_block_name, exit_block_name)
+        blocks = blocks + while_blocks
+        blocks = blocks + [compiler.BasicBlock(post_block_name, [], [
+            compiler.jmp(asm.LocalLabel(test_block_name))])]
         return [blocks, block_id]
 
-class IfElse(*a,**k): pass
+class IfElse(test, if_block, else_block, **k):
+    def gen_blocks(self, block_id):
+        test_block_name = block_name(block_id)
+        [if_blocks, block_id] = gen_blocks_from_stmts(self.if_block.stmts, block_id + 1)
+        post_block_name = block_name(block_id)
+
+        block_id = block_id + 1
+        else_block_name = block_name(block_id)
+        [else_blocks, block_id] = gen_blocks_from_stmts(self.else_block.stmts, block_id)
+
+        # HACK: assume another block comes after this...
+        exit_block_name = block_name(block_id)
+
+        blocks = gen_test_block(self.test, test_block_name, else_block_name)
+        blocks = blocks + if_blocks
+        blocks = blocks + [compiler.BasicBlock(post_block_name, [], [
+            compiler.jmp(asm.LocalLabel(exit_block_name))])]
+        blocks = blocks + else_blocks
+        return [blocks, block_id]
 class VarParams(*a,**k): pass
 class KeywordVarParams(name, **k): pass
 class Params(*a,**k): pass
