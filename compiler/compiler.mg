@@ -131,7 +131,7 @@ def gen_ssa(fn):
                     arg if isinstance(arg, asm.Label) else
                     id_remap[block_id][arg] + len(block.phis)) for arg in args]
             insts = insts + [[opcode] + args]
-        blocks = blocks <- [block_id].insts = insts, [block_id].phis = []
+        blocks = blocks <- [block_id].insts = insts
 
     return Function(fn.parameters, blocks)
 
