@@ -142,8 +142,11 @@ def gen_insts(name, fn):
                 else:
                     assert inst_id not in phi_reg_assns[block_id]
 
+    # Round up to the nearest multiple of 16. Only add 7 since -stack_slot is 8 more
+    # the actual stack size needed.
+    stack_size = (-stack_slot + 7) & ~15
+
     # Now that we know the total amount of stack space allocated, add a preamble and postamble
-    stack_size = -8 - stack_slot
     insts = [asm.GlobalLabel(name),
         asm.Instruction('push64', rbp),
         asm.Instruction('mov64', rbp, rsp),
