@@ -98,17 +98,18 @@ class Node:
         self.error('__repr__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
     def get_attr(self, ctx, attr):
         self.error('__getattr__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
-    def get_item(self, ctx, index):
+    def get_item(self, ctx, index, info=None):
+        info = info or self
         try:
             item = self[index]
         except KeyError:
-            self.error('key not in dict: %s' % index.repr(ctx), ctx=ctx)
+            info.error('key not in dict: %s' % index.repr(ctx), ctx=ctx)
         except IndexError:
-            self.error('list index out of range: %s' % index.repr(ctx), ctx=ctx)
+            info.error('list index out of range: %s' % index.repr(ctx), ctx=ctx)
         except TypeError:
-            self.error('__getitem__ unimplemented for: %s' % get_type_name(ctx, self), ctx=ctx)
+            info.error('__getitem__ unimplemented for: %s' % get_type_name(ctx, self), ctx=ctx)
         if item is None:
-            self.error('bad arg for get_item: %s' % index.repr(ctx), ctx=ctx)
+            info.error('bad arg for get_item: %s' % index.repr(ctx), ctx=ctx)
         return item
     def iter(self, ctx):
         return iter(self)
@@ -459,7 +460,7 @@ class Object(Node):
                 self.base_repr(), info=self)).value
     def iter(self, ctx):
         return self.dispatch(ctx, '__iter__', [])
-    def get_item(self, ctx, item):
+    def get_item(self, ctx, item, info=None):
         return self.dispatch(ctx, '__getitem__', [item])
     def overload(self, ctx, attr, args):
         # Operator overloading
@@ -572,7 +573,7 @@ class GetItem(Node):
     def eval(self, ctx):
         obj = self.obj.eval(ctx)
         index = self.item.eval(ctx)
-        return obj.get_item(ctx, index)
+        return obj.get_item(ctx, index, info=self)
     def repr(self, ctx):
         return '%s[%s]' % (self.obj.repr(ctx), self.item.repr(ctx))
 
@@ -633,7 +634,7 @@ class ModItem(Node):
     def eval_mod(self, ctx, expr, value):
         expr.set_item(ctx, self.item.eval(ctx), value)
     def eval_get(self, ctx, expr):
-        return expr.get_item(ctx, self.item.eval(ctx))
+        return expr.get_item(ctx, self.item.eval(ctx), info=self)
 
 @node('name')
 class ModAttr(Node):
