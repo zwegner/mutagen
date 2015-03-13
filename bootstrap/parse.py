@@ -237,30 +237,30 @@ rule_table += [
 
 @libparse.rule_fn(rule_table, 'params', '[LPAREN [param_list] RPAREN]')
 def parse_params(p):
-    params, types, var_params, kwparams, kw_var_params = [], [], None, [], None
+    params, types, var_params, kw_params, kw_var_params = [], [], None, [], None
     if p[0] and p[0][1]:
         for i, item in enumerate(p[0][1]):
-            indices = [0, 1, i]
+            def local_error(msg):
+                p.error(msg, 0, 1, i)
+
             if isinstance(item, VarParams):
                 if var_params:
-                    p.error('only one varparam (*) allowed', *indices)
-                if kwparams or kw_var_params:
-                    p.error('a varparam (*) must come before keyword parameters', *indices)
+                    local_error('only one varparam (*) allowed')
+                if kw_params or kw_var_params:
+                    local_error('a varparam (*) must come before keyword parameters')
                 var_params = item.name
             elif isinstance(item, KeywordVarParams):
                 kw_var_params = item.name
             elif item[2]:
                 if kw_var_params:
-                    p.error('keyword parameters cannot come after keyword varparams (**)', *indices)
-                if item[1]:
-                    p.error('typed keyword parameters are not currently supported', *indices)
-                kwparams.append(KeywordArg(item[0], item[2]))
+                    local_error('keyword parameters cannot come after keyword varparams (**)')
+                kw_params.append(KeywordParam(item[0], item[1] or None_(info=NULL_INFO), item[2]))
             else:
-                if var_params or kwparams or kw_var_params:
-                    p.error('positional arguments must appear before varparams or keyword parameters', *indices)
+                if var_params or kw_params or kw_var_params:
+                    local_error('positional arguments must appear before varparams or keyword parameters')
                 params.append(item[0])
                 types.append(item[1] or None_(info=NULL_INFO))
-    return Params(params, types, var_params, kwparams, kw_var_params,
+    return Params(params, types, var_params, kw_params, kw_var_params,
         info=NULL_INFO)
 
 # Function/class defs

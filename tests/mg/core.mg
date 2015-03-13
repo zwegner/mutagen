@@ -51,11 +51,12 @@ def test_scoping():
 test_scoping()
 
 # Test parameter errors
-def test_fn(a: int, b: str):
-    return str(a) + b
+def test_fn(a: int, b: str, c: int =1234):
+    return str(a) + b + str(c)
+assert test_fn(0, 'b') == '0b1234'
+assert test_fn(1, 'b', c=5) == '1b5'
 assert_call_fails(lambda: test_fn('a', 'b'))
-assert_call_fails(lambda:
-    assert_call_fails(lambda: test_fn(1, 'b')))
+assert_call_fails(lambda: test_fn(0, 'b', c='c'))
 
 # Test return types
 test_types = ['abc', 123, True, False]

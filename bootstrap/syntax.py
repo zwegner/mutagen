@@ -30,10 +30,11 @@ def get_type_name(ctx, obj):
     return type(obj).__name__
 
 def check_obj_type(self, msg_type, ctx, obj, type):
-    obj_type = obj.get_attr(ctx, '__class__')
-    if obj_type is not type:
-        self.error('bad %s type %s, expected %s' % (msg_type,
-            get_class_name(ctx, obj_type), get_class_name(ctx, type)), ctx=ctx)
+    if not isinstance(type, None_):
+        obj_type = obj.get_attr(ctx, '__class__')
+        if obj_type is not type:
+            self.error('bad %s type %s, expected %s' % (msg_type,
+                get_class_name(ctx, obj_type), get_class_name(ctx, type)), ctx=ctx)
 
 def preprocess_program(ctx, block):
     # Analyze nested functions
@@ -895,15 +896,22 @@ class Call(Node):
 class VarParams(Node):
     pass
 
+@node('name, &type, &expr')
+class KeywordParam(Node):
+    def eval(self, ctx):
+        return KeywordParam(self.name, self.type.eval(ctx), self.expr.eval(ctx), info=self)
+    def repr(self, ctx):
+        return '%s=%s' % (self.name, self.expr.repr(ctx))
+
 @node('name')
 class KeywordVarParams(Node):
     pass
 
-@node('params, *types, var_params, *kwparams, kw_var_params')
+@node('params, *types, var_params, *kw_params, kw_var_params')
 class Params(Node):
     def specialize(self, ctx):
         self.type_evals = [t.eval(ctx) for t in self.types]
-        self.keyword_evals = {p.name: p.eval(ctx) for p in self.kwparams}
+        self.keyword_evals = {p.name: p.eval(ctx) for p in self.kw_params}
         return self
     def bind(self, obj, ctx, args, kwargs):
         if self.var_params:
@@ -921,8 +929,7 @@ class Params(Node):
         # Check argument types
         args = []
         for p, t, a in zip(self.params, self.type_evals, pos_args):
-            if not isinstance(t, None_):
-                check_obj_type(self, 'argument', ctx, a, t)
+            check_obj_type(self, 'argument', ctx, a, t)
             args += [(p, a)]
 
         # Bind var args
@@ -930,18 +937,20 @@ class Params(Node):
             args += [(self.var_params, var_args)]
 
         # Bind keyword arguments
-        for arg in kwargs:
-            if arg not in self.keyword_evals and not self.kw_var_params:
-                self.error('got unexpected keyword argument \'%s\'' % arg, ctx=ctx)
+        for name, arg in kwargs.items():
+            if name in self.keyword_evals:
+                check_obj_type(self, 'argument', ctx, arg, self.keyword_evals[name].type)
+            elif not self.kw_var_params:
+                self.error('got unexpected keyword argument \'%s\'' % name, ctx=ctx)
 
         # Copy the kwargs, since we're going to mutate it
         kwargs = kwargs.copy()
-        for kwparam in self.kwparams:
+        for kwparam in self.kw_params:
             if kwparam.name in kwargs:
                 args += [(kwparam.name, kwargs[kwparam.name])]
                 del kwargs[kwparam.name]
             else:
-                args += [(kwparam.name, self.keyword_evals[kwparam.name])]
+                args += [(kwparam.name, self.keyword_evals[kwparam.name].expr)]
 
         # Bind var args
         if self.kw_var_params:
@@ -958,7 +967,7 @@ class Params(Node):
                 params.append(p)
         if self.var_params:
             params.append('*%s' % self.var_params)
-        for param in self.kwparams:
+        for param in self.kw_params:
             params.append(param.str(ctx))
         if self.kw_var_params:
             params.append('**%s' % self.kw_var_params)
@@ -968,7 +977,7 @@ class Params(Node):
             yield I
         if self.var_params:
             yield self.var_params
-        for p in self.kwparams:
+        for p in self.kw_params:
             yield p.name
         if self.kw_var_params:
             yield self.kw_var_params
