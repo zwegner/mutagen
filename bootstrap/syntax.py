@@ -16,6 +16,9 @@ inv_str_escapes = [
 
 # Utility functions
 def get_class_name(ctx, cls):
+    # HACK
+    if isinstance(cls, BuiltinClass):
+        return cls.name
     name = cls.get_attr(ctx, '__name__')
     if name is not None:
         return name.str(ctx)
@@ -901,6 +904,8 @@ class KeywordParam(Node):
     def eval(self, ctx):
         return KeywordParam(self.name, self.type.eval(ctx), self.expr.eval(ctx), info=self)
     def repr(self, ctx):
+        if not isinstance(self.type, None_):
+            return '%s: %s=%s' % (self.name, self.type.repr(ctx), self.expr.repr(ctx))
         return '%s=%s' % (self.name, self.expr.repr(ctx))
 
 @node('name')
@@ -971,7 +976,21 @@ class Params(Node):
             params.append(param.str(ctx))
         if self.kw_var_params:
             params.append('**%s' % self.kw_var_params)
-        return ', '.join(params)
+        return '(%s)' % ', '.join(params)
+    # HACK
+    def get_attr(self, ctx, attr):
+        if attr == 'names':
+            return List([String(param, info=self) for param in self.params], info=self)
+        elif attr == 'types':
+            # Note use of type_evals
+            return List(self.type_evals, info=self)
+        elif attr == 'kw_params':
+            # Note use of keyword_evals
+            return List([self.keyword_evals[k] for k in self.kw_params], info=self)
+        elif attr in {'var_params', 'kw_var_params'}:
+            value = getattr(self, attr)
+            return String(value, info=self) if value is not None else None_(info=self)
+        return None
     def __iter__(self):
         for I in self.params:
             yield I
@@ -1062,7 +1081,7 @@ class Function(Node):
         return hash((self.name, self.params, self.return_type, self.block))
     def repr(self, ctx):
         ret_str = ' -> %s' % self.return_type.repr(ctx) if self.return_type else ''
-        return 'def %s(%s)%s%s' % (self.name, self.params.repr(ctx),
+        return 'def %s%s%s%s' % (self.name, self.params.repr(ctx),
                 ret_str, self.block.repr(ctx))
 
 @node('ctx, &block')
@@ -1101,6 +1120,7 @@ class Class(Node):
                 in child_ctx.syms.items()}
             items[String('__name__', info=self)] = String(self.name, info=self)
             items[String('__class__', info=self)] = TypeClass
+            items[String('__params__', info=self)] = self.params
             self.cls = Object(items, info=self)
         return self
     def eval_call(self, ctx, args, kwargs):

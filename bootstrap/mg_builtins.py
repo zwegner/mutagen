@@ -1,3 +1,4 @@
+import copy
 import sys
 
 from syntax import *
@@ -79,9 +80,39 @@ def mgb_slice(ctx, seq, *args):
 def mgb_hasattr(ctx, arg, attr):
     return Boolean(get_attr(ctx, arg, attr.value) is not None, info=arg)
 
+# HACK
+@mg_builtin([String, Node, Node])
+def mgb_KeywordParam(ctx, name, type, default):
+    return KeywordParam(name.value, type, default, info=name)
+
+# HACK
+@mg_builtin([List, List, Node, List, Node])
+def mgb_Params(ctx, names, types, var_params, kw_params, kw_var_params):
+    info = names
+    assert all(isinstance(name, String) for name in names.items)
+    names = [name.value for name in names.items]
+    types = types.items
+
+    assert isinstance(var_params, (String, None_))
+    var_params = var_params.value if isinstance(var_params, String) else None
+
+    assert all(isinstance(kwparam, KeywordParam) for kwparam in kw_params)
+    kw_params = kw_params.items
+
+    assert isinstance(kw_var_params, (String, None_))
+    kw_var_params = kw_var_params.value if isinstance(kw_var_params, String) else None
+
+    params = Params(names, types, var_params, kw_params, kw_var_params, info=info)
+
+    # HACK--this normally happens during specialization. Assume types are already evaluated
+    params.type_evals = types
+    params.keyword_evals = {p.name: p for p in kw_params}
+
+    return params
+
 # XXX nasty. Directly modifies the class, amongst other bad things
 @mg_builtin([Class, Class])
-def hacky_inherit_from(ctx, parent, cls):
+def mgb_hacky_inherit_from(ctx, parent, cls):
     for attr in parent.cls.items:
         if attr not in cls.cls.items:
             cls.cls.items[attr] = parent.cls.items[attr]
