@@ -722,9 +722,9 @@ class Block(Node):
             for I in stmt.eval_gen(ctx):
                 yield I
     def repr(self, ctx):
-        block = [s.repr(ctx) for s in self.stmts]
+        block = ['%s;' % s.repr(ctx) for s in self.stmts]
         block = ['\n    '.join(s for s in b.splitlines()) for b in block]
-        return ':\n    %s' % ('\n    '.join(block))
+        return ' {\n    %s\n}' % ('\n    '.join(block))
 
 @node('&expr, &if_block, &else_block')
 class IfElse(Node):
