@@ -1058,6 +1058,8 @@ class Function(Node):
         return None_(info=self)
     def __eq__(self, other):
         return Boolean(self is other, info=self)
+    def __hash__(self):
+        return hash((self.name, self.params, self.return_type, self.block))
     def repr(self, ctx):
         ret_str = ' -> %s' % self.return_type.repr(ctx) if self.return_type else ''
         return 'def %s(%s)%s%s' % (self.name, self.params.repr(ctx),
