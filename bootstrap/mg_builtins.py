@@ -77,8 +77,30 @@ def mgb_slice(ctx, seq, *args):
     return seq.error('slice on unsliceable type %s' % type(seq).__name__, ctx=ctx)
 
 @mg_builtin([Node, String])
+def mgb_getattr(ctx, arg, attr):
+    return get_attr(ctx, arg, attr.value)
+
+@mg_builtin([Node, String])
 def mgb_hasattr(ctx, arg, attr):
     return Boolean(get_attr(ctx, arg, attr.value) is not None, info=arg)
+
+@mg_builtin([Node])
+def mgb_dir(ctx, obj):
+    if isinstance(obj, Class):
+        obj = obj.cls
+    if isinstance(obj, Object):
+        return List(list(obj.items), info=obj)
+    return obj.error('Unsupported type for dir()', ctx=ctx)
+
+@mg_builtin([Class, Dict, Params])
+def mgb_hacky_class_from_base_and_new_attrs(ctx, base, attrs, params):
+    base = copy.copy(base)
+    base.params = params
+    base.cls = copy.copy(base.cls)
+    base.cls.items = copy.copy(base.cls.items)
+    base.cls.items.update(attrs.items)
+    base.cls.items[String('__class__', info=base)] = base
+    return base
 
 # HACK
 @mg_builtin([String, Node, Node])
