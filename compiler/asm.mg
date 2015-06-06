@@ -2,7 +2,7 @@ import struct
 
 # "Abstract" base class: since our inheritance is wack, we don't provide any
 # class attributes here so it probably won't get instantiated...
-class Label:
+class Label(name):
     def __str__(self):
         return '<{}>'.format(self.name)
     def __repr__(self):

@@ -178,30 +178,30 @@ def color_registers(blocks):
 
     return new_blocks
 
-def gen_insts(blocks):
-    blocks = color_registers(blocks)
-    insts = []
-
-    for [block_id, block] in enumerate(blocks):
-        insts = insts + [asm.Label('block{}'.format(block_id), False)]
-        for [i, inst] in enumerate(block.insts):
-            [opcode, args] = [inst[0], inst[1:]]
-            if asm.is_jump_op(opcode):
-                # Make sure only the last instruction is a control flow op
-                assert i == len(block.insts) - 1
-                # XXX take a flags argument, and make sure it's from the latest
-                # flags-writing instruction
-                [dest_block_id] = args
-                dest = asm.Label('block{}'.format(dest_block_id), False)
-                insts = insts + [asm.Instruction(opcode, dest)]
-            else:
-                insts = insts + [asm.Instruction(opcode, *args)]
-
-    return insts
+#def gen_insts(blocks):
+#    blocks = color_registers(blocks)
+#    insts = []
+#
+#    for [block_id, block] in enumerate(blocks):
+#        insts = insts + [asm.Label('block{}'.format(block_id), False)]
+#        for [i, inst] in enumerate(block.insts):
+#            [opcode, args] = [inst[0], inst[1:]]
+#            if asm.is_jump_op(opcode):
+#                # Make sure only the last instruction is a control flow op
+#                assert i == len(block.insts) - 1
+#                # XXX take a flags argument, and make sure it's from the latest
+#                # flags-writing instruction
+#                [dest_block_id] = args
+#                dest = asm.Label('block{}'.format(dest_block_id), False)
+#                insts = insts + [asm.Instruction(opcode, dest)]
+#            else:
+#                insts = insts + [asm.Instruction(opcode, *args)]
+#
+#    return insts
 
 # Determine all predecessor and successor blocks
 def get_block_linkage(blocks):
-    preds = {i: [] for i in range(len(blocks))}
+    preds = {block.name: [] for block in blocks}
     succs = {}
 
     for [i, block] in enumerate(blocks):
@@ -223,9 +223,12 @@ def get_block_linkage(blocks):
             dests = [i + 1]
 
         # Link up blocks
-        succs = succs + {i: dests}
+        succs = succs <- [i] = dests
         for dest in dests:
-            preds = preds + {dest: preds[dest] + [i]}
+            # XXX why are these different types?
+            if isinstance(dest, int):
+                dest = blocks[dest].name
+            preds = preds <- [dest] = preds[dest] + [i]
 
     return [preds, succs]
 

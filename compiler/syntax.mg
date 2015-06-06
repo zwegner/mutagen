@@ -151,14 +151,14 @@ class GetAttr(expr, attr, **k):
     def __str__(self):
         return '{}.{}'.format(self.expr, self.attr)
 
+@node('fn', '*args')
 class Call(fn, args, **k):
     def gen_insts(self, graph):
         # Stupid temporary hack
-        assert isinstance(self.fn, Identifier)
-        fn = self.fn.name
-        if fn in {'test'}:
+        fn = self.fn(graph).name
+        if fn in {'test', 'deref', 'atoi'}:
             fn = asm.ExternLabel('_' + fn)
-        [insts, args] = list(zip(*[arg.gen_insts(graph) for arg in self.args]))
+        [insts, args] = list(zip(*[arg.gen_insts(graph) for arg in self.args(graph)]))
         insts = sum(insts, [])
         return [insts, compiler.call(fn, *args)]
     def __str__(self):
@@ -171,9 +171,10 @@ class Break(*a,**k): pass
 class Continue(*a,**k): pass
 class Yield(*a,**k): pass
 
+@node('expr')
 class Return(expr,**k):
     def gen_insts(self, graph):
-        [insts, ref] = self.expr.gen_insts(graph)
+        [insts, ref] = self.expr(graph).gen_insts(graph)
         return [insts, compiler.ret(ref)]
 
 class Assert(*a,**k): pass
@@ -212,16 +213,17 @@ class Block(stmts, **k):
 
 class For(*a,**k): pass
 
+@node('test', 'block')
 class While(test, block, **k):
     def gen_blocks(self, graph, block_id):
         test_block_name = block_name(block_id)
-        [while_blocks, block_id] = self.block.gen_blocks(graph, block_id + 1)
+        [while_blocks, block_id] = self.block(graph).gen_blocks(graph, block_id + 1)
         post_block_name = block_name(block_id)
         block_id = block_id + 1
         # HACK: assume another block comes after this...
         exit_block_name = block_name(block_id)
 
-        blocks = gen_test_block(graph, self.test, test_block_name, exit_block_name)
+        blocks = gen_test_block(graph, self.test(graph), test_block_name, exit_block_name)
         blocks = blocks + while_blocks
         blocks = blocks + [compiler.BasicBlock(post_block_name, [], [
             compiler.jmp(asm.LocalLabel(test_block_name))])]
@@ -257,7 +259,7 @@ class Import(*a,**k): pass
 def graphulate(tree):
     # Ugh
     new_class_dict = {cls: create_graph_class(cls) for cls in [BinaryOp, Integer, Identifier,
-        Target, Assignment, Block]}
+        Target, Assignment, Block, While, Return, Call]}
 
     graph = Graph()
     [graph, nt] = tree.add_to_graph(graph, new_class_dict)
@@ -269,9 +271,3 @@ def gen_insts(stmts):
     [blocks, block_id] = block.gen_blocks(graph, 0)
     fn = compiler.Function(['argc', 'argv'], blocks)
     return {'_main': compiler.gen_ssa(fn)}
-
-#tree = [BinaryOp('+', BinaryOp('-', Integer(3), Integer(2)), Integer(5))]
-tree = [Assignment(Target(['x']), Integer(4)),
-        Assignment(Target(['x']), BinaryOp('+', Identifier('x'), Integer(2))),
-        Identifier('x')]
-print(gen_insts(tree))
