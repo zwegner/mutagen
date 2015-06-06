@@ -1,6 +1,5 @@
-# XXX Obviously this file is just a stupid shell of an implementation
-
 import compiler
+import libgraph
 # XXX work around weird importing behavior
 asm = compiler.asm
 
@@ -11,17 +10,6 @@ def gen_test_block(graph, test, test_block_name, exit_block_name):
     [prelude, test] = test.gen_insts(graph)
     return [compiler.BasicBlock(test_block_name, [], prelude + [compiler.test64(test, test),
         compiler.jz(asm.LocalLabel(exit_block_name))])]
-
-class Graph(nodes: list =[], edge_sets: dict ={}):
-    def get(self, node, edge):
-        return self.edge_sets[node][edge]
-    def add_node(self, node):
-        assert node not in self.nodes
-        return self <- .nodes = self.nodes + [node]
-    def set(self, node, edge, value):
-        if node not in self.edge_sets:
-            self = self <- .edge_sets[node] = {}
-        return self <- .edge_sets[node][edge] = value
 
 def node(*edges):
     def xform(cls):
@@ -47,13 +35,12 @@ def node(*edges):
 
             for [attr, edge_type] in new_edges:
                 if edge_type == '*':
-                    value = []
                     for item in getattr(self, attr):
-                        [graph, item] = item.add_to_graph(graph, new_class_dict)
-                        value = value + [item]
+                        [graph, value] = item.add_to_graph(graph, new_class_dict)
+                        graph = graph.append_to_edge(nobj, attr, value)
                 else:
                     [graph, value] = getattr(self, attr).add_to_graph(graph, new_class_dict)
-                graph = graph.set(nobj, attr, value)
+                    graph = graph.set_edge(nobj, attr, value)
             return [graph, nobj]
 
         attrs = {'add_to_graph': add_to_graph, '_node_edges': new_edges}
@@ -65,13 +52,17 @@ def create_graph_class(cls):
     # Create accessor functions for each edge label
     for [attr, edge_type] in cls._node_edges:
         if edge_type == '*':
-            def value(self, graph):
-                return graph.get(self, attr)
-            attrs = attrs <- [attr] = value
+            attrs = attrs <- [attr] = lambda (self, graph, index): graph.get(self, attr)[index]
+            attrs = attrs <- [attr + '_gen'] = def (self, graph) {
+                for edge in graph.get(self, attr) {
+                    yield edge;
+                }
+            }
+            attrs = attrs <- [attr + '_set'] = lambda (self, graph, index, value): graph.set_edge_index(self, attr, index, value)
+            attrs = attrs <- [attr + '_append'] = lambda (self, graph, value): graph.append_to_edge(self, attr, value)
         else:
-            def value(self, graph):
-                return graph.get(self, attr)
-            attrs = attrs <- [attr] = value
+            attrs = attrs <- [attr] = lambda (self, graph): graph.get(self, attr)
+            attrs = attrs <- [attr + '_set'] = lambda (self, graph, value): graph.set(self, attr, value)
 
     # Adjust class parameters
     edge_names = [edge[0] for edge in cls._node_edges]
@@ -158,7 +149,7 @@ class Call(fn, args, **k):
         fn = self.fn(graph).name
         if fn in {'test', 'deref', 'atoi'}:
             fn = asm.ExternLabel('_' + fn)
-        [insts, args] = list(zip(*[arg.gen_insts(graph) for arg in self.args(graph)]))
+        [insts, args] = list(zip(*[arg.gen_insts(graph) for arg in self.args_gen(graph)]))
         insts = sum(insts, [])
         return [insts, compiler.call(fn, *args)]
     def __str__(self):
@@ -194,7 +185,7 @@ class Block(stmts, **k):
     def gen_blocks(self, graph, block_id):
         blocks = []
         current_block_insts = []
-        for stmt in self.stmts(graph):
+        for stmt in self.stmts_gen(graph):
             if hasattr(stmt, 'gen_blocks'):
                 if current_block_insts:
                     blocks = blocks + [compiler.BasicBlock(block_name(block_id), [], current_block_insts)]
@@ -261,7 +252,7 @@ def graphulate(tree):
     new_class_dict = {cls: create_graph_class(cls) for cls in [BinaryOp, Integer, Identifier,
         Target, Assignment, Block, While, Return, Call]}
 
-    graph = Graph()
+    graph = libgraph.DirectedGraph()
     [graph, nt] = tree.add_to_graph(graph, new_class_dict)
     return [graph, nt]
 
