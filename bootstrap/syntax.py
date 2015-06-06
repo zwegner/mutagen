@@ -421,6 +421,15 @@ class Dict(Node):
         result = self.items.copy()
         result.update(other.items)
         return Dict(result, info=self)
+    def __sub__(self, other):
+        if not isinstance(other, List):
+            self.error('bad type for dict.sub: %s' % type(other))
+        result = self.items.copy()
+        for key in other.items:
+            if key not in result:
+                key.error('key not in dictionary')
+            del result[key]
+        return Dict(result, info=self)
     def len(self, ctx):
         return len(self.items)
     def __eq__(self, other):
