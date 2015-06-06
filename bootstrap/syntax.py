@@ -548,7 +548,11 @@ class BinaryOp(Node):
             return lhs
         return eval_binary_op(self, ctx, self.type, lhs, self.rhs.eval(ctx))
     def repr(self, ctx):
-        return '(%s %s %s)' % (self.lhs.repr(ctx), self.type, self.rhs.repr(ctx))
+        lhs, rhs = (self.lhs.repr(ctx), self.rhs.repr(ctx))
+        # Reverse the reversal done during parsing to turn 'x in y' -> 'y.__contains__(x)'
+        if self.type == 'in':
+            lhs, rhs = rhs, lhs
+        return '(%s %s %s)' % (lhs, self.type, rhs)
 
 def get_attr(ctx, obj, attr):
     item = obj.get_attr(ctx, attr)
