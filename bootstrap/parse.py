@@ -251,7 +251,7 @@ def parse_params(p):
                 var_params = item.name
             elif isinstance(item, KeywordVarParams):
                 kw_var_params = item.name
-            elif item[2]:
+            elif item[2] is not None:
                 if kw_var_params:
                     local_error('keyword parameters cannot come after keyword varparams (**)')
                 kw_params.append(KeywordParam(item[0], item[1] or None_(info=NULL_INFO), item[2]))
