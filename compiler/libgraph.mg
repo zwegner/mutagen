@@ -62,3 +62,9 @@ class DirectedGraph(nodes: list = [], edge_sets: dict = {}, uses: dict = {}, edg
 
     def append_to_edge(self, node, edge, value):
         return self.set_edge_index(node, edge, None, value, _append=True)
+
+    # XXX this is a hacky api
+    def create_node(self, new_class, *args):
+        node_id = len(self.nodes)
+        node = new_class(node_id, *args)
+        return [self.add_node(node), node]

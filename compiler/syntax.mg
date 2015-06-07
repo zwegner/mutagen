@@ -24,24 +24,20 @@ def node(*edges):
 
         # Add a function to insert this node into a graph representation
         def add_to_graph(self, graph, new_class_dict):
-            # XXX change once parameters are first class objects
-            new_class = new_class_dict[type(self)]
-            names = list(filter(lambda(name): name not in edge_names, new_class.__params__.names))
-            args = [getattr(self, name) for name in names]
+            new_class = new_class_dict[type(self).__name__]
+            args = [getattr(self, name) for name in new_class.__params__.names[1:]]
 
-            node_id = len(graph.nodes)
-            nobj = new_class(node_id, *args)
-            graph = graph.add_node(nobj)
+            [graph, node] = graph.create_node(new_class, *args)
 
             for [attr, edge_type] in new_edges:
                 if edge_type == '*':
                     for item in getattr(self, attr):
                         [graph, value] = item.add_to_graph(graph, new_class_dict)
-                        graph = graph.append_to_edge(nobj, attr, value)
+                        graph = graph.append_to_edge(node, attr, value)
                 else:
                     [graph, value] = getattr(self, attr).add_to_graph(graph, new_class_dict)
-                    graph = graph.set_edge(nobj, attr, value)
-            return [graph, nobj]
+                    graph = graph.set_edge(node, attr, value)
+            return [graph, node]
 
         attrs = {'add_to_graph': add_to_graph, '_node_edges': new_edges}
         return hacky_class_from_base_and_new_attrs(cls.__name__, cls, attrs, cls.__params__)
@@ -249,16 +245,16 @@ class Import(*a,**k): pass
 
 def graphulate(tree):
     # Ugh
-    new_class_dict = {cls: create_graph_class(cls) for cls in [BinaryOp, Integer, Identifier,
+    new_class_dict = {cls.__name__: create_graph_class(cls) for cls in [BinaryOp, Integer, Identifier,
         Target, Assignment, Block, While, Return, Call]}
 
     graph = libgraph.DirectedGraph()
     [graph, nt] = tree.add_to_graph(graph, new_class_dict)
-    return [graph, nt]
+    return [new_class_dict, graph, nt]
 
 def gen_insts(stmts):
     block = Block(stmts)
-    [graph, block] = graphulate(block)
+    [new_class_dict, graph, block] = graphulate(block)
     [blocks, block_id] = block.gen_blocks(graph, 0)
     fn = compiler.Function(['argc', 'argv'], blocks)
     return {'_main': compiler.gen_ssa(fn)}
