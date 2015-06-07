@@ -381,12 +381,7 @@ class List(Node):
             self.error('bad type for list.mul: %s' % type(other))
         return List(self.items * other.value, info=self)
     def __contains__(self, item):
-        r = False
-        for i in self:
-            if (item == i).value:
-                r = True
-                break
-        return Boolean(r, info=self)
+        return Boolean(item in self.items, info=self)
     def len(self, ctx):
         return len(self.items)
     def __hash__(self):
