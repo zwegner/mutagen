@@ -76,6 +76,10 @@ def mgb_slice(ctx, seq, *args):
         return List(seq.items[start:stop:step], info=seq)
     return seq.error('slice on unsliceable type %s' % type(seq).__name__, ctx=ctx)
 
+@mg_builtin([Node])
+def mgb_hash(ctx, arg):
+    return Integer(hash(arg), info=arg)
+
 @mg_builtin([Node, String])
 def mgb_getattr(ctx, arg, attr):
     value = get_attr(ctx, arg, attr.value)
