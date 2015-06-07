@@ -1126,9 +1126,6 @@ class Class(Node):
             self.block.eval(child_ctx)
             items = {String(k, info=self): v.eval(ctx) for k, v
                 in child_ctx.syms.items()}
-            items[String('__name__', info=self)] = String(self.name, info=self)
-            items[String('__class__', info=self)] = TypeClass
-            items[String('__params__', info=self)] = self.params
             self.cls = Object(items, info=self)
         return self
     def eval_call(self, ctx, args, kwargs):
@@ -1147,6 +1144,12 @@ class Class(Node):
     def repr(self, ctx):
         return "<class '%s'>" % self.name
     def get_attr(self, ctx, attr):
+        if attr == '__class__':
+            return TypeClass
+        elif attr == '__name__':
+            return String(self.name, info=self)
+        elif attr == '__params__':
+            return self.params
         return self.cls.get_attr(ctx, attr)
     def __eq__(self, other):
         return Boolean(self is other, info=self)

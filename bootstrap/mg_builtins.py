@@ -95,14 +95,13 @@ def mgb_dir(ctx, obj):
         return List(list(obj.items), info=obj)
     return obj.error('Unsupported type for dir()', ctx=ctx)
 
-@mg_builtin([Class, Dict, Params])
-def mgb_hacky_class_from_base_and_new_attrs(ctx, base, attrs, params):
+@mg_builtin([String, Class, Dict, Params])
+def mgb_hacky_class_from_base_and_new_attrs(ctx, name, base, attrs, params):
     base = copy.copy(base)
     base.params = params
     base.cls = copy.copy(base.cls)
     base.cls.items = copy.copy(base.cls.items)
     base.cls.items.update(attrs.items)
-    base.cls.items[String('__class__', info=base)] = base
     return base
 
 # HACK

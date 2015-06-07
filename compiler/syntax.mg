@@ -44,7 +44,7 @@ def node(*edges):
             return [graph, nobj]
 
         attrs = {'add_to_graph': add_to_graph, '_node_edges': new_edges}
-        return hacky_class_from_base_and_new_attrs(cls, attrs, cls.__params__)
+        return hacky_class_from_base_and_new_attrs(cls.__name__, cls, attrs, cls.__params__)
     return xform
 
 def create_graph_class(cls):
@@ -76,7 +76,7 @@ def create_graph_class(cls):
     params = Params(names, types, params.var_params,
         params.kw_params, params.kw_var_params)
 
-    return hacky_class_from_base_and_new_attrs(cls, attrs, params)
+    return hacky_class_from_base_and_new_attrs('G' + cls.__name__, cls, attrs, params)
 
 @node('lhs', 'rhs')
 class BinaryOp(op: str, lhs, rhs, **k):
