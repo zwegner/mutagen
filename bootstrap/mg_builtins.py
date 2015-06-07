@@ -78,7 +78,10 @@ def mgb_slice(ctx, seq, *args):
 
 @mg_builtin([Node, String])
 def mgb_getattr(ctx, arg, attr):
-    return get_attr(ctx, arg, attr.value)
+    value = get_attr(ctx, arg, attr.value)
+    if value is None:
+        arg.error('object has no attribute: %s' % attr.value, ctx=ctx)
+    return value
 
 @mg_builtin([Node, String])
 def mgb_hasattr(ctx, arg, attr):
