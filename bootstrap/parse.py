@@ -19,8 +19,8 @@ def reduce_binop(p):
     return r
 
 def reduce_list(p):
-    return libparse.ParseResult([p[0]] + [item[1] for item in p[1]],
-        [p.info[0]] + [p.info[1][i][1] for i in range(len(p[1]))])
+    return p.clone(items=[p[0]] + [item[1] for item in p[1]],
+        info=[p.info[0]] + [p.info[1][i][1] for i in range(len(p[1]))])
 
 rule_table = [
     # Atoms
@@ -372,7 +372,10 @@ def parse(path, import_builtins=True, ctx=None):
 
 def interpret(path, print_program=False):
     ctx = Context('__main__', None, None)
-    block = parse(path, ctx=ctx)
+    try:
+        block = parse(path, ctx=ctx)
+    except libparse.ParseError as e:
+        e.print_and_exit()
     preprocess_program(ctx, block)
     try:
         if print_program:
