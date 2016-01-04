@@ -58,14 +58,15 @@ class Context:
                 return ctx.syms[name]
         node.error('identifier %s not found' % name, ctx=self)
     def get_stack_trace(self):
-        result = self.callsite_ctx.get_stack_trace() if self.callsite_ctx else []
-        if self.current_node:
-            info = self.current_node.info
-            result.append(' at %s in %s, line %s' % (self.name, info.filename,
-                info.lineno))
+        if self.callsite_ctx:
+            result = self.callsite_ctx.get_stack_trace()
+            if self.current_node:
+                info = self.current_node.info
+                result.append(' at %s in %s, line %s' % (self.name, info.filename,
+                    info.lineno))
+            return result
         else:
-            result.append('in module %s' % self.name)
-        return result
+            return ['in module %s' % self.name]
 
 class ProgramError(Exception):
     def __init__(self, stack_trace, msg):
@@ -685,8 +686,9 @@ class ContinueExc(Exception):
     pass
 
 class ReturnExc(Exception):
-    def __init__(self, value):
+    def __init__(self, value, return_node):
         self.value = value
+        self.return_node = return_node
 
 @node()
 class Break(Node):
@@ -705,7 +707,7 @@ class Continue(Node):
 @node('&expr')
 class Return(Node):
     def eval(self, ctx):
-        raise ReturnExc(self.expr.eval(ctx))
+        raise ReturnExc(self.expr.eval(ctx), self)
     def repr(self, ctx):
         return 'return %s' % self.expr.repr(ctx)
 
@@ -931,13 +933,13 @@ class Params(Node):
     def bind(self, obj, ctx, args, kwargs):
         if self.var_params:
             if len(args) < len(self.params):
-                self.error('wrong number of arguments to %s, '
+                obj.error('wrong number of arguments to %s, '
                     'expected at least %s' % (obj.name, len(self.params)), ctx=ctx)
             pos_args = args[:len(self.params)]
             var_args = List(args[len(self.params):], info=self)
         else:
             if len(args) != len(self.params):
-                self.error('wrong number of arguments to %s, '
+                obj.error('wrong number of arguments to %s, '
                     'expected %s' % (obj.name, len(self.params)), ctx=ctx)
             pos_args = args
 
@@ -956,7 +958,7 @@ class Params(Node):
             if name in self.keyword_evals:
                 check_obj_type(self, 'argument', ctx, arg, self.keyword_evals[name].type)
             elif not self.kw_var_params:
-                self.error('got unexpected keyword argument \'%s\'' % name, ctx=ctx)
+                obj.error('got unexpected keyword argument \'%s\'' % name, ctx=ctx)
 
         # Copy the kwargs, since we're going to mutate it
         kwargs = kwargs.copy()
@@ -1082,7 +1084,7 @@ class Function(Node):
             self.block.eval(child_ctx)
         except ReturnExc as r:
             if self.return_type:
-                check_obj_type(self, 'return value', ctx, r.value, self.rt_eval)
+                check_obj_type(r.return_node, 'return value', child_ctx, r.value, self.rt_eval)
             return r.value
         return None_(info=self)
     def __eq__(self, other):
