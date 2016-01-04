@@ -903,6 +903,14 @@ class VarParams(Node):
 
 @node('name, &type, &expr')
 class KeywordParam(Node):
+    def get_attr(self, ctx, attr):
+        if attr == 'name':
+            return String(self.name, info=self)
+        elif attr == 'type':
+            return self.type
+        elif attr == 'expr':
+            return self.expr
+        return None
     def eval(self, ctx):
         return KeywordParam(self.name, self.type.eval(ctx), self.expr.eval(ctx), info=self)
     def repr(self, ctx):
