@@ -988,7 +988,7 @@ class Params(Node):
             return List(self.type_evals, info=self)
         elif attr == 'kw_params':
             # Note use of keyword_evals
-            return List([self.keyword_evals[k] for k in self.kw_params], info=self)
+            return List([self.keyword_evals[k.name] for k in self.kw_params], info=self)
         elif attr in {'var_params', 'kw_var_params'}:
             value = getattr(self, attr)
             return String(value, info=self) if value is not None else None_(info=self)
