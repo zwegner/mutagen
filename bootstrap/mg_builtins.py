@@ -82,14 +82,11 @@ def mgb_hash(ctx, arg):
 
 @mg_builtin([Node, String])
 def mgb_getattr(ctx, arg, attr):
-    value = get_attr(ctx, arg, attr.value)
-    if value is None:
-        arg.error('object has no attribute: %s' % attr.value, ctx=ctx)
-    return value
+    return get_attr(ctx, arg, attr.value)
 
 @mg_builtin([Node, String])
 def mgb_hasattr(ctx, arg, attr):
-    return Boolean(get_attr(ctx, arg, attr.value) is not None, info=arg)
+    return Boolean(get_attr(ctx, arg, attr.value, raise_errors=False) is not None, info=arg)
 
 @mg_builtin([Node])
 def mgb_dir(ctx, obj):

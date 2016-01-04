@@ -14,27 +14,24 @@ inv_str_escapes = [
     ['\b', '\\x08'], # HACK
 ]
 
+builtin_info = sprdpl.lex.Info('__builtins__')
+
 # Utility functions
 def get_class_name(ctx, cls):
-    # HACK
-    if isinstance(cls, BuiltinClass):
-        return cls.name
     name = cls.get_attr(ctx, '__name__')
     if name is not None:
         return name.str(ctx)
     return type(cls).__name__
 
 def get_type_name(ctx, obj):
-    # XXX OH GOD THIS IS AWFUL. Just making sure there's no infinite recursion...
-    if type(obj).get_attr != Node.get_attr:
-        cls = obj.get_attr(ctx, '__class__')
-        if cls is not None:
-            return get_class_name(ctx, cls)
+    cls = obj.get_obj_class()
+    if cls is not None:
+        return get_class_name(ctx, cls)
     return type(obj).__name__
 
 def check_obj_type(self, msg_type, ctx, obj, type):
     if not isinstance(type, None_):
-        obj_type = obj.get_attr(ctx, '__class__')
+        obj_type = obj.get_obj_class()
         if obj_type is not type:
             self.error('bad %s type %s, expected %s' % (msg_type,
                 get_class_name(ctx, obj_type), get_class_name(ctx, type)), ctx=ctx)
@@ -77,7 +74,9 @@ class ProgramError(Exception):
 
 class Node:
     def copy(self):
-        assert isinstance(self, (List, Dict, Object))
+        if isinstance(self, Object):
+            return Object(self.items.copy(), self.obj_class, info=self)
+        assert isinstance(self, (List, Dict))
         return type(self)(self.items.copy(), info=self)
     def eval(self, ctx):
         return self
@@ -101,7 +100,11 @@ class Node:
     def repr(self, ctx):
         self.error('__repr__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
     def get_attr(self, ctx, attr):
-        self.error('__getattr__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
+        if attr == '__class__':
+            return self.get_obj_class()
+        return None
+    def get_obj_class(self):
+        return None
     def get_item(self, ctx, index, info=None):
         info = info or self
         try:
@@ -219,7 +222,7 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
             node.__eq__ = __eq__
             node.__hash__ = __hash__
 
-            # Fucking Python default arguments
+            # Fucking Python mutable default arguments...
             all_ops = ops + ['ge', 'gt', 'le', 'lt']
         else:
             all_ops = ops
@@ -227,7 +230,7 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
         # Generate wrappers for builtin operations without having to write
         # a shitload of boilerplate. If you're asking why we don't just
         # derive from int/str/whatever, well, we want to whitelist functionality
-        # like this, and make it slightly more Python-agnostic
+        # like this, and we need to box the results/check for errors.
         if all_ops:
             assert base_type
             for op in all_ops:
@@ -242,7 +245,7 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
                         self.error('bad operand type for %s.%s: %s' % (
                             base_type.__name__, op, get_type_name(None, other)))
                     # I'd like to hoist this outside of this function, but Boolean
-                    # isn't defined yet.
+                    # isn't defined yet. Yuck.
                     result_type = Boolean if op in ['ge', 'gt', 'le', 'lt'] else node
                     return result_type(op_fn(self.value, other.value), info=self)
 
@@ -257,10 +260,8 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
 
 @node()
 class None_(Node):
-    def get_attr(self, ctx, attr):
-        if attr == '__class__':
-            return NoneClass
-        return None
+    def get_obj_class(self):
+        return NoneClass
     def repr(self, ctx):
         return 'None'
     def __eq__(self, other):
@@ -279,10 +280,8 @@ class Identifier(Node):
 
 @node('value', compare=True, base_type=str, ops=['add'])
 class String(Node):
-    def get_attr(self, ctx, attr):
-        if attr == '__class__':
-            return StrClass
-        return None
+    def get_obj_class(self):
+        return StrClass
     def str(self, ctx):
         return self.value
     def repr(self, ctx):
@@ -318,10 +317,8 @@ class Integer(Node):
         self.value = int(self.value)
     def eval(self, ctx):
         return self
-    def get_attr(self, ctx, attr):
-        if attr == '__class__':
-            return IntClass
-        return None
+    def get_obj_class(self):
+        return IntClass
     def repr(self, ctx):
         return '%s' % self.value
     def bool(self, ctx):
@@ -337,10 +334,8 @@ class Boolean(Node):
         self.value = bool(self.value)
     def eval(self, ctx):
         return self
-    def get_attr(self, ctx, attr):
-        if attr == '__class__':
-            return BoolClass
-        return None
+    def get_obj_class(self):
+        return BoolClass
     def repr(self, ctx):
         return '%s' % self.value
     def bool(self, ctx):
@@ -365,10 +360,8 @@ class List(Node):
         if isinstance(item, Integer):
             return self.items[item.value]
         return None
-    def get_attr(self, ctx, attr):
-        if attr == '__class__':
-            return ListClass
-        return None
+    def get_obj_class(self):
+        return ListClass
     def __eq__(self, other):
         return Boolean(isinstance(other, List) and
                 self.items == other.items, info=self)
@@ -399,10 +392,8 @@ class Dict(Node):
             for k, v in self.items.items())
     def __getitem__(self, item):
         return self.items[item]
-    def get_attr(self, ctx, attr):
-        if attr == '__class__':
-            return DictClass
-        return None
+    def get_obj_class(self):
+        return DictClass
     def __iter__(self):
         # XXX having key-value iteration is probably nicer than Python's
         # key iteration, but should we break compatibility? Think about this!
@@ -432,11 +423,11 @@ class Dict(Node):
     def __hash__(self):
         return hash(tuple(self.items.items()))
 
-@node('#items')
+@node('#items, obj_class')
 class Object(Node):
     def eval(self, ctx):
         return Object({k.eval(ctx): v.eval(ctx) for k, v
-            in self.items.items()}, info=self)
+            in self.items.items()}, self.obj_class, info=self)
     def set_attr(self, ctx, name, value):
         if name not in self.items:
             self.error('bad attribute for modification: %s' % name, ctx=ctx)
@@ -445,8 +436,10 @@ class Object(Node):
         if attr in self.items:
             return self.items[attr]
         return None
+    def get_obj_class(self):
+        return self.obj_class
     def base_repr(self):
-        return '<%s at %#x>' % (self.get_attr(None, '__class__').name, id(self))
+        return '<%s at %#x>' % (self.obj_class.name, id(self))
     def __eq__(self, other):
         return Boolean(isinstance(other, Object) and
                 self.items == other.items, info=self)
@@ -472,15 +465,15 @@ class Object(Node):
         return self.dispatch(ctx, '__getitem__', [item])
     def overload(self, ctx, attr, args):
         # Operator overloading
-        cls = self.get_attr(ctx, '__class__')
-        op = cls.get_attr(ctx, attr)
+        op = self.obj_class.get_attr(ctx, attr)
         if op is not None and ctx is not None:
             return op.eval_call(ctx, [self] + args, {})
         return None
+    # Equivalent to overload(), but with an error if there's no overload rather than
+    # just returning None
     def dispatch(self, ctx, attr, args):
-        cls = self.get_attr(ctx, '__class__')
         return self.overload(ctx, attr, args) or self.error(
-                '%s unimplemented for %s' % (attr, cls.repr(ctx)), ctx=ctx)
+                '%s unimplemented for %s' % (attr, self.obj_class.repr(ctx)), ctx=ctx)
 
 @node('&fn, *args')
 class BoundFunction(Node):
@@ -558,25 +551,26 @@ class BinaryOp(Node):
             lhs, rhs = rhs, lhs
         return '(%s %s %s)' % (lhs, self.type, rhs)
 
-def get_attr(ctx, obj, attr):
+# This function is equivalent to a user-level getattr(), where we check for the
+# given attribute in the object, the class (for binding methods)
+def get_attr(ctx, obj, attr, raise_errors=True):
     item = obj.get_attr(ctx, attr)
     # If the attribute doesn't exist, create a bound method with the attribute
     # from the object's class, assuming it exists.
     if item is None:
-        method = obj.get_attr(ctx, '__class__').get_attr(ctx, attr)
+        method = obj.get_obj_class().get_attr(ctx, attr)
         if method is not None:
             return BoundFunction(method, [obj])
+        if raise_errors:
+            obj.error("object of type '%s' has no attribute '%s'" %
+                    (get_type_name(ctx, obj), attr), ctx=ctx)
     return item
 
 @node('&obj, attr')
 class GetAttr(Node):
     def eval(self, ctx):
         obj = self.obj.eval(ctx)
-        item = get_attr(ctx, obj, self.attr)
-        if item is None:
-            self.error("object of type '%s' has no attribute '%s'" %
-                    (get_type_name(ctx, obj), self.attr), ctx=ctx)
-        return item
+        return get_attr(ctx, obj, self.attr)
     def repr(self, ctx):
         return '%s.%s' % (self.obj.repr(ctx), self.attr)
 
@@ -1113,6 +1107,7 @@ class BuiltinFunction(Node):
     def repr(self, ctx):
         return '<builtin %s>' % self.name
 
+# XXX it seems our object model has a circular reference
 @node('name, &params, &block')
 class Class(Node):
     def specialize(self, parent_ctx, ctx):
@@ -1126,7 +1121,10 @@ class Class(Node):
             self.block.eval(child_ctx)
             items = {String(k, info=self): v.eval(ctx) for k, v
                 in child_ctx.syms.items()}
-            self.cls = Object(items, info=self)
+            assert '__name__' not in items and '__params__' not in items
+            items[String('__name__', info=self)] = String(self.name, info=self)
+            items[String('__params__', info=self)] = self.params
+            self.cls = Object(items, TypeClass, info=self)
         return self
     def eval_call(self, ctx, args, kwargs):
         init = self.cls.get_attr(ctx, '__init__')
@@ -1138,33 +1136,27 @@ class Class(Node):
             d = init.eval_call(ctx, args, kwargs)
             assert isinstance(d, Dict)
             attrs = d.items
-        # Add __class__ attribute
-        attrs[String('__class__', info=self)] = self
-        return Object(attrs, info=self)
+        # XXX self and not self.cls?
+        return Object(attrs, self, info=self)
     def repr(self, ctx):
         return "<class '%s'>" % self.name
     def get_attr(self, ctx, attr):
-        if attr == '__class__':
-            return TypeClass
-        elif attr == '__name__':
-            return String(self.name, info=self)
-        elif attr == '__params__':
-            return self.params
         return self.cls.get_attr(ctx, attr)
+    def get_obj_class(self):
+        return TypeClass
     def __eq__(self, other):
         return Boolean(self is other, info=self)
     def __hash__(self):
         return hash((self.name, self.params, self.block))
 
-builtin_info = sprdpl.lex.Info('__builtins__')
-
 class BuiltinClass(Class):
     def __init__(self, name):
         self.ctx = None
-        methods = set(dir(type(self))) - set(dir(BuiltinClass))
+        cls = type(self)
+        methods = set(dir(cls)) - set(dir(BuiltinClass))
         stmts = []
         for method in methods:
-            fn = getattr(self.__class__, method)
+            fn = getattr(cls, method)
             stmts.append(Assignment(Target([method], info=builtin_info),
                 BuiltinFunction(method, fn, info=builtin_info)))
         super().__init__(name, Params([], [], None, [], None, info=builtin_info),
@@ -1276,7 +1268,7 @@ DictClass = BuiltinDict('dict')
 class BuiltinType(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
-        item = arg.get_attr(ctx, '__class__')
+        item = arg.get_obj_class()
         if item is None:
             self.error('object of type %s not currently part of type system' %
                     get_type_name(ctx, arg), ctx=ctx)
@@ -1305,8 +1297,7 @@ class Import(Node):
         if self.names is None:
             attrs = {String(k, info=self): v for k, v in self.ctx.syms.items()}
             # Set the type of modules, and make sure we evaluate it at least once
-            attrs[String('__class__', info=self)] = ModuleClass.eval(ctx)
-            obj = Object(attrs, info=self)
+            obj = Object(attrs, ModuleClass.eval(ctx), info=self)
             self.parent_ctx.store(self.name, obj)
         else:
             for k, v in self.ctx.syms.items():
