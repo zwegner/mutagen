@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import inspect
 import os
 import sys
 
@@ -389,6 +390,29 @@ def interpret(path, print_program=False):
                 print(line, file=sys.stderr)
         print(e.msg, file=sys.stderr)
         sys.exit(1)
+    except Exception as e:
+        # All other exceptions shouldn't happen in theory, but they still do, so reconstruct
+        # as much of the stack from Mutagen-space as we can
+        traceback = inspect.trace()
+        print('---------- INTERNAL COMPILER ERROR! ----------')
+        print('Mutagen traceback:')
+        last_index = 0
+        for i, (frame, *_) in enumerate(traceback):
+            # XXX this is pretty hacky--detect function calls by inspecting locals on the stack
+            self = frame.f_locals.get('self', None)
+            child_ctx = frame.f_locals.get('ctx', None)
+            if isinstance(self, Call) and child_ctx:
+                print('File "%s", line %s, in %s' % (self.info.filename, self.info.lineno, child_ctx.name))
+                last_index = i
+        # Below the part of the stack corresponding to the last Mutagen function call, print out
+        # all the Python stack frames
+        print('----------')
+        print('Python traceback (below Mutagen traceback):')
+        for frame, filename, lineno, function, code_context, index in traceback[last_index:]:
+                print('  File "%s", line %s, in %s' % (filename, lineno, function))
+                print('    ', code_context[index].strip())
+        print('%s: %s' % (type(e).__name__, e))
+
 
 def main(args):
     print_program = False
