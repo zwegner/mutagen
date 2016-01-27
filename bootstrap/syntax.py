@@ -560,7 +560,7 @@ def get_attr(ctx, obj, attr, info=None, raise_errors=True):
     # from the object's class, assuming it exists.
     if item is None:
         method = obj.get_obj_class().get_attr(ctx, attr)
-        if method is not None:
+        if method is not None and isinstance(method, (Function, BuiltinFunction)):
             return BoundFunction(method, [obj])
         if raise_errors:
             info.error("object of type '%s' has no attribute '%s'" %
