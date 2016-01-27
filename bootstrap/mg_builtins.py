@@ -8,15 +8,16 @@ builtins = {}
 def mg_builtin(arg_types):
     def annotate(fn):
         def builtin_call(obj, ctx, args):
+            # HACK: inspect context to get the call site of this function for better errors
+            info = ctx.current_node
             if arg_types is not None:
                 if len(args) != len(arg_types):
-                    obj.error('incorrect number of arguments to builtin %s' %
+                    info.error('incorrect number of arguments to builtin %s' %
                             obj.name, ctx=ctx)
                 for a, t in zip(args, arg_types):
                     if not isinstance(a, t):
-                        obj.error('bad argument to builtin %s, expected %s, got %s' %
+                        info.error('bad argument to builtin %s, expected %s, got %s' %
                                 (obj.name, t.__name__, type(a).__name__), ctx=ctx)
-            ctx.current_node = obj
             return fn(ctx, *args)
 
         name = fn.__name__.replace('mgb_', '')
@@ -82,7 +83,9 @@ def mgb_hash(ctx, arg):
 
 @mg_builtin([Node, String])
 def mgb_getattr(ctx, arg, attr):
-    return get_attr(ctx, arg, attr.value)
+    # HACK: inspect context to get the call site of this function for better errors
+    info = ctx.current_node
+    return get_attr(ctx, arg, attr.value, info=info)
 
 @mg_builtin([Node, String])
 def mgb_hasattr(ctx, arg, attr):

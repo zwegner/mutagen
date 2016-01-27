@@ -29,11 +29,11 @@ def get_type_name(ctx, obj):
         return get_class_name(ctx, cls)
     return type(obj).__name__
 
-def check_obj_type(self, msg_type, ctx, obj, type):
+def check_obj_type(info, msg_type, ctx, obj, type):
     if not isinstance(type, None_):
         obj_type = obj.get_obj_class()
         if obj_type is not type:
-            self.error('bad %s type %s, expected %s' % (msg_type,
+            info.error('bad %s type %s, expected %s' % (msg_type,
                 get_class_name(ctx, obj_type), get_class_name(ctx, type)), ctx=ctx)
 
 def preprocess_program(ctx, block):
@@ -554,7 +554,7 @@ class BinaryOp(Node):
 
 # This function is equivalent to a user-level getattr(), where we check for the
 # given attribute in the object, the class (for binding methods)
-def get_attr(ctx, obj, attr, raise_errors=True):
+def get_attr(ctx, obj, attr, info=None, raise_errors=True):
     item = obj.get_attr(ctx, attr)
     # If the attribute doesn't exist, create a bound method with the attribute
     # from the object's class, assuming it exists.
@@ -563,7 +563,7 @@ def get_attr(ctx, obj, attr, raise_errors=True):
         if method is not None:
             return BoundFunction(method, [obj])
         if raise_errors:
-            obj.error("object of type '%s' has no attribute '%s'" %
+            info.error("object of type '%s' has no attribute '%s'" %
                     (get_type_name(ctx, obj), attr), ctx=ctx)
     return item
 
@@ -571,7 +571,7 @@ def get_attr(ctx, obj, attr, raise_errors=True):
 class GetAttr(Node):
     def eval(self, ctx):
         obj = self.obj.eval(ctx)
-        return get_attr(ctx, obj, self.attr)
+        return get_attr(ctx, obj, self.attr, info=self)
     def repr(self, ctx):
         return '%s.%s' % (self.obj.repr(ctx), self.attr)
 
@@ -931,22 +931,24 @@ class Params(Node):
         self.keyword_evals = {p.name: p.eval(ctx) for p in self.kw_params}
         return self
     def bind(self, obj, ctx, args, kwargs):
+        # HACK: inspect context to get the call site of this function for better errors
+        info = ctx.current_node
         if self.var_params:
             if len(args) < len(self.params):
-                obj.error('wrong number of arguments to %s, '
+                info.error('wrong number of arguments to %s, '
                     'expected at least %s' % (obj.name, len(self.params)), ctx=ctx)
             pos_args = args[:len(self.params)]
             var_args = List(args[len(self.params):], info=self)
         else:
             if len(args) != len(self.params):
-                obj.error('wrong number of arguments to %s, '
+                info.error('wrong number of arguments to %s, '
                     'expected %s' % (obj.name, len(self.params)), ctx=ctx)
             pos_args = args
 
         # Check argument types
         args = []
         for p, t, a in zip(self.params, self.type_evals, pos_args):
-            check_obj_type(self, 'argument', ctx, a, t)
+            check_obj_type(info, 'argument', ctx, a, t)
             args += [(p, a)]
 
         # Bind var args
@@ -956,9 +958,9 @@ class Params(Node):
         # Bind keyword arguments
         for name, arg in kwargs.items():
             if name in self.keyword_evals:
-                check_obj_type(self, 'argument', ctx, arg, self.keyword_evals[name].type)
+                check_obj_type(info, 'argument', ctx, arg, self.keyword_evals[name].type)
             elif not self.kw_var_params:
-                obj.error('got unexpected keyword argument \'%s\'' % name, ctx=ctx)
+                info.error('got unexpected keyword argument \'%s\'' % name, ctx=ctx)
 
         # Copy the kwargs, since we're going to mutate it
         kwargs = kwargs.copy()
@@ -1142,7 +1144,6 @@ class Class(Node):
             attrs = {String(k, info=self): v.eval(ctx) for k, v in
                     self.params.bind(self, ctx, args, kwargs)}
         else:
-            ctx.current_node = self
             d = init.eval_call(ctx, args, kwargs)
             assert isinstance(d, Dict)
             attrs = d.items
