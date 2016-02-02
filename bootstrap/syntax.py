@@ -936,13 +936,13 @@ class Params(Node):
         if self.var_params:
             if len(args) < len(self.params):
                 info.error('wrong number of arguments to %s, '
-                    'expected at least %s' % (obj.name, len(self.params)), ctx=ctx)
+                    'expected at least %s, got %s' % (obj.name, len(self.params), len(args)), ctx=ctx)
             pos_args = args[:len(self.params)]
             var_args = List(args[len(self.params):], info=self)
         else:
             if len(args) != len(self.params):
                 info.error('wrong number of arguments to %s, '
-                    'expected %s' % (obj.name, len(self.params)), ctx=ctx)
+                    'expected %s, got %s' % (obj.name, len(self.params), len(args)), ctx=ctx)
             pos_args = args
 
         # Check argument types
