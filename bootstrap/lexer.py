@@ -64,7 +64,7 @@ token_map = {
     'BIT_XOR':         r'\^',
     'COLON':           r':',
     'COMMA':           r',',
-    'COMMENT':         r'\#.*',
+    'COMMENT':         (r'\#.*', lambda t: None),
     'EQUALS':          r'=',
     'EQUALS_EQUALS':   r'==',
     'FLOORDIV':        r'//',
@@ -100,8 +100,6 @@ token_map = {
     'STRING':          (r'\'((\\.)|[^\\\'])*\'', process_string),
     'WHITESPACE':      r'[ \t\r]+',
 }
-skip = {'COMMENT'}
-tokens = list(token_map.keys()) + [k.upper() for k in keywords] + ['INDENT', 'DEDENT']
 
 def error(t, msg):
     info = t.info or liblex.Info('<unknown file>', 0)
@@ -181,10 +179,10 @@ def process_indentation(tokens):
 
 class Lexer(liblex.Lexer):
     def __init__(self):
-        super().__init__(token_map, skip)
+        super().__init__(token_map)
 
     def input(self, text, filename=None):
         tokens = self.lex_input(text, filename)
         # Big ass chain of generators
-        tokens = list(process_indentation(process_whitespace(process_newlines(tokens))))
+        tokens = process_indentation(process_whitespace(process_newlines(tokens)))
         return liblex.LexerContext(text, tokens)
