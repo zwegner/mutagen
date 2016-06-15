@@ -61,7 +61,7 @@ class Match(save_points, groups):
         return group
 
 class Pattern(states, groups):
-    def match(self, s):
+    def match(self, s, start):
         def add_state(ss, sps, s, sp):
             if s not in sps:
                 ss = ss + [s]
@@ -71,7 +71,7 @@ class Pattern(states, groups):
         states = [0]
         save_points = {0: save}
         result = None
-        for i in range(len(s) + 1):
+        for i in range(start, len(s) + 1):
             if not states:
                 break
             c = None

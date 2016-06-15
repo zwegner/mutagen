@@ -51,20 +51,19 @@ class Lexer:
                 [v, fn] = v
                 token_fns = token_fns + {k: fn}
             token_matchers = token_matchers + ['(?P<{}>{})'.format(k, v)]
-        token_match = re.compile('|'.join(token_matchers)).match
+        #token_match = re.compile('|'.join(token_matchers)).match
+        token_match = re_compile_match('|'.join(token_matchers))
         return {'token_match': token_match, 'token_fns': token_fns}
 
     def lex_input(self, text, filename):
         lineno = 1
-        while text:
-            m = self.token_match(text)
-            if m != None:
-                type = m.get_last_group()
-            else:
-                error('Error lexing input: {}...'.format(text[:40]))
-
-            [start, end] = m.span(0)
-            [match, text] = [text[:end], text[end:]]
+        start = end = 0
+        m = self.token_match(text, end)
+        while m:
+            #type = m.get_last_group()
+            #[start, end] = m.span(0)
+            [type, start, end] = m
+            match = text[start:end]
 
             token = Token(type, match, info=Info(filename, lineno))
             if type in self.token_fns:
@@ -72,6 +71,9 @@ class Lexer:
             if token != None:
                 yield token
             lineno = lineno + match.count('\n')
+            m = self.token_match(text, end)
+        if end < len(text):
+            error('Error lexing input: {}...'.format(text[end:40]))
 
     def input(self, text, filename=None):
         return LexerContext(list(self.lex_input(text, filename)))

@@ -5,24 +5,26 @@ from syntax import *
 
 builtins = {}
 
+def create_builtin_function(name, fn, arg_types):
+    def builtin_call(obj, ctx, args):
+        # HACK: inspect context to get the call site of this function for better errors
+        info = ctx.current_node
+        if arg_types is not None:
+            if len(args) != len(arg_types):
+                info.error('incorrect number of arguments to builtin %s' %
+                        obj.name, ctx=ctx)
+            for a, t in zip(args, arg_types):
+                if not isinstance(a, t):
+                    info.error('bad argument to builtin %s, expected %s, got %s' %
+                            (obj.name, t.__name__, type(a).__name__), ctx=ctx)
+        return fn(ctx, *args)
+    return BuiltinFunction(name, builtin_call, info=builtin_info)
+
 def mg_builtin(arg_types):
     def annotate(fn):
-        def builtin_call(obj, ctx, args):
-            # HACK: inspect context to get the call site of this function for better errors
-            info = ctx.current_node
-            if arg_types is not None:
-                if len(args) != len(arg_types):
-                    info.error('incorrect number of arguments to builtin %s' %
-                            obj.name, ctx=ctx)
-                for a, t in zip(args, arg_types):
-                    if not isinstance(a, t):
-                        info.error('bad argument to builtin %s, expected %s, got %s' %
-                                (obj.name, t.__name__, type(a).__name__), ctx=ctx)
-            return fn(ctx, *args)
-
         name = fn.__name__.replace('mgb_', '')
-        builtins[name] = BuiltinFunction(name, builtin_call, info=builtin_info)
-        return builtin_call
+        builtins[name] = create_builtin_function(name, fn, arg_types)
+        return None
     return annotate
 
 # XXX hack
@@ -156,6 +158,23 @@ def mgb_assert_call_fails(ctx, fn, *args):
     except ProgramError as e:
         return None_(info=fn)
     fn.error('did not throw error', ctx=ctx)
+
+# XXX remove this, temporary shim to speed up parsing
+@mg_builtin([String])
+def mgb_re_compile_match(ctx, regex):
+    import re
+    match = re.compile(regex.value).match
+    def match_internal(ctx, text, start):
+        # HACK: inspect context to get the call site of this function for better errors
+        info = ctx.current_node
+        m = match(text.value, start.value)
+        if not m:
+            return None_(info=text)
+        type = String(m.lastgroup, info=info)
+        start = Integer(m.start(), info=info)
+        end = Integer(m.end(), info=info)
+        return List([type, start, end], info=info)
+    return create_builtin_function('re_compile_match', match_internal, [String, Integer])
 
 # Add builtin classes
 builtins['str'] = StrClass
