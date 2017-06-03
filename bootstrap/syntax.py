@@ -257,6 +257,7 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
         node.iterate_children = iterate_children
         node.iterate_tree = iterate_tree
         node.iterate_subtree = iterate_subtree
+        node.arg_defs = args
         return node
 
     return attach
