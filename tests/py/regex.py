@@ -48,7 +48,7 @@ inputs = [
 
 for r in regexes:
     reg = re.compile(r)
-    print([bool(x != None) for x in map(reg.match, inputs)])
+    print([bool(reg.match(i, 0) != None) for i in inputs])
 
 bad_regexes = [
     '*',
