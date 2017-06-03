@@ -176,6 +176,24 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
             if hasattr(self, 'setup'):
                 self.setup()
 
+        # Iterate through all child nodes of this node
+        def iterate_children(self):
+            for (arg_type, arg_name) in args:
+                if arg_type == ARG_EDGE:
+                    edge = getattr(self, arg_name)
+                    yield edge
+                elif arg_type == ARG_EDGE_OPT:
+                    edge = getattr(self, arg_name)
+                    if edge is not None:
+                        yield edge
+                elif arg_type == ARG_EDGE_LIST:
+                    for edge in getattr(self, arg_name):
+                        yield edge
+                elif arg_type == ARG_EDGE_DICT:
+                    for k, v in getattr(self, arg_name).items():
+                        yield k
+                        yield v
+
         # A generator that iterates through the AST from this node. It breaks
         # the iteration at scope barriers, since those are generally handled
         # differently whenever this is used.
@@ -187,26 +205,9 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
 
         # Again, but just the subtree(s) below the node.
         def iterate_subtree(self):
-            for (arg_type, arg_name) in args:
-                if arg_type == ARG_EDGE:
-                    edge = getattr(self, arg_name)
-                    for I in edge.iterate_tree():
-                        yield I
-                elif arg_type == ARG_EDGE_OPT:
-                    edge = getattr(self, arg_name)
-                    if edge is not None:
-                        for I in edge.iterate_tree():
-                            yield I
-                elif arg_type == ARG_EDGE_LIST:
-                    for edge in getattr(self, arg_name):
-                        for I in edge.iterate_tree():
-                            yield I
-                elif arg_type == ARG_EDGE_DICT:
-                    for k, v in getattr(self, arg_name).items():
-                        for I in k.iterate_tree():
-                            yield I
-                        for I in v.iterate_tree():
-                            yield I
+            for edge in self.iterate_children():
+                for I in edge.iterate_tree():
+                    yield I
 
         # If the compare flag is set, we delegate the comparison to the
         # Python object in the 'value' attribute
@@ -253,6 +254,7 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
                 setattr(node, full_op, operator)
 
         node.__init__ = __init__
+        node.iterate_children = iterate_children
         node.iterate_tree = iterate_tree
         node.iterate_subtree = iterate_subtree
         return node
