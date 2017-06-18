@@ -1,4 +1,5 @@
 import copy
+import enum
 
 import sprdpl.lex
 
@@ -126,8 +127,9 @@ class Node:
     def eval_call(self, ctx, args, kwargs):
         self.error('__call__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
 
-ARG_REG, ARG_EDGE, ARG_EDGE_OPT, ARG_EDGE_LIST, ARG_EDGE_DICT = range(5)
-arg_map = {'&': ARG_EDGE, '?': ARG_EDGE_OPT, '*': ARG_EDGE_LIST, '#': ARG_EDGE_DICT}
+ArgType = enum.Enum('ArgType', 'REG EDGE OPT LIST DICT')
+
+arg_map = {'&': ArgType.EDGE, '?': ArgType.OPT, '*': ArgType.LIST, '#': ArgType.DICT}
 
 # Weird decorator: a given arg string represents a standard form for arguments
 # to Node subclasses. We use these notations:
@@ -142,7 +144,7 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
         if a[0] in arg_map:
             new_args.append((arg_map[a[0]], a[1:]))
         else:
-            new_args.append((ARG_REG, a))
+            new_args.append((ArgType.REG, a))
     args = new_args
 
     # Decorators must return a function. This adds __init__ and some other methods
@@ -152,20 +154,20 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
             assert len(iargs) == len(args), 'bad args, expected %s(%s)' % (node.__name__, argstr)
 
             for (arg_type, arg_name), v in zip(args, iargs):
-                if arg_type == ARG_EDGE:
+                if arg_type == ArgType.EDGE:
                     assert isinstance(v, Node)
-                elif arg_type == ARG_EDGE_OPT:
+                elif arg_type == ArgType.OPT:
                     assert v is None or isinstance(v, Node)
-                elif arg_type == ARG_EDGE_LIST:
+                elif arg_type == ArgType.LIST:
                     assert isinstance(v, list) and all(isinstance(i, Node) for i in v)
-                elif arg_type == ARG_EDGE_DICT:
+                elif arg_type == ArgType.DICT:
                     assert isinstance(v, dict) and all(isinstance(key, Node) and
                         isinstance(value, Node) for key, value in v.items())
                 setattr(self, arg_name, v)
 
             if info is None:
                 for (arg_type, arg_name), v in zip(args, iargs):
-                    if arg_type == ARG_EDGE:
+                    if arg_type == ArgType.EDGE:
                         info = v.info
                         break
             if isinstance(info, Node):
@@ -179,17 +181,17 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
         # Iterate through all child nodes of this node
         def iterate_children(self):
             for (arg_type, arg_name) in args:
-                if arg_type == ARG_EDGE:
+                if arg_type == ArgType.EDGE:
                     edge = getattr(self, arg_name)
                     yield edge
-                elif arg_type == ARG_EDGE_OPT:
+                elif arg_type == ArgType.OPT:
                     edge = getattr(self, arg_name)
                     if edge is not None:
                         yield edge
-                elif arg_type == ARG_EDGE_LIST:
+                elif arg_type == ArgType.LIST:
                     for edge in getattr(self, arg_name):
                         yield edge
-                elif arg_type == ARG_EDGE_DICT:
+                elif arg_type == ArgType.DICT:
                     for k, v in getattr(self, arg_name).items():
                         yield k
                         yield v
