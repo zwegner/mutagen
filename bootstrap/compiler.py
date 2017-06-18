@@ -1,9 +1,11 @@
+#!/usr/bin/env python3
 import sys
 
 import sprdpl.parse as libparse
 
 import parse
-from syntax import *
+import syntax
+from syntax import ArgType
 
 def add_to(cls):
     def deco(fn):
@@ -33,59 +35,53 @@ class Edge:
         if value is not None:
             value.add_ref(self)
 
-@add_to(Node)
+@add_to(syntax.Node)
 def add_ref(self, edge):
     assert edge not in self.refs
     self.refs.append(edge)
 
-@add_to(Node)
+@add_to(syntax.Node)
 def remove_ref(self, edge):
     assert edge in self.refs
     self.refs.remove(edge)
 
-@add_to(Node)
+@add_to(syntax.Node)
 def forward(self, new_value):
     for edge in self.refs:
         edge.set(new_value)
 
-@add_to(Node)
-def transform_to_graph(self, ctx):
-    # First, add a list of references. This is used for value forwarding and (eventually) DCE.
-    self.refs = []
-    # Also add a stupid flag to make sure to only visit each node once. This is only
-    # necessary because of the mg_builtins functions that get hackily imported, and
-    # could possibly go away if that gets cleaned up.
-    self.transformed = True
+def transform_to_graph(block):
+    seen = set()
+    for stmt in block:
+        # Iterate the graph in reverse depth-first order to get a topological ordering
+        for node in reversed(list(stmt.iterate_graph(seen))):
+            # First, add a list of references. This is used for value forwarding and
+            # (eventually) DCE.
+            node.refs = []
 
-    # Recurse into the children nodes. This must be done before we transform our own references
-    # so that the children's refs are set up.
-    for node in self.iterate_children():
-        if not hasattr(node, 'transformed'):
-            node.transform_to_graph(ctx)
-
-    # For every node that this node uses, replace the normal Python attribute with an Edge
-    # containing the same node.
-    for (arg_type, arg_name) in type(self).arg_defs:
-        if arg_type in (ARG_EDGE, ARG_EDGE_OPT):
-            node = getattr(self, arg_name)
-            setattr(self, arg_name, Edge(node))
-        elif arg_type == ARG_EDGE_LIST:
-            nodes = getattr(self, arg_name)
-            setattr(self, arg_name, [Edge(node) for node in nodes])
-        elif arg_type == ARG_EDGE_DICT:
-            nodes = getattr(self, arg_name)
-            setattr(self, arg_name, {Edge(key): Edge(value) for key, value in nodes.items()})
+            # For every node that this node uses, replace the normal Python attribute
+            # with an Edge containing the same node.
+            for (arg_type, arg_name) in type(node).arg_defs:
+                if arg_type in (ArgType.EDGE, ArgType.OPT):
+                    child = getattr(node, arg_name)
+                    setattr(node, arg_name, Edge(child))
+                elif arg_type == ArgType.LIST:
+                    children = getattr(node, arg_name)
+                    setattr(node, arg_name, [Edge(child) for child in children])
+                elif arg_type == ArgType.DICT:
+                    children = getattr(node, arg_name)
+                    setattr(node, arg_name, {Edge(key): Edge(value)
+                        for key, value in children.items()})
 
 def compile(path, print_program=False):
-    ctx = Context('__main__', None, None)
+    ctx = syntax.Context('__main__', None, None)
     try:
         block = parse.parse(path, ctx=ctx)
     except libparse.ParseError as e:
         e.print_and_exit()
-    preprocess_program(ctx, block)
+    syntax.preprocess_program(ctx, block)
 
-    for expr in block:
-        expr.transform_to_graph(ctx)
+    transform_to_graph(block)
 
 def main(args):
     compile(args[1])

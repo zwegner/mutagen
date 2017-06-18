@@ -38,9 +38,10 @@ def check_obj_type(info, msg_type, ctx, obj, type):
                 get_class_name(ctx, obj_type), get_class_name(ctx, type)), ctx=ctx)
 
 def preprocess_program(ctx, block):
+    seen = set()
     # Analyze nested functions
     for expr in block:
-        for node in expr.iterate_tree():
+        for node in expr.iterate_graph(seen, iterate_across_scopes=False):
             if isinstance(node, Scope):
                 node.analyze_scoping(ctx)
 
@@ -196,20 +197,30 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
                         yield k
                         yield v
 
-        # A generator that iterates through the AST from this node. It breaks
-        # the iteration at scope barriers, since those are generally handled
-        # differently whenever this is used.
-        def iterate_tree(self):
-            yield self
-            if not isinstance(self, Scope):
-                for I in self.iterate_subtree():
-                    yield I
+        # Iterate through the entire DAG reachable from this node, not including
+        # the node. 'seen' is used to track nodes reachable through multiple paths.
+        # 'iterate_across_scopes' is used to break iteration on Scope boundaries
+        def iterate_subgraph(self, seen=None, iterate_across_scopes=True):
+            for child in self.iterate_children():
+                yield from child.iterate_graph(seen,
+                        iterate_across_scopes=iterate_across_scopes)
 
-        # Again, but just the subtree(s) below the node.
-        def iterate_subtree(self):
-            for edge in self.iterate_children():
-                for I in edge.iterate_tree():
-                    yield I
+        def iterate_graph(self, seen=None, iterate_across_scopes=True):
+            seen = set() if seen is None else seen
+            # XXX Ugh, we want to use the default hashing/equality for Python objects
+            # for the 'seen' set, while keeping custom hashing/equality for purposes of
+            # implementing dicts/etc. in the interpreter. Since it's hard to override the way
+            # hashing works on a case-by-case basis, hack around it and just use the object
+            # pointer as the hash key here. We don't have to worry about the GC (which could
+            # in theory cause two objects to share the same address, and hence collide) since
+            # 'self' is referenced here for the whole traversal of the graph below this node...
+            key = id(self)
+            if key not in seen:
+                seen.add(key)
+                yield self
+                if iterate_across_scopes or not isinstance(self, Scope):
+                    yield from self.iterate_subgraph(seen,
+                            iterate_across_scopes=iterate_across_scopes)
 
         # If the compare flag is set, we delegate the comparison to the
         # Python object in the 'value' attribute
@@ -257,8 +268,8 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
 
         node.__init__ = __init__
         node.iterate_children = iterate_children
-        node.iterate_tree = iterate_tree
-        node.iterate_subtree = iterate_subtree
+        node.iterate_graph = iterate_graph
+        node.iterate_subgraph = iterate_subgraph
         node.arg_defs = args
         return node
 
@@ -1047,7 +1058,7 @@ class Scope(Node):
             stores = set()
         loads = set()
 
-        for node in self.iterate_subtree():
+        for node in self.iterate_subgraph(iterate_across_scopes=False):
             if isinstance(node, Target):
                 stores.update(node.get_stores())
             elif isinstance(node, Identifier):
@@ -1069,8 +1080,10 @@ class Function(Node):
     def setup(self):
         # Check if this is a generator and not a function
         self.is_generator = False
-        if any(isinstance(node, Yield) for node in self.iterate_subtree()):
-            if any(isinstance(node, Return) for node in self.iterate_subtree()):
+        if any(isinstance(node, Yield) for node in
+                self.iterate_subgraph(iterate_across_scopes=False)):
+            if any(isinstance(node, Return) for node in
+                    self.iterate_subgraph(iterate_across_scopes=False)):
                 self.error('Cannot use return in a generator')
             self.is_generator = True
     def specialize(self, parent_ctx, ctx):
