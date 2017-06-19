@@ -19,6 +19,11 @@ INV_STR_ESCAPES = [
 # Info object to represent a non-existent source location for all builtins defined in Python
 BUILTIN_INFO = sprdpl.lex.Info('__builtins__')
 
+# Constants to add to various classes' __hash__ implementation to distinguish their types.
+# Since the hash functions are based on a tuple of their child objects, we want to make
+# sure that [[0, 0]] has a different hash that {0: 0}, etc.
+HASH_BASE_LIST, HASH_BASE_DICT, HASH_BASE_OBJ, HASH_BASE_FN, HASH_BASE_CLASS = range(5)
+
 # Utility functions
 def get_class_name(ctx, cls):
     name = cls.get_attr(ctx, '__name__')
@@ -397,7 +402,7 @@ class List(Node):
     def len(self, ctx):
         return len(self.items)
     def __hash__(self):
-        return hash(tuple(self.items))
+        return hash(tuple(self.items)) + HASH_BASE_LIST
 
 @node('#items')
 class Dict(Node):
@@ -440,7 +445,7 @@ class Dict(Node):
     def __eq__(self, other):
         return Boolean(isinstance(other, Dict) and self.items == other.items, info=self)
     def __hash__(self):
-        return hash(tuple(self.items.items()))
+        return hash(tuple(self.items.items())) + HASH_BASE_DICT
 
 @node('#items, obj_class')
 class Object(Node):
@@ -463,7 +468,7 @@ class Object(Node):
         return Boolean(isinstance(other, Object) and
                 self.items == other.items, info=self)
     def __hash__(self):
-        return sum(hash(k) * hash(v) for k, v in self.items.items())
+        return hash((hash(self.obj_class),) + tuple(self.items.items())) + HASH_BASE_OBJ
     def bool(self, ctx):
         result = (self.overload(ctx, '__bool__', []) or
                 self.overload(ctx, '__len__', []))
@@ -1114,7 +1119,7 @@ class Function(Node):
     def __eq__(self, other):
         return Boolean(self is other, info=self)
     def __hash__(self):
-        return hash((self.name, self.params, self.return_type, self.block))
+        return hash((self.name, self.params, self.return_type, self.block)) + HASH_BASE_FN
     def repr(self, ctx):
         ret_str = ' -> %s' % self.return_type.repr(ctx) if self.return_type else ''
         return 'def %s%s%s%s' % (self.name, self.params.repr(ctx),
@@ -1180,7 +1185,7 @@ class Class(Node):
     def __eq__(self, other):
         return Boolean(self is other, info=self)
     def __hash__(self):
-        return hash((self.name, self.params, self.block))
+        return hash((self.name, self.params, self.block)) + HASH_BASE_CLASS
 
 class BuiltinClass(Class):
     def __init__(self, name):
