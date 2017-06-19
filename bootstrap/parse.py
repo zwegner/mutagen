@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import collections
 import inspect
 import os
 import sys
@@ -55,14 +56,14 @@ def parse_dict(p):
     if p[1]:
         items = p[1]
         key, value = items[0], items[2]
-        d = {key: value}
+        d = collections.OrderedDict(((key, value),))
         if items[3]:
             items = items[3]
             if isinstance(items[0], CompIter):
                 return Scope(DictComprehension(key, value, items))
-            d.update({item[1]: item[3] for item in items[0]})
+            d.update(collections.OrderedDict((item[1], item[3]) for item in items[0]))
         return Dict(d, info=p.get_info(0))
-    return Dict({}, info=p.get_info(0))
+    return Dict(collections.OrderedDict(), info=p.get_info(0))
 
 @libparse.rule_fn(rule_table, 'set_comp', 'LBRACE test (COMMA test)* [COMMA] RBRACE')
 def parse_set(p):

@@ -1,3 +1,4 @@
+import collections
 import copy
 import enum
 
@@ -51,7 +52,7 @@ class Context:
         self.current_node = None
         self.parent_ctx = parent_ctx
         self.callsite_ctx = callsite_ctx
-        self.syms = {}
+        self.syms = collections.OrderedDict()
     def store(self, name, value):
         self.syms[name] = value
     def load(self, node, name):
@@ -400,8 +401,8 @@ class List(Node):
 @node('#items')
 class Dict(Node):
     def eval(self, ctx):
-        return Dict({k.eval(ctx): v.eval(ctx) for k, v in
-            self.items.items()}, info=self)
+        return Dict(collections.OrderedDict((k.eval(ctx), v.eval(ctx)) for k, v in
+            self.items.items()), info=self)
     def set_item(self, ctx, item, value):
         self.items[item] = value
     def repr(self, ctx):
@@ -443,8 +444,8 @@ class Dict(Node):
 @node('#items, obj_class')
 class Object(Node):
     def eval(self, ctx):
-        return Object({k.eval(ctx): v.eval(ctx) for k, v
-            in self.items.items()}, self.obj_class, info=self)
+        return Object(collections.OrderedDict((k.eval(ctx), v.eval(ctx))
+            for k, v in self.items.items()), self.obj_class, info=self)
     def set_attr(self, ctx, name, value):
         if name not in self.items:
             self.error('bad attribute for modification: %s' % name, ctx=ctx)
@@ -837,8 +838,9 @@ class ListComprehension(Comprehension):
 @node('&key_expr, &value_expr, *comp_iters')
 class DictComprehension(Comprehension):
     def eval(self, ctx):
-        return Dict({self.key_expr.eval(child_ctx): self.value_expr.eval(child_ctx)
-            for child_ctx in self.get_states()}, info=self)
+        return Dict(collections.OrderedDict(
+            (self.key_expr.eval(child_ctx), self.value_expr.eval(child_ctx))
+            for child_ctx in self.get_states()), info=self)
     def repr(self, ctx):
         return '{%s: %s %s}' % (self.key_expr.repr(ctx),
                 self.value_expr.repr(ctx),
@@ -893,7 +895,7 @@ class Call(Node):
     def eval(self, ctx):
         fn = self.fn.eval(ctx)
         args = []
-        kwargs = {}
+        kwargs = collections.OrderedDict()
         for a in self.args:
             if isinstance(a, VarArg):
                 args.extend(list(a.eval(ctx).iter(ctx)))
@@ -989,7 +991,8 @@ class Params(Node):
 
         # Bind var args
         if self.kw_var_params:
-            kwargs = {String(k, info=self): v for k, v in kwargs.items()}
+            kwargs = collections.OrderedDict((String(k, info=self), v)
+                    for k, v in kwargs.items())
             args += [(self.kw_var_params, Dict(kwargs, info=self))]
 
         return args
@@ -1149,8 +1152,8 @@ class Class(Node):
         if not hasattr(self, 'cls'):
             child_ctx = Context(self.name, self.ctx, ctx)
             self.block.eval(child_ctx)
-            items = {String(k, info=self): v.eval(ctx) for k, v
-                in child_ctx.syms.items()}
+            items = collections.OrderedDict((String(k, info=self), v.eval(ctx))
+                    for k, v in child_ctx.syms.items())
             assert '__name__' not in items and '__params__' not in items
             items[String('__name__', info=self)] = String(self.name, info=self)
             items[String('__params__', info=self)] = self.params
@@ -1159,8 +1162,8 @@ class Class(Node):
     def eval_call(self, ctx, args, kwargs):
         init = self.cls.get_attr(ctx, '__init__')
         if init is None:
-            attrs = {String(k, info=self): v.eval(ctx) for k, v in
-                    self.params.bind(self, ctx, args, kwargs)}
+            attrs = collections.OrderedDict((String(k, info=self), v.eval(ctx))
+                    for k, v in self.params.bind(self, ctx, args, kwargs))
         else:
             d = init.eval_call(ctx, args, kwargs)
             assert isinstance(d, Dict)
@@ -1284,7 +1287,7 @@ ListClass = BuiltinList('list')
 class BuiltinDict(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
-        return Dict(dict(arg), info=arg)
+        return Dict(collections.OrderedDict(list(arg)), info=arg)
     def keys(obj, ctx, args):
         [arg] = args
         return List(list(arg.items.keys()), info=arg)
@@ -1324,7 +1327,8 @@ class Import(Node):
         for expr in self.stmts:
             expr.eval(self.ctx)
         if self.names is None:
-            attrs = {String(k, info=self): v for k, v in self.ctx.syms.items()}
+            attrs = collections.OrderedDict((String(k, info=self), v)
+                    for k, v in self.ctx.syms.items())
             # Set the type of modules, and make sure we evaluate it at least once
             obj = Object(attrs, ModuleClass.eval(ctx), info=self)
             self.parent_ctx.store(self.name, obj)

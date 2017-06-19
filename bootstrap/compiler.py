@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import collections
 import sys
 
 import sprdpl.parse as libparse
@@ -70,8 +71,8 @@ def transform_to_graph(block):
                     setattr(node, arg_name, [Edge(child) for child in children])
                 elif arg_type == ArgType.DICT:
                     children = getattr(node, arg_name)
-                    setattr(node, arg_name, {Edge(key): Edge(value)
-                        for key, value in children.items()})
+                    setattr(node, arg_name, collections.OrderedDict((Edge(key), Edge(value))
+                        for key, value in children.items()))
 
 def compile(path, print_program=False):
     ctx = syntax.Context('__main__', None, None)

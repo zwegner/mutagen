@@ -1,9 +1,10 @@
+import collections
 import copy
 import sys
 
 from syntax import *
 
-builtins = {}
+builtins = collections.OrderedDict()
 
 def create_builtin_function(name, fn, arg_types):
     def builtin_call(obj, ctx, args):
