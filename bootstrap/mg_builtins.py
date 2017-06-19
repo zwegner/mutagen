@@ -19,7 +19,7 @@ def create_builtin_function(name, fn, arg_types):
                     info.error('bad argument to builtin %s, expected %s, got %s' %
                             (obj.name, t.__name__, type(a).__name__), ctx=ctx)
         return fn(ctx, *args)
-    return BuiltinFunction(name, builtin_call, info=builtin_info)
+    return BuiltinFunction(name, builtin_call, info=BUILTIN_INFO)
 
 def mg_builtin(arg_types):
     def annotate(fn):
@@ -147,7 +147,7 @@ def mgb_hacky_inherit_from(ctx, parent, cls):
     for attr in parent.cls.items:
         if attr not in cls.cls.items:
             cls.cls.items[attr] = parent.cls.items[attr]
-    cls.cls.items[String('__parent__', info=builtin_info)] = parent
+    cls.cls.items[String('__parent__', info=BUILTIN_INFO)] = parent
     return cls
 
 # XXX remove this, just temporarily added to test stuff that should fail.

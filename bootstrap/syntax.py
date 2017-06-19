@@ -9,14 +9,15 @@ import sys
 sys.setrecursionlimit(10000)
 
 # This is a list, since order matters--backslashes must come first!
-inv_str_escapes = [
+INV_STR_ESCAPES = [
     ['\\', '\\\\'],
     ['\n', '\\n'],
     ['\t', '\\t'],
     ['\b', '\\x08'], # HACK
 ]
 
-builtin_info = sprdpl.lex.Info('__builtins__')
+# Info object to represent a non-existent source location for all builtins defined in Python
+BUILTIN_INFO = sprdpl.lex.Info('__builtins__')
 
 # Utility functions
 def get_class_name(ctx, cls):
@@ -304,7 +305,7 @@ class String(Node):
         return self.value
     def repr(self, ctx):
         value = self.value
-        for k, v in inv_str_escapes:
+        for k, v in INV_STR_ESCAPES:
             value = value.replace(k, v)
         has_quotes = [x in self.value for x in ['\'', '"']]
         if has_quotes[0] and not has_quotes[1]:
@@ -1189,10 +1190,10 @@ class BuiltinClass(Class):
         stmts = []
         for method in methods:
             fn = getattr(cls, method)
-            stmts.append(Assignment(Target([method], info=builtin_info),
-                BuiltinFunction(method, fn, info=builtin_info)))
-        super().__init__(name, Params([], [], None, [], None, info=builtin_info),
-            Block(stmts, info=builtin_info))
+            stmts.append(Assignment(Target([method], info=BUILTIN_INFO),
+                BuiltinFunction(method, fn, info=BUILTIN_INFO)))
+        super().__init__(name, Params([], [], None, [], None, info=BUILTIN_INFO),
+            Block(stmts, info=BUILTIN_INFO))
 
 class BuiltinNone(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):

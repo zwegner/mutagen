@@ -335,14 +335,14 @@ def parse(path, import_builtins=True, ctx=None):
     # Do some post-processing, starting with adding builtins
     if import_builtins:
         builtins_path = '%s/__builtins__.mg' % stdlib_dir
-        imp = Import([], '__builtins__', [], builtins_path, True, info=builtin_info)
+        imp = Import([], '__builtins__', [], builtins_path, True, info=BUILTIN_INFO)
         all_imports.append(imp)
         block = [Scope(imp)] + block
 
     new_block = []
 
     for k, v in mg_builtins.builtins.items():
-        new_block.append(Assignment(Target([k], info=builtin_info), v))
+        new_block.append(Assignment(Target([k], info=BUILTIN_INFO), v))
 
     # Recursively parse imports. Be sure to copy the all_imports since
     # we'll be clearing and modifying it in each child parsing pass.
