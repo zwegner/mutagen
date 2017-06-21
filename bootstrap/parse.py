@@ -287,7 +287,7 @@ def parse_def_stmt(p):
 @libparse.rule_fn(rule_table,
     'class_stmt', 'decorator* CLASS IDENTIFIER params block')
 def parse_class_stmt(p):
-    cls = Scope(Class(p[2], p[3], p[4], info=p.get_info(1)))
+    cls = Scope(Class(p[2], p[3], p[4], None, info=p.get_info(1)))
     for dec in p[0]:
         cls = Call(dec, [cls])
     return Assignment(Target([p[2]], info=p.get_info(2)), cls)

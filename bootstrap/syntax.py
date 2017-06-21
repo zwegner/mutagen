@@ -447,7 +447,7 @@ class Dict(Node):
     def __hash__(self):
         return hash(tuple(self.items.items())) + HASH_BASE_DICT
 
-@node('#items, obj_class')
+@node('#items, &obj_class')
 class Object(Node):
     def eval(self, ctx):
         return Object(collections.OrderedDict((k.eval(ctx), v.eval(ctx))
@@ -1147,7 +1147,10 @@ class BuiltinFunction(Node):
         return '<builtin %s>' % self.name
 
 # XXX it seems our object model has a circular reference
-@node('name, &params, &block')
+# 'cls' must be None when instantiating this class. It's created when the class statement
+# is evaluated. It is only an edge here so iterate_children et al will find it.
+# XXX 'cls' should really be removed, and eval() should return a distinct object
+@node('name, &params, &block, ?cls')
 class Class(Node):
     def specialize(self, parent_ctx, ctx):
         # Be sure to evaluate the parameter type expressions in
@@ -1155,7 +1158,7 @@ class Class(Node):
         self.params = self.params.specialize(parent_ctx)
         return self
     def eval(self, ctx):
-        if not hasattr(self, 'cls'):
+        if not self.cls:
             child_ctx = Context(self.name, self.ctx, ctx)
             self.block.eval(child_ctx)
             items = collections.OrderedDict((String(k, info=self), v.eval(ctx))
@@ -1198,7 +1201,7 @@ class BuiltinClass(Class):
             stmts.append(Assignment(Target([method], info=BUILTIN_INFO),
                 BuiltinFunction(method, fn, info=BUILTIN_INFO)))
         super().__init__(name, Params([], [], None, [], None, info=BUILTIN_INFO),
-            Block(stmts, info=BUILTIN_INFO))
+            Block(stmts, info=BUILTIN_INFO), None)
 
 class BuiltinNone(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
