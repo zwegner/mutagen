@@ -1164,7 +1164,7 @@ class Class(Node):
         if not self.cls:
             child_ctx = Context(self.name, self.ctx, ctx)
             self.block.eval(child_ctx)
-            items = collections.OrderedDict((String(k, info=self), v.eval(ctx))
+            items = collections.OrderedDict((String(k, info=self), v)
                     for k, v in child_ctx.syms.items())
             assert '__name__' not in items and '__params__' not in items
             items[String('__name__', info=self)] = String(self.name, info=self)
@@ -1174,7 +1174,7 @@ class Class(Node):
     def eval_call(self, ctx, args, kwargs):
         init = self.cls.get_attr(ctx, '__init__')
         if init is None:
-            attrs = collections.OrderedDict((String(k, info=self), v.eval(ctx))
+            attrs = collections.OrderedDict((String(k, info=self), v)
                     for k, v in self.params.bind(self, ctx, args, kwargs))
         else:
             d = init.eval_call(ctx, args, kwargs)

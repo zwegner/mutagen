@@ -155,7 +155,7 @@ def mgb_hacky_inherit_from(ctx, parent, cls):
 @mg_builtin(None)
 def mgb_assert_call_fails(ctx, fn, *args):
     try:
-        fn.eval_call(ctx, [a.eval(ctx) for a in args], {})
+        fn.eval_call(ctx, args, {})
     except ProgramError as e:
         return None_(info=fn)
     fn.error('did not throw error', ctx=ctx)
