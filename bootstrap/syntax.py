@@ -21,7 +21,7 @@ BUILTIN_INFO = sprdpl.lex.Info('__builtins__')
 
 # Constants to add to various classes' __hash__ implementation to distinguish their types.
 # Since the hash functions are based on a tuple of their child objects, we want to make
-# sure that [[0, 0]] has a different hash that {0: 0}, etc.
+# sure that [[0, 0]] has a different hash than {0: 0}, etc.
 HASH_BASE_LIST, HASH_BASE_DICT, HASH_BASE_OBJ, HASH_BASE_FN, HASH_BASE_CLASS = range(5)
 
 # Utility functions
@@ -139,14 +139,16 @@ ArgType = enum.Enum('ArgType', 'REG EDGE OPT LIST DICT')
 
 arg_map = {'&': ArgType.EDGE, '?': ArgType.OPT, '*': ArgType.LIST, '#': ArgType.DICT}
 
-# Weird decorator: a given arg string represents a standard form for arguments
-# to Node subclasses. We use these notations:
-# op, &expr, *explist
-# op -> normal attribute
-# &expr -> edge attribute, used for linking to other Nodes
-# *explist -> python list of edges
-def node(argstr='', compare=False, base_type=None, ops=[]):
-    args = [a.strip() for a in argstr.split(',') if a.strip()]
+# Weird decorator: the given arg_spec string represents a standard form for arguments
+# to Node subclasses that we use to automatically create a constructor and other methods for
+# the Node class (like iterate_subgraph). We use these notations:
+# op       -> normal attribute (not a Node)
+# &expr    -> edge attribute, used for linking to other Nodes
+# ?expr    -> optional edge, either a Node or None
+# *explist -> python list of Nodes
+# #expdict -> python dictionary of Nodes
+def node(arg_spec='', compare=False, base_type=None, ops=[]):
+    args = [a.strip() for a in arg_spec.split(',') if a.strip()]
     new_args = []
     for a in args:
         if a[0] in arg_map:
@@ -159,7 +161,7 @@ def node(argstr='', compare=False, base_type=None, ops=[]):
     # to a Node subclass
     def attach(node):
         def __init__(self, *iargs, info=None):
-            assert len(iargs) == len(args), 'bad args, expected %s(%s)' % (node.__name__, argstr)
+            assert len(iargs) == len(args), 'bad args, expected %s(%s)' % (node.__name__, arg_spec)
 
             for (arg_type, arg_name), v in zip(args, iargs):
                 if arg_type == ArgType.EDGE:
@@ -775,6 +777,7 @@ class IfElse(Node):
             else_block = '\nelse%s' % self.else_block.repr(ctx)
         return 'if %s%s%s' % (self.expr.repr(ctx), self.if_block.repr(ctx), else_block)
 
+# A special subclass of if-else blocks for conditional expressions, just to print them properly
 class CondExpr(IfElse):
     def repr(self, ctx):
         return '(%s if %s else %s)' % (self.if_block.repr(ctx), self.expr.repr(ctx),

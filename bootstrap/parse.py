@@ -145,8 +145,11 @@ def parse_mod_expr(p):
 def parse_comparison(p):
     r = p[0]
     for item in p[1]:
+        # Reverse the argument order for 'x in y', since this is implemented in Python with
+        # y.__contains__(x), i.e. the order of x and y are reversed.
         if item[0] == 'in':
             r = BinaryOp('in', item[1], r)
+        # Another special case: 'x not in y' is just transformed to 'not (x in y)'
         elif item[0] == ['not', 'in']:
             r = UnaryOp('not', BinaryOp('in', item[1], r))
         else:
