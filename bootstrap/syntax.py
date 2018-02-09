@@ -824,13 +824,13 @@ class Comprehension(Node):
     def get_states(self):
         def iter_states(iters):
             [comp_iter, *iters] = iters
-            for values in comp_iter.expr.eval(self.ctx).iter(self.ctx):
-                comp_iter.target.assign_values(self.ctx, values)
+            for values in comp_iter.expr.eval(self.spec_ctx).iter(self.spec_ctx):
+                comp_iter.target.assign_values(self.spec_ctx, values)
                 if iters:
                     for I in iter_states(iters):
                         yield I
                 else:
-                    yield self.ctx
+                    yield self.spec_ctx
 
         for I in iter_states(self.comp_iters):
             yield I
@@ -1057,7 +1057,7 @@ class Scope(Node):
             for a in self.extra_args:
                 child_ctx.store(a, ctx.load(self, a))
         new_expr = copy.copy(self.expr)
-        new_expr.ctx = child_ctx
+        new_expr.spec_ctx = child_ctx
         return new_expr.specialize(ctx, child_ctx).eval(ctx)
     def repr(self, ctx):
         return 'scope (%s): %s' % (self.extra_args, self.expr.repr(ctx))
@@ -1106,7 +1106,7 @@ class Function(Node):
             self.rt_eval = self.return_type.eval(parent_ctx)
         return self
     def eval_call(self, ctx, args, kwargs):
-        child_ctx = Context(self.name, self.ctx, ctx)
+        child_ctx = Context(self.name, self.spec_ctx, ctx)
         for p, a in self.params.bind(self, ctx, args, kwargs):
             child_ctx.store(p, a)
         if self.is_generator:
@@ -1162,7 +1162,7 @@ class Class(Node):
         return self
     def eval(self, ctx):
         if not self.cls:
-            child_ctx = Context(self.name, self.ctx, ctx)
+            child_ctx = Context(self.name, self.spec_ctx, ctx)
             self.block.eval(child_ctx)
             items = collections.OrderedDict((String(k, info=self), v)
                     for k, v in child_ctx.syms.items())
@@ -1195,7 +1195,7 @@ class Class(Node):
 
 class BuiltinClass(Class):
     def __init__(self, name):
-        self.ctx = None
+        self.spec_ctx = None
         cls = type(self)
         methods = set(dir(cls)) - set(dir(BuiltinClass))
         stmts = []
@@ -1337,15 +1337,15 @@ class Import(Node):
         return self
     def eval(self, ctx):
         for expr in self.stmts:
-            expr.eval(self.ctx)
+            expr.eval(self.spec_ctx)
         if self.names is None:
             attrs = collections.OrderedDict((String(k, info=self), v)
-                    for k, v in self.ctx.syms.items())
+                    for k, v in self.spec_ctx.syms.items())
             # Set the type of modules, and make sure we evaluate it at least once
             obj = Object(attrs, ModuleClass.eval(ctx), info=self)
             self.parent_ctx.store(self.name, obj)
         else:
-            for k, v in self.ctx.syms.items():
+            for k, v in self.spec_ctx.syms.items():
                 if not self.names or k in self.names:
                     self.parent_ctx.store(k, v)
         return None_(info=self)
