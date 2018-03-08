@@ -66,6 +66,13 @@ def pack32(imm: int):
 def pack64(imm: int):
     return struct.pack('<q', imm)
 
+# Basic helper function to factor out a common pattern of choosing a 1/4 byte encoding,
+# along with another value that depends on which is chosen
+def choose_8_or_32_bit(imm: int, op8, op32):
+    if fits_8bit(imm):
+        return [pack8(imm), op8]
+    return [pack32(imm), op32]
+
 def mod_rm_sib(reg, rm):
     if isinstance(reg, Register):
         reg = reg.index
@@ -84,20 +91,18 @@ def mod_rm_sib(reg, rm):
             scale = {1: 0, 2: 1, 4: 2, 8: 3}[addr.scale]
             sib_bytes = [scale << 6 | (addr.index & 7) << 3 | addr.base & 7]
 
-        # RIP+offset
+        # RIP+offset: this steals the encoding for RSP with no displacement
         if addr.base == -1:
             mod = 0
             base = 5
             disp_bytes = pack32(addr.disp)
-        # Various disp sizes--base==5 is used for RIP+offset, so needs a disp
-        elif not addr.disp and addr.base & 7 != 5:
-            mod = 0
-        elif fits_8bit(addr.disp):
-            mod = 1
-            disp_bytes = pack8(addr.disp)
+        # Otherwise, encode the displacement as 1 or 4 bytes if needed: if the disp is nonzero
+        # obviously, but also if RSP is the base, the no-disp encoding is stolen above, so
+        # encode that with a single byte displacement of zero.
+        elif addr.disp or addr.base & 7 == 5:
+            [disp_bytes, mod] = choose_8_or_32_bit(addr.disp, 1, 2)
         else:
-            mod = 2
-            disp_bytes = pack32(addr.disp)
+            mod = 0
     return [mod << 6 | (reg & 7) << 3 | base & 7] + sib_bytes + disp_bytes
 
 def ex_transform(r, addr):
@@ -272,10 +277,7 @@ class Instruction(opcode: str, size: int, *args):
                         imm_bytes = pack32(src)
                     return rex(w, 0, dst) + [0xB8 | dst.index & 7] + imm_bytes
                 else:
-                    if fits_8bit(src):
-                        [size_flag, imm_bytes] = [0x2, pack8(src)]
-                    else:
-                        [size_flag, imm_bytes] = [0, pack32(src)]
+                    [imm_bytes, size_flag] = choose_8_or_32_bit(src, 2, 0)
                     return rex(w, 0, dst) + [0x81 | size_flag] + mod_rm_sib(
                             opcode, dst) + imm_bytes
 
@@ -312,9 +314,8 @@ class Instruction(opcode: str, size: int, *args):
         elif self.opcode == 'push':
             [src] = self.args
             if isinstance(src, int):
-                if fits_8bit(src):
-                    return [0x6A] + pack8(src)
-                return [0x68] + pack32(src)
+                [imm_bytes, opcode] = choose_8_or_32_bit(src, 0x6A, 0x68)
+                return [opcode] + imm_bytes
             else:
                 assert isinstance(src, Register)
                 return rex(0, 0, src) + [0x50 | (src.index & 7)]
