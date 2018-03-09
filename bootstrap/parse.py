@@ -184,6 +184,8 @@ rule_table += [
         '(NEWLINE|SEMICOLON)*', lambda p: p[0])],
     ['stmt_list', ('stmt*', lambda p: [x for x in p[0] if x is not None])],
 
+    ['single_input', ('stmt', lambda p: p[0])],
+
     ['break', ('BREAK', lambda p: Break(info=p.get_info(0)))],
     ['continue', ('CONTINUE', lambda p: Continue(info=p.get_info(0)))],
     ['return', ('RETURN test', lambda p: Return(p[1]))],
@@ -297,9 +299,10 @@ def parse_class_stmt(p):
 
 # Imports
 def parse_import(p, module, names, path):
-    imp = Import([], module, names, path, False, info=p.get_info(0))
-    all_imports.append(imp)
-    return Scope(imp)
+    imp = Scope(Import([], module, names, path, False, info=p.get_info(0)))
+    # Keep track of all the imports seen as an optimization
+    p.user_context.all_imports.append(imp)
+    return imp
 
 rule_table += [
     ['ident_list', ('IDENTIFIER (COMMA IDENTIFIER)*', reduce_list)],
@@ -309,65 +312,74 @@ rule_table += [
             lambda p: parse_import(p, p[1], p[3] if p[3] != '*' else [], None))],
 ]
 
-root_dir = os.path.dirname(sys.path[0])
-stdlib_dir = '%s/stdlib' % root_dir
+stdlib_dir = '%s/stdlib' % os.path.dirname(sys.path[0])
 
 parser = libparse.Parser(rule_table, 'stmt_list')
 tokenizer = lexer.Lexer()
 
-all_imports = None
+# XXX add this to the parser's user_context
 module_cache = {}
 
-def parse(path, import_builtins=True, ctx=None):
-    global all_imports
+def get_builtins_import():
+    builtins_path = '%s/__builtins__.mg' % stdlib_dir
+    return Scope(Import([], '__builtins__', [], builtins_path, True, info=BUILTIN_INFO))
+
+def handle_import(scope, parse_ctx, eval_ctx=None):
+    imp = scope.expr
+    # Explicit path: use that
+    if imp.path:
+        import_paths = [imp.path, '%s/%s' % (parse_ctx.dirname, imp.path)]
+    else:
+        import_paths = ['%s/%s.mg' % (cd, imp.name)
+            for cd in [parse_ctx.dirname, stdlib_dir]]
+    # Normal import: find the file first in
+    # the current directory, then stdlib
+    for import_path in import_paths:
+        if os.path.isfile(import_path):
+            break
+    else:
+        print('checking paths: %s' % import_paths, file=sys.stderr)
+        raise Exception('could not find import in path: %s' % imp.name)
+
+    imp.parent_ctx = Context(imp.name, None, eval_ctx)
+    imp.stmts = parse(import_path, import_builtins=not imp.is_builtins,
+            eval_ctx=eval_ctx)
+
+class ParseContext:
+    def __init__(self, dirname=None):
+        if not dirname:
+            dirname = '.'
+        self.dirname = dirname
+        self.all_imports = []
+
+def parse(path, import_builtins=True, eval_ctx=None):
     # Check if we've parsed this before. We do a check for recursive imports here too.
     if path in module_cache:
         if module_cache[path] is None:
             raise Exception('recursive import detected for %s' % path)
         return module_cache[path]
+    # Set a sentinel for the recursive import check
     module_cache[path] = None
 
     # Parse the file
-    all_imports = []
-    dirname = os.path.dirname(path)
-    if not dirname:
-        dirname = '.'
+    parse_ctx = ParseContext(dirname=os.path.dirname(path))
     with open(path) as f:
-        block = parser.parse(tokenizer.input(f.read(), filename=path))
+        block = parser.parse(tokenizer.input(f.read(), filename=path), user_context=parse_ctx)
 
     # Do some post-processing, starting with adding builtins
     if import_builtins:
-        builtins_path = '%s/__builtins__.mg' % stdlib_dir
-        imp = Import([], '__builtins__', [], builtins_path, True, info=BUILTIN_INFO)
-        all_imports.append(imp)
-        block = [Scope(imp)] + block
+        imp = get_builtins_import()
+        parse_ctx.all_imports.append(imp)
+        block = [imp] + block
 
     new_block = []
 
     for k, v in mg_builtins.builtins.items():
         new_block.append(Assignment(Target([k], info=BUILTIN_INFO), v))
 
-    # Recursively parse imports. Be sure to copy the all_imports since
-    # we'll be clearing and modifying it in each child parsing pass.
-    for imp in all_imports[:]:
-        # Explicit path: use that
-        if imp.path:
-            import_paths = [imp.path, '%s/%s' % (dirname, imp.path)]
-        else:
-            import_paths = ['%s/%s.mg' % (cd, imp.name)
-                for cd in [dirname, stdlib_dir]]
-        # Normal import: find the file first in
-        # the current directory, then stdlib
-        for import_path in import_paths:
-            if os.path.isfile(import_path):
-                break
-        else:
-            print('checking paths: %s' % import_paths, file=sys.stderr)
-            raise Exception('could not find import in path: %s' % imp.name)
-
-        imp.parent_ctx = Context(imp.name, None, ctx)
-        imp.stmts = parse(import_path, import_builtins=not imp.is_builtins,
-                ctx=imp.parent_ctx)
+    # Recursively parse imports
+    for imp in parse_ctx.all_imports:
+        handle_import(imp, parse_ctx, eval_ctx=eval_ctx)
 
     new_block.extend(block)
 
@@ -375,25 +387,17 @@ def parse(path, import_builtins=True, ctx=None):
     module_cache[path] = new_block[:]
     return new_block
 
-def interpret(path, print_program=False):
-    ctx = Context('__main__', None, None)
+# Evaluate a single statement in a given context. Mainly a wrapper for error handling code.
+def eval_statement(stmt, ctx):
     try:
-        block = parse(path, ctx=ctx)
-    except libparse.ParseError as e:
-        e.print_and_exit()
-    preprocess_program(ctx, block)
-    try:
-        if print_program:
-            for expr in block:
-                print(expr.str(ctx))
-        for expr in block:
-            expr.eval(ctx)
+        result = stmt.eval(ctx)
+        return (result, False)
     except ProgramError as e:
         if e.stack_trace:
             for line in e.stack_trace:
                 print(line, file=sys.stderr)
         print(e.msg, file=sys.stderr)
-        sys.exit(1)
+        return (None, True)
     except Exception as e:
         # All other exceptions shouldn't happen in theory, but they still do, so reconstruct
         # as much of the stack from Mutagen-space as we can
@@ -416,15 +420,24 @@ def interpret(path, print_program=False):
                 print('  File "%s", line %s, in %s' % (filename, lineno, function))
                 print('    ', code_context[index].strip())
         print('%s: %s' % (type(e).__name__, e))
+        return (None, True)
 
+def interpret(path):
+    ctx = Context('__main__', None, None)
+    try:
+        stmts = parse(path, eval_ctx=ctx)
+    except libparse.ParseError as e:
+        e.print()
+        sys.exit(1)
+    preprocess_program(ctx, stmts)
+    for stmt in stmts:
+        (result, error) = eval_statement(stmt, ctx)
+        if error:
+            sys.exit(1)
 
 def main(args):
-    print_program = False
-    if args[1] == '--print':
-        print_program = True
-        args.pop(1)
-
-    interpret(args[1], print_program=print_program)
+    assert len(args) == 2
+    interpret(args[1])
 
 if __name__ == '__main__':
     main(sys.argv)

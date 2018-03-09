@@ -102,10 +102,9 @@ token_map = {
 }
 
 def error(t, msg):
-    info = t.info or liblex.Info('<unknown file>', 0)
-    print('%s(%s): %s' % (info.filename, info.lineno, msg))
-    sys.exit(1)
+    raise liblex.LexError(msg, info=t.info)
 
+# First token preprocessing step: remove all newlines within braces/brackets/parentheses
 def process_newlines(tokens):
     braces = brackets = parens = 0
     for t in tokens:
@@ -123,8 +122,12 @@ def process_newlines(tokens):
         else:
             yield t
 
-def process_whitespace(tokens):
+# Second token preprocessing step: remove all whitespace tokens except the ones at the beginning
+# of non-empty lines (those are the only ones that are semantically meaningful), and remove
+# double newlines (unless in interactive mode and at the end of the token stream)
+def process_whitespace(tokens, interactive=False):
     after_newline = True
+    after_second_newline = False
     # Get two copies of the token stream, and offset the second so we can get
     # (current, next) tuples for every token
     tokens, next_tokens = itertools.tee(tokens, 2)
@@ -145,11 +148,22 @@ def process_whitespace(tokens):
         elif token.type != 'WHITESPACE':
             yield token
 
+        after_second_newline = after_newline
         after_newline = token.type == 'NEWLINE'
 
-def process_indentation(tokens):
+    # HACK for interactive mode. We normally eat consecutive newlines, but in interactive mode we
+    # need to check if the end of the stream has two newlines to end an indented block
+    if interactive and after_newline and after_second_newline:
+        yield token
+
+# Third token preprocessing step: count the amount of whitespace at the beginning of each line,
+# and generate INDENT/DEDENT tokens when it increases/decreases
+def process_indentation(tokens, interactive=False):
     ws_stack = [0]
+    second_last_token_type = last_token_type = None
     for token in tokens:
+        second_last_token_type = last_token_type
+        last_token_type = token.type
         # Whitespace has been processed, so this token is at the beginning
         # of a non-empty line
         if token.type == 'WHITESPACE':
@@ -170,19 +184,24 @@ def process_indentation(tokens):
         else:
             yield token
 
+    # If we're in interactive mode, don't generate the trailing DEDENT tokens unless the
+    # user has entered two consecutive newlines
+    if interactive and (last_token_type != 'NEWLINE' or second_last_token_type != 'NEWLINE'):
+        return
+
     # Make sure we have enough indents at EOF
     while len(ws_stack) > 1:
         ws_stack.pop()
         yield token.copy(type='DEDENT', value='')
 
-    yield None
-
 class Lexer(liblex.Lexer):
     def __init__(self):
         super().__init__(token_map)
 
-    def input(self, text, filename=None):
+    def input(self, text, filename=None, interactive=False):
         tokens = self.lex_input(text, filename)
         # Big ass chain of generators
-        tokens = process_indentation(process_whitespace(process_newlines(tokens)))
-        return liblex.LexerContext(text, tokens)
+        tokens = process_newlines(tokens)
+        tokens = process_whitespace(tokens, interactive=interactive)
+        tokens = process_indentation(tokens, interactive=interactive)
+        return liblex.LexerContext(text, tokens, filename)
