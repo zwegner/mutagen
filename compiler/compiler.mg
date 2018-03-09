@@ -44,7 +44,7 @@ def print_blocks(graph, block):
             print('    ', stmt._str(graph))
         print('    exit:', block.exit_states(graph))
 
-class SSAContext(new_class_dict: dict, current_block=None, statements=[], simplified_set: dict={}):
+class SSAContext(new_class_dict: dict, current_block=None, statements=[], seen_set: dict={}):
     def load(self, graph, name):
         if name in self.current_block.exit_states(graph):
             return [graph, self.current_block.exit_states(graph)[name]]
@@ -76,12 +76,6 @@ class SSAContext(new_class_dict: dict, current_block=None, statements=[], simpli
             elif edge_type == '#':
                 graph = graph.create_edge_dict(node, attr)
         return [graph, node]
-
-    def is_simplified(self, node):
-        return node in self.simplified_set
-
-    def add_to_simplified_set(self, node):
-        return self <- .simplified_set[node] = 1
 
 ################################################################################
 ## First pass: create a DAG representation #####################################
@@ -210,6 +204,8 @@ def gen_blocks(gen_blocks, graph, ctx, node):
                 graph = link_blocks(graph, last, curr_block)
             else:
                 graph = curr_block.stmts_append(graph, stmt)
+
+        graph = graph.delete_node(node)
         return [graph, prelude, curr_block]
     elif hacky_type_check(node, 'While'):
         # Create blocks
@@ -225,6 +221,8 @@ def gen_blocks(gen_blocks, graph, ctx, node):
         graph = link_blocks(graph, test_block, first)
         graph = link_blocks(graph, test_block, exit_block)
         graph = link_blocks(graph, last, test_block)
+
+        graph = graph.delete_node(node)
         return [graph, test_block, exit_block]
     elif hacky_type_check(node, 'IfElse'):
         # Create blocks
@@ -241,6 +239,8 @@ def gen_blocks(gen_blocks, graph, ctx, node):
         graph = link_blocks(graph, test_block, else_first)
         graph = link_blocks(graph, if_last, exit_block)
         graph = link_blocks(graph, else_last, exit_block)
+
+        graph = graph.delete_node(node)
         return [graph, test_block, exit_block]
     return None
 
@@ -283,8 +283,8 @@ def rec_gen_ssa(rec_gen_ssa, node, graph, ctx):
         # Flattening: if this child was a regular node (i.e. wasn't an identifier/assignment),
         # add it to the temporary statements list in the context. BasicBlock.gen_ssa() will
         # interleave these statements with the nodes that are already there, the main statements.
-        if child != None and child.node_id not in ctx.simplified_set:
-            ctx = (ctx <- .statements += [child], .simplified_set[child.node_id] = 1)
+        if child != None and child.node_id not in ctx.seen_set:
+            ctx = (ctx <- .statements += [child], .seen_set[child.node_id] = 1)
 
     # Transform identifiers/assignments by loading/storing to the exit_states dictionary
     if hacky_type_check(node, 'Identifier'):
@@ -320,7 +320,68 @@ def generate_ssa(graph, ctx, first_block):
     return [graph, ctx]
 
 ################################################################################
-## Fourth pass: convert SSA to LIR #############################################
+## Fourth pass: try to simplify any nodes we can ###############################
+################################################################################
+
+def simplify_node(graph, ctx, node):
+    if hacky_type_check(node, 'BinaryOp'):
+        if (hacky_type_check(node.lhs(graph), 'Integer') and
+                hacky_type_check(node.rhs(graph), 'Integer')):
+            [lhs, rhs] = [node.lhs(graph).value, node.rhs(graph).value]
+            # Urgh
+            if node.op == '+':
+                result = lhs + rhs
+            elif node.op == '-':
+                result = lhs - rhs
+            elif node.op == '&':
+                result = lhs & rhs
+            elif node.op == '|':
+                result = lhs | rhs
+            else:
+                print(node.op)
+                assert False
+            [graph, new_node] = ctx.create_node(graph, 'Integer', result)
+            graph = graph.replace_node(node, new_node)
+            return graph
+    return graph
+
+DCE_CLASS_WHITELIST = ['BinaryOp', 'Integer']
+
+def simplify_blocks(graph, ctx, first_block):
+    # Simplify any expressions. This is a basic local optimization pass.
+    for block in walk_blocks(graph, first_block):
+        for stmt in block.stmts_gen(graph):
+            graph = simplify_node(graph, ctx, stmt)
+
+    # Dead code elimination
+    while True:
+        any_removed = False
+        for block in walk_blocks(graph, first_block):
+            new_stmts = []
+            # Eliminate any non-side-effecting expressions (which should be everything but it's
+            # not yet) that aren't referenced elsewhere (the only reference being this block).
+            for stmt in block.stmts_gen(graph):
+                if (any([hacky_type_check(stmt, cls) for cls in DCE_CLASS_WHITELIST]) and
+                        len(graph.get_uses(stmt)) == 1):
+                    any_removed = True
+                else:
+                    new_stmts = new_stmts + [stmt]
+            graph = graph.set_edge_list(block, 'stmts', new_stmts)
+
+            # Remove entries from exit_states if they aren't in any phis of successor blocks
+            for [key, _] in block.exit_states(graph):
+                if not any([phi.name == key for succ in block.succs_gen(graph)
+                        for phi in succ.phis_gen(graph)]):
+                    graph = graph.unset_edge_key(block, 'exit_states', key)
+                    any_removed = True
+
+        if not any_removed:
+            break
+
+    return graph
+
+################################################################################
+## Fifth pass: convert SSA to LIR ##############################################
 ################################################################################
 
 BINOP_TABLE = {
@@ -417,12 +478,8 @@ def compile_function(parameters, block):
 
     [graph, ctx] = generate_ssa(graph, ctx, first_block)
 
-    # Simplify any expressions. This is a basic local optimization pass.
-    #for b in walk_blocks(graph, first_block):
-    #    [graph, ctx] = b.simplify(graph, ctx)
+    graph = simplify_blocks(graph, ctx, first_block)
 
-    # Almost done: for each expression node, generate machine instructions that will be
-    # passed to the register allocator.
     [basic_blocks, node_map] = generate_lir(graph, first_block)
 
     return dumb_regalloc.Function(parameters, basic_blocks, node_map)
