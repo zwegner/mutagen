@@ -101,7 +101,7 @@ def create_graph_class(cls):
             attrs = attrs <- [attr + '_append'] = lambda (self, graph, value): graph.append_to_edge(self, attr, value)
         elif edge_type == '?':
             # XXX HACK
-            attrs = attrs <- [attr] = lambda (self, graph): graph.get(self, attr) if attr in graph.edge_sets[self] else None
+            attrs = attrs <- [attr] = lambda (self, graph): graph.get(self, attr) if attr in graph.edge_values[self] else None
         else:
             attrs = attrs <- [attr] = lambda (self, graph): graph.get(self, attr)
 
