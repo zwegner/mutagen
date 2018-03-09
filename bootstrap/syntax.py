@@ -657,7 +657,7 @@ class Assignment(Node):
     def eval(self, ctx):
         value = self.rhs.eval(ctx)
         self.target.assign_values(ctx, value)
-        return value
+        return None_(info=self)
     def repr(self, ctx):
         return '%s = %s' % (self.target.repr(ctx), self.rhs.repr(ctx))
 
