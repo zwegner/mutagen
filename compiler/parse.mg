@@ -301,4 +301,4 @@ parser = libparse.Parser(rules, 'stmt_list')
 line = read_file('new.mg')
 x = parser.parse(lexer.input(line))
 
-compiler.export_functions('elfout.o', gen_insts(x))
+compiler.dumb_regalloc.export_functions('elfout.o', compile(x))
