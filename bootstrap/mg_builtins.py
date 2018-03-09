@@ -118,7 +118,7 @@ def mgb_KeywordParam(ctx, name, type, default):
 
 # HACK
 @mg_builtin([List, List, Node, List, Node])
-def mgb_Params(ctx, names, types, var_params, kw_params, kw_var_params):
+def mgb_Parameters(ctx, names, types, var_params, kw_params, kw_var_params):
     info = names
     assert all(isinstance(name, String) for name in names.items)
     names = [name.value for name in names.items]

@@ -1,7 +1,5 @@
-import lexer
 import liblex
 import libparse
-
 from syntax import *
 
 # XXX
@@ -298,7 +296,3 @@ rules = [
 ]
 
 parser = libparse.Parser(rules, 'stmt_list')
-line = read_file('new.mg')
-x = parser.parse(lexer.input(line))
-
-compiler.dumb_regalloc.export_functions('elfout.o', compile(x))
