@@ -82,6 +82,7 @@ token_map = {
     'LESS_EQUALS':     r'<=',
     'LPAREN':          r'\(',
     'MINUS':           r'-',
+    'MINUS_EQUALS':    r'-=',
     'MODULO':          r'%',
     'NEWLINE':         r'\n',
     'NOT_EQUALS':      r'!=',
