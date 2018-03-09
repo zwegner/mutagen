@@ -1125,8 +1125,7 @@ class Function(Node):
         return hash((self.name, self.params, self.return_type, self.block)) + HASH_BASE_FN
     def repr(self, ctx):
         ret_str = ' -> %s' % self.return_type.repr(ctx) if self.return_type else ''
-        return 'def %s%s%s%s' % (self.name, self.params.repr(ctx),
-                ret_str, self.block.repr(ctx))
+        return '<function %s%s%s>' % (self.name, self.params.repr(ctx), ret_str)
 
 @node('ctx, &block')
 class Generator(Node):
