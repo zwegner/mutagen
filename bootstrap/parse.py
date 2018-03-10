@@ -125,7 +125,9 @@ rule_table += [
     ['and_expr', ('shift_expr (BIT_AND shift_expr)*', reduce_binop)],
     ['xor_expr', ('and_expr (BIT_XOR and_expr)*', reduce_binop)],
     ['or_expr', ('xor_expr (BIT_OR xor_expr)*', reduce_binop)],
-    ['mod_op', 'EQUALS|PLUS_EQUALS|MINUS_EQUALS'],
+    ['mod_op', 'EQUALS | BIT_AND_EQUALS | BIT_OR_EQUALS | BIT_XOR_EQUALS | FLOORDIV_EQUALS | '
+        'MINUS_EQUALS | MODULO_EQUALS | PLUS_EQUALS | SHIFT_LEFT_EQUALS | SHIFT_RIGHT_EQUALS | '
+        'STAR_EQUALS | STAR_STAR_EQUALS'],
     ['mod_setitem', ('LBRACKET test RBRACKET', lambda p: ModItem(p[1], info=p.get_info(0)))],
     ['mod_setattr', ('PERIOD IDENTIFIER', lambda p: ModAttr(p[1], info=p.get_info(0)))],
     ['mod', ('(mod_setitem|mod_setattr)+ mod_op test', lambda p: ModItems(p[1], p[0], p[2]))],
