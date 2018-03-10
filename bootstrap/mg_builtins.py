@@ -182,6 +182,7 @@ builtins['int'] = IntClass
 builtins['bool'] = BoolClass
 builtins['list'] = ListClass
 builtins['dict'] = DictClass
+builtins['set'] = SetClass
 builtins['type'] = TypeClass
 
 __all__ = builtins

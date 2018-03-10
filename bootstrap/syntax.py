@@ -22,7 +22,7 @@ BUILTIN_INFO = sprdpl.lex.Info('__builtins__')
 # Constants to add to various classes' __hash__ implementation to distinguish their types.
 # Since the hash functions are based on a tuple of their child objects, we want to make
 # sure that [[0, 0]] has a different hash than {0: 0}, etc.
-HASH_BASE_LIST, HASH_BASE_DICT, HASH_BASE_OBJ, HASH_BASE_FN, HASH_BASE_CLASS = range(5)
+HASH_BASE_LIST, HASH_BASE_DICT, HASH_BASE_SET, HASH_BASE_OBJ, HASH_BASE_FN, HASH_BASE_CLASS = range(6)
 
 # Utility functions
 def get_class_name(ctx, cls):
@@ -452,6 +452,41 @@ class Dict(Node):
         return Boolean(isinstance(other, Dict) and self.items == other.items, info=self)
     def __hash__(self):
         return hash(tuple(self.items.items())) + HASH_BASE_DICT
+
+@node('#items')
+class Set(Node):
+    def eval(self, ctx):
+        return Set(collections.OrderedDict((k.eval(ctx), NONE) for k, v in
+            self.items.items()), info=self)
+    def repr(self, ctx):
+        return '{%s}' % ', '.join(k.repr(ctx) for k, v in self.items.items())
+    def get_obj_class(self):
+        return SetClass
+    def __iter__(self):
+        yield from self.items.keys()
+    def __contains__(self, item):
+        return Boolean(item in self.items, info=self)
+    def __or__(self, other):
+        if not isinstance(other, Set):
+            self.error('bad type for set.add: %s' % type(other))
+        result = self.items.copy()
+        result.update(other.items)
+        return Set(result, info=self)
+    def __sub__(self, other):
+        if not isinstance(other, Set):
+            self.error('bad type for set.sub: %s' % type(other))
+        result = self.items.copy()
+        for key in other.items:
+            if key not in result:
+                key.error('key not in set')
+            del result[key]
+        return Set(result, info=self)
+    def len(self, ctx):
+        return len(self.items)
+    def __eq__(self, other):
+        return Boolean(isinstance(other, Set) and set(self.items) == set(other.items), info=self)
+    def __hash__(self):
+        return hash(tuple(self.items.key())) + HASH_BASE_SET
 
 @node('#items, &obj_class')
 class Object(Node):
@@ -1317,6 +1352,24 @@ class BuiltinDict(BuiltinClass):
         return List(list(arg.items.values()), info=arg)
 
 DictClass = BuiltinDict('dict')
+
+class BuiltinSet(BuiltinClass):
+    def eval_call(self, ctx, args, kwargs):
+        items = []
+        if args:
+            [arg_iter] = args
+            items = ((arg, NONE) for arg in arg_iter)
+        return Set(collections.OrderedDict(items), info=self)
+    def pop(obj, ctx, args):
+        [self] = args
+        assert isinstance(self, Set)
+        items = self.items.copy()
+        if not items:
+            self.error('set is empty')
+        item = items.pop()
+        return List([item, Set(items, info=self)], info=self)
+
+SetClass = BuiltinSet('set')
 
 class BuiltinType(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):

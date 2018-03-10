@@ -158,39 +158,39 @@ def sorted(iterable, key=lambda(x): x):
 
 # This shit's slow
 # XXX recursion
-class set:
-    def __init__(*items):
-        if len(items) == 0:
-            items = []
-        else:
-            [items] = items
-        set_items = []
-        for i in items:
-            if i not in set_items:
-                set_items = set_items + [i]
-        return {'items': set_items}
-    def __contains__(self, item):
-        return item in self.items
-    def __or__(self, other):
-        return type(self)(self.items + other.items)
-    def __sub__(self, other):
-        new_items = []
-        for item in self.items:
-            if item not in other:
-                new_items = new_items + [item]
-        return type(self)(new_items)
-    def pop(self):
-        # Return the set without one item, and that item
-        return [type(self)(self.items[1:]), self.items[0]]
-    def __iter__(self):
-        for item in self.items:
-            yield item
-    def __len__(self):
-        return len(self.items)
-    def __eq__(self, other):
-        return (isinstance(other, type(self)) and len(self) == len(other) and
-            all([i in self.items for i in other.items]))
-    def __repr__(self):
-        if not self.items:
-            return 'set()'
-        return '{{{}}}'.format(', '.join(map(repr, self.items)))
+#class set:
+#    def __init__(*items):
+#        if len(items) == 0:
+#            items = []
+#        else:
+#            [items] = items
+#        set_items = []
+#        for i in items:
+#            if i not in set_items:
+#                set_items = set_items + [i]
+#        return {'items': set_items}
+#    def __contains__(self, item):
+#        return item in self.items
+#    def __or__(self, other):
+#        return type(self)(self.items + other.items)
+#    def __sub__(self, other):
+#        new_items = []
+#        for item in self.items:
+#            if item not in other:
+#                new_items = new_items + [item]
+#        return type(self)(new_items)
+#    def pop(self):
+#        # Return the set without one item, and that item
+#        return [type(self)(self.items[1:]), self.items[0]]
+#    def __iter__(self):
+#        for item in self.items:
+#            yield item
+#    def __len__(self):
+#        return len(self.items)
+#    def __eq__(self, other):
+#        return (isinstance(other, type(self)) and len(self) == len(other) and
+#            all([i in self.items for i in other.items]))
+#    def __repr__(self):
+#        if not self.items:
+#            return 'set()'
+#        return '{{{}}}'.format(', '.join(map(repr, self.items)))
