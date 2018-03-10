@@ -42,12 +42,12 @@ def mgb_write_binary_file(ctx, path, data):
     data = bytes(i.value for i in data)
     with open(path.value, 'wb') as f:
         f.write(data)
-    return None_(info=path)
+    return NONE
 
 @mg_builtin([String])
 def mgb_putstr(ctx, arg):
     sys.stdout.write(arg.value)
-    return None_(info=arg)
+    return NONE
 
 @mg_builtin([Node])
 def mgb_len(ctx, arg):
@@ -63,8 +63,7 @@ def mgb_error(ctx, msg):
 
 @mg_builtin(None)
 def mgb_slice(ctx, seq, *args):
-    args = [a.value if a is not None and not isinstance(a, None_) else None
-            for a in args]
+    args = [a.value if a is not NONE else None for a in args]
     [start, stop, step] = [None] * 3
     if len(args) == 1:
         [stop] = args
@@ -124,13 +123,13 @@ def mgb_Parameters(ctx, names, types, var_params, kw_params, kw_var_params):
     names = [name.value for name in names.items]
     types = types.items
 
-    assert isinstance(var_params, (String, None_))
+    assert isinstance(var_params, String) or var_params is NONE
     var_params = var_params.value if isinstance(var_params, String) else None
 
     assert all(isinstance(kwparam, KeywordParam) for kwparam in kw_params)
     kw_params = kw_params.items
 
-    assert isinstance(kw_var_params, (String, None_))
+    assert isinstance(kw_var_params, String) or kw_var_params is NONE
     kw_var_params = kw_var_params.value if isinstance(kw_var_params, String) else None
 
     params = Params(names, types, var_params, kw_params, kw_var_params, info=info)
@@ -157,7 +156,7 @@ def mgb_assert_call_fails(ctx, fn, *args):
     try:
         fn.eval_call(ctx, args, {})
     except ProgramError as e:
-        return None_(info=fn)
+        return NONE
     fn.error('did not throw error', ctx=ctx)
 
 # XXX remove this, temporary shim to speed up parsing
@@ -170,7 +169,7 @@ def mgb_re_compile_match(ctx, regex):
         info = ctx.current_node
         m = match(text.value, start.value)
         if not m:
-            return None_(info=text)
+            return NONE
         type = String(m.lastgroup, info=info)
         start = Integer(m.start(), info=info)
         end = Integer(m.end(), info=info)

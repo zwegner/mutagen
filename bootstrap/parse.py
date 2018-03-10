@@ -27,7 +27,7 @@ def reduce_list(p):
 rule_table = [
     # Atoms
     ['identifier', ('IDENTIFIER', lambda p: Identifier(p[0], info=p.get_info(0)))],
-    ['none', ('NONE', lambda p: None_(info=p.get_info(0)))],
+    ['none', ('NONE', lambda p: NONE)],
     ['boolean', ('TRUE|FALSE', lambda p:
         Boolean({'True': True, 'False': False}[p[0]], info=p.get_info(0)))],
     ['integer', ('INTEGER', lambda p: Integer(p[0], info=p.get_info(0)))],
@@ -81,7 +81,7 @@ def parse_arg(p):
 
 @libparse.rule_fn(rule_table, 'subscript', '[test] [COLON [test] [COLON [test]]]]')
 def parse_subscript(p):
-    [start, stop, step] = [None_(info=NULL_INFO)] * 3
+    [start, stop, step] = [NONE] * 3
     if p[0]:
         if p[1] is None:
             return lambda expr: GetItem(expr, p[0])
@@ -269,12 +269,12 @@ def parse_params(p):
             elif item[2] is not None:
                 if kw_var_params:
                     local_error('keyword parameters cannot come after keyword varparams (**)')
-                kw_params.append(KeywordParam(item[0], item[1] or None_(info=NULL_INFO), item[2]))
+                kw_params.append(KeywordParam(item[0], item[1] or NONE, item[2]))
             else:
                 if var_params or kw_params or kw_var_params:
                     local_error('positional arguments must appear before varparams or keyword parameters')
                 params.append(item[0])
-                types.append(item[1] or None_(info=NULL_INFO))
+                types.append(item[1] or NONE)
     return Params(params, types, var_params, kw_params, kw_var_params,
         info=NULL_INFO)
 

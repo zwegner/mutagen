@@ -38,7 +38,7 @@ def get_type_name(ctx, obj):
     return type(obj).__name__
 
 def check_obj_type(info, msg_type, ctx, obj, type):
-    if not isinstance(type, None_):
+    if type is not NONE:
         obj_type = obj.get_obj_class()
         if obj_type is not type:
             info.error('bad %s type %s, expected %s' % (msg_type,
@@ -291,11 +291,15 @@ class None_(Node):
     def repr(self, ctx):
         return 'None'
     def __eq__(self, other):
-        return Boolean(isinstance(other, None_), info=self)
+        return Boolean(other is NONE, info=self)
     def bool(self, ctx):
         return False
     def __hash__(self):
         return 0
+
+# Construct the None singleton, and then make sure we can't make any others
+NONE = None_(info=BUILTIN_INFO)
+None_.__init__ = None
 
 @node('name')
 class Identifier(Node):
@@ -657,7 +661,7 @@ class Assignment(Node):
     def eval(self, ctx):
         value = self.rhs.eval(ctx)
         self.target.assign_values(ctx, value)
-        return None_(info=self)
+        return NONE
     def repr(self, ctx):
         return '%s = %s' % (self.target.repr(ctx), self.rhs.repr(ctx))
 
@@ -748,7 +752,7 @@ class Block(Node):
     def eval(self, ctx):
         for stmt in self.stmts:
             stmt.eval(ctx)
-        return None_(info=self)
+        return NONE
     def eval_gen(self, ctx):
         for stmt in self.stmts:
             for I in stmt.eval_gen(ctx):
@@ -795,7 +799,7 @@ class For(Node):
                 break
             except ContinueExc:
                 continue
-        return None_(info=self)
+        return NONE
     def eval_gen(self, ctx):
         expr = self.expr.eval(ctx)
         for i in expr.iter(ctx):
@@ -871,7 +875,7 @@ class While(Node):
                 break
             except ContinueExc:
                 continue
-        return None_(info=self)
+        return NONE
     def eval_gen(self, ctx):
         while self.expr.eval(ctx).bool(ctx):
             try:
@@ -949,7 +953,7 @@ class KeywordParam(Node):
     def eval(self, ctx):
         return KeywordParam(self.name, self.type.eval(ctx), self.expr.eval(ctx), info=self)
     def repr(self, ctx):
-        if not isinstance(self.type, None_):
+        if self.type is not NONE:
             return '%s: %s=%s' % (self.name, self.type.repr(ctx), self.expr.repr(ctx))
         return '%s=%s' % (self.name, self.expr.repr(ctx))
 
@@ -1014,7 +1018,7 @@ class Params(Node):
     def repr(self, ctx):
         params = []
         for p, t in zip(self.params, self.types):
-            if not isinstance(t, None_):
+            if t is not NONE:
                 params.append('%s: %s' % (p, t.str(ctx)))
             else:
                 params.append(p)
@@ -1037,7 +1041,7 @@ class Params(Node):
             return List([self.keyword_evals[k.name] for k in self.kw_params], info=self)
         elif attr in {'var_params', 'kw_var_params'}:
             value = getattr(self, attr)
-            return String(value, info=self) if value is not None else None_(info=self)
+            return String(value, info=self) if value is not None else NONE
         return None
     def __iter__(self):
         for I in self.params:
@@ -1124,7 +1128,7 @@ class Function(Node):
             if self.return_type:
                 check_obj_type(r.return_node, 'return value', child_ctx, r.value, self.rt_eval)
             return r.value
-        return None_(info=self)
+        return NONE
     def __eq__(self, other):
         return Boolean(self is other, info=self)
     def __hash__(self):
@@ -1213,7 +1217,7 @@ class BuiltinClass(Class):
 
 class BuiltinNone(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
-        return None_(info=self)
+        return NONE
 
 NoneClass = BuiltinNone('NoneType')
 
@@ -1353,7 +1357,7 @@ class Import(Node):
             for k, v in self.spec_ctx.syms.items():
                 if not self.names or k in self.names:
                     self.parent_ctx.store(k, v)
-        return None_(info=self)
+        return NONE
     def repr(self, ctx):
         stmts = '\n'.join(stmt.repr(ctx) for stmt in self.stmts)
         if self.names is not None:

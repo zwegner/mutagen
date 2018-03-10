@@ -45,7 +45,7 @@ def repl():
         # Preprocess the statement, run it, and print the result, if any
         syntax.preprocess_program(eval_ctx, [stmt])
         (result, error) = parse.eval_statement(stmt, eval_ctx)
-        if not error and not isinstance(result, syntax.None_):
+        if not error and result is not syntax.NONE:
             print(result.str(eval_ctx))
 
 if __name__ == '__main__':
