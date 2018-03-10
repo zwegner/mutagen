@@ -21,12 +21,12 @@ def hacky_type_check(obj, type_name):
 
 # Walk the CFG in preorder
 def walk_blocks(graph, first):
-    seen = {}
+    seen = set()
     work = [first]
     while work:
         [block, work] = [work[0], work[1:]]
         yield block
-        seen = seen <- [block] = 1
+        seen = seen | {block}
         for succ in block.succs_gen(graph):
             if succ not in seen:
                 work = work + [succ]
@@ -44,8 +44,9 @@ def print_blocks(graph, block):
             print('    ', stmt._str(graph))
         print('    exit:', block.exit_states(graph))
 
-class SSAContext(new_class_dict: dict, current_block=None, statements=[], seen_set: dict={}):
+class SSAContext(new_class_dict: dict, current_block=None, statements=[], seen_set: set=set()):
     def load(self, graph, name):
+        # This test assumes that exit_states is being constructed with a forward pass through the tree
         if name in self.current_block.exit_states(graph):
             return [graph, self.current_block.exit_states(graph)[name]]
         else:
@@ -284,7 +285,7 @@ def rec_gen_ssa(rec_gen_ssa, node, graph, ctx):
         # add it to the temporary statements list in the context. BasicBlock.gen_ssa() will
         # interleave these statements with the nodes that are already there, the main statements.
         if child != None and child.node_id not in ctx.seen_set:
-            ctx = (ctx <- .statements += [child], .seen_set[child.node_id] = 1)
+            ctx = ctx <- .statements += [child], .seen_set |= {child.node_id}
 
     # Transform identifiers/assignments by loading/storing to the exit_states dictionary
     if hacky_type_check(node, 'Identifier'):
