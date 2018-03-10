@@ -30,10 +30,10 @@ class DirectedGraph(nodes: list = [], edge_values: dict = {}, uses: dict = {}, e
 
     def delete_node(self, node):
         # First, delete all uses of other nodes that this node has
-        uses = {other_node: list(filter(lambda (u): u[1] != node, usages))
+        uses = {other_node: [u for u in usages if u[1] != node]
                 for [other_node, usages] in self.uses}
 
-        return (self <- .nodes = list(filter(lambda (n): n != node, self.nodes)),
+        return (self <- .nodes = [n for n in self.nodes if n != node],
                 .edge_values = self.edge_values - [node],
                 .uses = uses - [node])
 

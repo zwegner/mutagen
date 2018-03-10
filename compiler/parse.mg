@@ -11,6 +11,7 @@ def reduce_binop(p):
         r = BinaryOp(item[0], r, item[1])
     return r
 
+# Basic helper for turning the common 'expr (COMMA expr)*' pattern into a list of exprs
 def reduce_list(p):
     return [p[0]] + [item[1] for item in p[1]]
 
@@ -172,7 +173,7 @@ rules = [
     ['simple_stmt', ['small_stmt (NEWLINE|SEMICOLON)', lambda(p): p[0]]],
     ['stmt', ['(simple_stmt|if_stmt|for_stmt|while_stmt|def_stmt|class_stmt) ' +
         '(NEWLINE|SEMICOLON)*', lambda(p): p[0]]],
-    ['stmt_list', ['stmt*', lambda(p): list(filter(lambda(x): x != None, p[0]))]],
+    ['stmt_list', ['stmt*', lambda(p): [x for x in p[0] if x != None]]],
 
     ['break', ['BREAK', lambda(p): Break(info=p.get_info(0))]],
     ['continue', ['CONTINUE', lambda(p): Continue(info=p.get_info(0))]],
@@ -204,7 +205,7 @@ rules = [
     # Blocks
     ['delims', ['NEWLINE+', lambda(p): None]],
     ['small_stmt_list', ['small_stmt (SEMICOLON small_stmt)*',
-        lambda(p): list(filter(lambda(x): x != None, reduce_list(p)))]],
+        lambda(p): [x for x in reduce_list(p) if x != None]]],
     ['block',
         ['COLON delims INDENT stmt_list DEDENT', lambda(p): Block(p[3], info=p.get_info(0))],
         ['COLON small_stmt_list NEWLINE', lambda(p): Block(p[1], info=p.get_info(0))],
