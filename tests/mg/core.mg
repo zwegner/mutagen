@@ -140,6 +140,14 @@ for x in items:
 for [v, l] in zip(range(16), lambdas):
     l(v)
 
+# Test list comprehensions
+expected = [[0, 1], [1, 0], [3, 0], [4, 1], [5, 0], [6, 1], [7, 0]]
+v = [[x, y] for x in range(8) if x != 2 for y in range(2) if (x ^ y) & 1]
+assert v == expected
+# Same thing, but a dictionary comprehension
+v = {x: y for x in range(8) if x != 2 for y in range(2) if (x ^ y) & 1}
+assert list(v) == expected
+
 # Test class
 class TestA: pass
 class TestB: pass

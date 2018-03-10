@@ -37,20 +37,20 @@ rule_table = [
         'dict_comp|set_comp'],
 ]
 
-@libparse.rule_fn(rule_table, 'list_comp', 'LBRACKET [test (comp_iter+|'
+@libparse.rule_fn(rule_table, 'list_comp', 'LBRACKET [test (comp_for|'
     '(COMMA test)* [COMMA])] RBRACKET')
 def parse_list(p):
     if p[1]:
         items = p[1]
         l = [items[0]]
         if items[1]:
-            if isinstance(items[1][0], CompIter):
+            if isinstance(items[1], CompFor):
                 return Scope(ListComprehension(items[0], items[1]))
             l += [item[1] for item in items[1][0]]
         return List(l, info=p.get_info(0))
     return List([], info=p.get_info(0))
 
-@libparse.rule_fn(rule_table, 'dict_comp', 'LBRACE [test COLON test (comp_iter+|'
+@libparse.rule_fn(rule_table, 'dict_comp', 'LBRACE [test COLON test (comp_for|'
     '(COMMA test COLON test)* [COMMA])] RBRACE')
 def parse_dict(p):
     if p[1]:
@@ -59,7 +59,7 @@ def parse_dict(p):
         d = collections.OrderedDict(((key, value),))
         if items[3]:
             items = items[3]
-            if isinstance(items[0], CompIter):
+            if isinstance(items, CompFor):
                 return Scope(DictComprehension(key, value, items))
             d.update(collections.OrderedDict((item[1], item[3]) for item in items[0]))
         return Dict(d, info=p.get_info(0))
@@ -175,7 +175,11 @@ rule_table += [
         lambda p: p[1])],
     ['for_assn_list', ('for_assn_base (COMMA for_assn_base)*', reduce_list)],
     ['for_assn', ('for_assn_base', lambda p: Target([p[0]], info=NULL_INFO))],
-    ['comp_iter', ('FOR for_assn IN test', lambda p: CompIter(p[1], p[3]))],
+
+    # Comprehensions
+    ['comp_iter', ('comp_for | comp_if', lambda p: p[0])],
+    ['comp_for', ('FOR for_assn IN or_test [comp_iter]', lambda p: CompFor(p[1], p[3], p[4]))],
+    ['comp_if', ('IF test_nocond [comp_iter]', lambda p: CompIf(p[1], p[2]))],
 
     # Statements
     ['pass', ('PASS', lambda p: None)],

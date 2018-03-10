@@ -811,10 +811,29 @@ class For(Node):
         return 'for %s in %s%s' % (self.target.repr(ctx), self.expr.repr(ctx),
                 self.block.repr(ctx))
 
-@node('&target, &expr')
-class CompIter(Node):
+@node('&target, &expr, ?next')
+class CompFor(Node):
+    def iter_states(self, ctx):
+        for values in self.expr.eval(ctx).iter(ctx):
+            self.target.assign_values(ctx, values)
+            if self.next:
+                yield from self.next.iter_states(ctx)
+            else:
+                yield ctx
     def repr(self, ctx):
-        return 'for %s in %s' % (self.target.repr(ctx), self.expr.repr(ctx))
+        return 'for %s in %s%s' % (self.target.repr(ctx), self.expr.repr(ctx),
+                ' ' + self.next.repr(ctx) if self.next else '')
+
+@node('&expr, ?next')
+class CompIf(Node):
+    def iter_states(self, ctx):
+        if self.expr.eval(ctx).bool(ctx):
+            if self.next:
+                yield from self.next.iter_states(ctx)
+            else:
+                yield ctx
+    def repr(self, ctx):
+        return 'if %s%s' % (self.expr.repr(ctx), ' ' + self.next.repr(ctx) if self.next else '')
 
 class Comprehension(Node):
     def setup(self):
@@ -822,38 +841,25 @@ class Comprehension(Node):
     def specialize(self, parent_ctx, ctx):
         return self
     def get_states(self):
-        def iter_states(iters):
-            [comp_iter, *iters] = iters
-            for values in comp_iter.expr.eval(self.spec_ctx).iter(self.spec_ctx):
-                comp_iter.target.assign_values(self.spec_ctx, values)
-                if iters:
-                    for I in iter_states(iters):
-                        yield I
-                else:
-                    yield self.spec_ctx
+        yield from self.comp_for.iter_states(self.spec_ctx)
 
-        for I in iter_states(self.comp_iters):
-            yield I
-
-@node('&expr, *comp_iters')
+@node('&expr, &comp_for')
 class ListComprehension(Comprehension):
     def eval(self, ctx):
         return List([self.expr.eval(child_ctx) for child_ctx in
             self.get_states()], info=self)
     def repr(self, ctx):
-        return '[%s %s]' % (self.expr.repr(ctx),
-                ' '.join(comp.repr(ctx) for comp in self.comp_iters))
+        return '[%s %s]' % (self.expr.repr(ctx), self.comp_for.repr(ctx))
 
-@node('&key_expr, &value_expr, *comp_iters')
+@node('&key_expr, &value_expr, &comp_for')
 class DictComprehension(Comprehension):
     def eval(self, ctx):
         return Dict(collections.OrderedDict(
             (self.key_expr.eval(child_ctx), self.value_expr.eval(child_ctx))
             for child_ctx in self.get_states()), info=self)
     def repr(self, ctx):
-        return '{%s: %s %s}' % (self.key_expr.repr(ctx),
-                self.value_expr.repr(ctx),
-                ' '.join(comp.repr(ctx) for comp in self.comp_iters))
+        return '{%s: %s %s}' % (self.key_expr.repr(ctx), self.value_expr.repr(ctx),
+                self.comp_for.repr(ctx))
 
 @node('&expr, &block')
 class While(Node):
