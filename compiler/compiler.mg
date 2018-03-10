@@ -21,15 +21,15 @@ def hacky_type_check(obj, type_name):
 
 # Walk the CFG in preorder
 def walk_blocks(graph, first):
-    seen = set()
     work = [first]
+    seen = {first}
     while work:
         [block, work] = [work[0], work[1:]]
         yield block
-        seen = seen | {block}
         for succ in block.succs_gen(graph):
             if succ not in seen:
                 work = work + [succ]
+                seen = seen | {succ}
 
 def print_blocks(graph, block):
     for block in walk_blocks(graph, block):
