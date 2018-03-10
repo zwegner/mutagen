@@ -160,6 +160,7 @@ rule_table += [
     ['not_test', 'comparison', ('NOT not_test', lambda p: UnaryOp('not', p[1]))],
     ['and_test', ('not_test (AND not_test)*', reduce_binop)],
     ['or_test', ('and_test (OR and_test)*', reduce_binop)],
+    ['test_nocond', 'or_test', 'lambdef_nocond', 'def_expr'],
     ['test', 'lambdef', 'def_expr'],
 ]
 
@@ -215,10 +216,11 @@ rule_table += [
     ['delims', ('NEWLINE+', lambda p: None)],
     ['small_stmt_list', ('small_stmt (SEMICOLON small_stmt)*',
         lambda p: [x for x in reduce_list(p).items if x is not None])],
-    ['block', ('COLON (delims INDENT stmt_list DEDENT|small_stmt_list NEWLINE)',
-        lambda p: Block(p[1][2] if len(p[1]) == 4 else p[1][0],
-            info=p.get_info(0))),
+    ['block_expr',
         ('LBRACE stmt_list RBRACE', lambda p: Block(p[1], info=p.get_info(0)))],
+    ['block', ('COLON (delims INDENT stmt_list DEDENT|small_stmt_list NEWLINE)',
+        lambda p: Block(p[1][2] if len(p[1]) == 4 else p[1][0], info=p.get_info(0))),
+        'block_expr'],
     ['for_stmt', ('FOR for_assn IN test block', lambda p: For(p[1], p[3], p[4]))],
     ['while_stmt', ('WHILE test block', lambda p: While(p[1], p[2]))],
 ]
@@ -274,10 +276,7 @@ def parse_params(p):
 rule_table += [
     ['decorator', ('AT test (NEWLINE|SEMICOLON)+', lambda p: p[1])],
     ['return_type', ('[RARROW test]', lambda p: p[0][1] if p[0] else None)],
-    ['lambdef', ('LAMBDA params COLON test',
-        lambda p: Scope(Function('lambda', p[1], None,
-            Block([Return(p[3])], info=p.get_info(0)), info=p.get_info(0))))],
-    ['def_expr', ('DEF params return_type block',
+    ['def_expr', ('DEF params return_type block_expr',
         lambda p: Scope(Function('lambda', p[1], p[2], p[3], info=p.get_info(0))))],
 ]
 
@@ -288,6 +287,12 @@ def parse_def_stmt(p):
     for dec in p[0]:
         fn = Call(dec, [fn])
     return Assignment(Target([p[2]], info=p.get_info(2)), fn)
+
+@libparse.rule_fn(rule_table, 'lambdef', 'LAMBDA params COLON test')
+@libparse.rule_fn(rule_table, 'lambdef_nocond', 'LAMBDA params COLON test_nocond')
+def handle_lambda(p):
+    return Scope(Function('lambda', p[1], None,
+        Block([Return(p[3])], info=p.get_info(0)), info=p.get_info(0)))
 
 @libparse.rule_fn(rule_table,
     'class_stmt', 'decorator* CLASS IDENTIFIER params block')
