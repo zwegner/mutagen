@@ -168,7 +168,7 @@ def add_to_graph(add_to_graph, graph, ctx, node):
 def generate_graph(block):
     # Ugh
     new_class_dict = {cls.__name__: create_graph_class(cls) for cls in [Phi, BinaryOp, Integer, Identifier,
-        Parameter, Assignment, BasicBlock, Block, While, Return, Call]}
+        Parameter, Assignment, BasicBlock, Block, While, IfElse, Return, Call]}
     ctx = SSAContext(new_class_dict)
 
     graph = libgraph.DirectedGraph()
