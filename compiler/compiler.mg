@@ -253,17 +253,26 @@ def generate_blocks(graph, ctx, block):
 ## Third pass: convert graph to SSA ############################################
 ################################################################################
 
-def propagate_phis(graph, ctx, first_block):
+@fixed_point
+def propagate_phi(propagate_phi, graph, ctx, block, phi_name):
+    for pred in block.preds_gen(graph):
+        if phi_name not in pred.exit_states(graph):
+            # Add a duplicate phi to the block's phi list and its exit states
+            [graph, phi] = ctx.create_node(graph, 'Phi', phi_name)
+            graph = graph.append_to_edge(pred, 'phis', phi)
+            graph = graph.set_edge_key(pred, 'exit_states', phi_name, phi)
+
+            # Now recursively propagate the phi backward through this block's predecessors
+            graph = propagate_phi(graph, ctx, pred, phi_name)
+
+    return graph
+
+def fix_phis(graph, ctx, first_block):
     # Iterate through the graph and add phis to blocks whose successors load from a given
     # variable before they are assigned, which means
-    # XXX This is WRONG, we're only propagating backwards one level
-    for block in reversed(list(walk_blocks(graph, first_block))):
-        for pred in block.preds_gen(graph):
-            for phi in block.phis_gen(graph):
-                if phi.name not in pred.exit_states(graph):
-                    [graph, phi_node] = ctx.create_node(graph, 'Phi', phi.name)
-                    graph = graph.append_to_edge(pred, 'phis', phi_node)
-                    graph = graph.set_edge_key(pred, 'exit_states', phi.name, phi_node)
+    for block in walk_blocks(graph, first_block):
+        for phi in block.phis_gen(graph):
+            graph = propagate_phi(graph, ctx, block, phi.name)
 
     return graph
 
@@ -316,7 +325,7 @@ def generate_ssa(graph, ctx, first_block):
 
         graph = graph.set_edge_list(block, 'stmts', new_stmts)
 
-    graph = propagate_phis(graph, ctx, first_block)
+    graph = fix_phis(graph, ctx, first_block)
 
     return [graph, ctx]
 
