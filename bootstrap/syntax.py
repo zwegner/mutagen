@@ -2,6 +2,8 @@ import collections
 import copy
 import enum
 
+import greenlet
+
 import sprdpl.lex
 
 # XXX HACK?
@@ -56,6 +58,8 @@ class Context:
     def __init__(self, name, parent_ctx, callsite_ctx):
         self.name = name
         self.current_node = None
+        self.generator_parent = parent_ctx.generator_child if parent_ctx else None
+        self.generator_child = greenlet.getcurrent()
         self.parent_ctx = parent_ctx
         self.callsite_ctx = callsite_ctx
         self.syms = collections.OrderedDict()
@@ -90,9 +94,6 @@ class Node:
         return type(self)(self.items.copy(), info=self)
     def eval(self, ctx):
         return self
-    def eval_gen(self, ctx):
-        self.eval(ctx)
-        return []
     def error(self, msg, ctx=None):
         stack_trace = ctx and ctx.get_stack_trace()
         msg = '%s(%i): %s' % (self.info.filename, self.info.lineno, msg)
@@ -777,8 +778,9 @@ class Return(Node):
 
 @node('&expr')
 class Yield(Node):
-    def eval_gen(self, ctx):
-        yield self.expr.eval(ctx)
+    def eval(self, ctx):
+        value = self.expr.eval(ctx)
+        ctx.generator_parent.switch(value)
     def repr(self, ctx):
         return 'yield %s' % self.expr.repr(ctx)
 
@@ -788,10 +790,6 @@ class Block(Node):
         for stmt in self.stmts:
             stmt.eval(ctx)
         return NONE
-    def eval_gen(self, ctx):
-        for stmt in self.stmts:
-            for I in stmt.eval_gen(ctx):
-                yield I
     def repr(self, ctx):
         block = ['%s;' % s.repr(ctx) for s in self.stmts]
         block = ['\n    '.join(s for s in b.splitlines()) for b in block]
@@ -803,11 +801,6 @@ class IfElse(Node):
         expr = self.expr.eval(ctx).bool(ctx)
         block = self.if_block if expr else self.else_block
         return block.eval(ctx)
-    def eval_gen(self, ctx):
-        expr = self.expr.eval(ctx).bool(ctx)
-        block = self.if_block if expr else self.else_block
-        for I in block.eval_gen(ctx):
-            yield I
     def repr(self, ctx):
         else_block = ''
         if isinstance(self.else_block, IfElse):
@@ -835,17 +828,6 @@ class For(Node):
             except ContinueExc:
                 continue
         return NONE
-    def eval_gen(self, ctx):
-        expr = self.expr.eval(ctx)
-        for i in expr.iter(ctx):
-            try:
-                self.target.assign_values(ctx, i)
-                for I in self.block.eval_gen(ctx):
-                    yield I
-            except BreakExc:
-                break
-            except ContinueExc:
-                continue
     def repr(self, ctx):
         return 'for %s in %s%s' % (self.target.repr(ctx), self.expr.repr(ctx),
                 self.block.repr(ctx))
@@ -911,15 +893,6 @@ class While(Node):
             except ContinueExc:
                 continue
         return NONE
-    def eval_gen(self, ctx):
-        while self.expr.eval(ctx).bool(ctx):
-            try:
-                for I in self.block.eval_gen(ctx):
-                    yield I
-            except BreakExc:
-                break
-            except ContinueExc:
-                continue
     def repr(self, ctx):
         return 'while %s%s' % (self.expr.repr(ctx), self.block.repr(ctx))
 
@@ -1179,10 +1152,21 @@ class Generator(Node):
     def eval(self, ctx):
         return self
     def __iter__(self):
+        ctx = self.ctx
         if self.exhausted:
             self.error('generator exhausted', ctx=self.ctx)
-        for I in self.block.eval_gen(self.ctx):
-            yield I
+        def run_generator():
+            self.block.eval(self.ctx)
+        grandparent = ctx.generator_parent
+        ctx.generator_parent = ctx.generator_child
+        ctx.generator_child = greenlet.greenlet(run_generator, parent=ctx.generator_parent)
+        while True:
+            value = ctx.generator_child.switch()
+            if value is None:
+                break
+            yield value
+        ctx.generator_child = ctx.generator_parent 
+        ctx.generator_parent = grandparent
         self.exhausted = True
 
 @node('name, fn')
