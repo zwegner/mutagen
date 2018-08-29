@@ -36,6 +36,17 @@ test_dict = {'a': 1, 'b': 2, 'c': 3}
 test_dict = test_dict <- ['d'] = 4, ['e'] = 5
 assert test_dict == {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
 
+test_set = {0, 0, 1, 1, 2, 2}
+assert test_set == {0, 1, 2}
+assert test_set == {2, 1, 0}
+for i in range(3):
+    [popped, new_set] = test_set.pop()
+    assert popped in test_set
+    assert popped not in new_set
+    assert len(new_set) == len(test_set) - 1
+    test_set = new_set
+assert_call_fails(test_set.pop)
+
 class TestClass(a, b):
     pass
 test_obj = TestClass(0, [TestClass(0, 0)])

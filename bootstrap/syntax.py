@@ -544,7 +544,7 @@ class Object(Node):
 @node('&fn, *args')
 class BoundFunction(Node):
     def eval_call(self, ctx, args, kwargs):
-        args = self.args + args
+        args = self.args + list(args)
         return self.fn.eval_call(ctx, args, kwargs)
     def repr(self, ctx):
         return '<bound-fn %s(%s, ...)>' % (self.fn.repr(ctx),
@@ -1459,7 +1459,7 @@ class BuiltinSet(BuiltinClass):
         items = self.items.copy()
         if not items:
             self.error('set is empty')
-        item = items.pop()
+        [item, _] = items.popitem()
         return List([item, Set(items, info=self)], info=self)
 
 SetClass = BuiltinSet('set')
