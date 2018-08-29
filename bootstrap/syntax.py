@@ -1282,7 +1282,7 @@ class Generator(Node):
 class BuiltinFunction(Node):
     def eval_call(self, ctx, args, kwargs):
         assert kwargs == {}
-        return self.fn(self, ctx, args)
+        return self.fn(ctx, args)
     def repr(self, ctx):
         return '<builtin %s>' % self.name
 
@@ -1353,52 +1353,52 @@ class BuiltinStr(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return String(arg.str(ctx), info=arg)
-    def count(obj, ctx, args):
+    def count(ctx, args):
         [arg, counted] = args
         return Integer(arg.value.count(counted.value), info=arg)
-    def islower(obj, ctx, args):
+    def islower(ctx, args):
         [arg] = args
         return Boolean(arg.value.islower(), info=arg)
-    def lower(obj, ctx, args):
+    def lower(ctx, args):
         [arg] = args
         return String(arg.value.lower(), info=arg)
-    def isupper(obj, ctx, args):
+    def isupper(ctx, args):
         [arg] = args
         return Boolean(arg.value.isupper(), info=arg)
-    def upper(obj, ctx, args):
+    def upper(ctx, args):
         [arg] = args
         return String(arg.value.upper(), info=arg)
-    def startswith(obj, ctx, args):
+    def startswith(ctx, args):
         [arg, suffix] = args
         return Boolean(arg.value.startswith(suffix.value), info=arg)
-    def endswith(obj, ctx, args):
+    def endswith(ctx, args):
         [arg, suffix] = args
         return Boolean(arg.value.endswith(suffix.value), info=arg)
-    def replace(obj, ctx, args):
+    def replace(ctx, args):
         [arg, pattern, repl] = args
         return String(arg.value.replace(pattern.value, repl.value), info=arg)
-    def split(obj, ctx, args):
+    def split(ctx, args):
         [arg, splitter] = args
         items = [String(s, info=arg) for s in arg.value.split(splitter.value)]
         return List(items, info=arg)
-    def join(obj, ctx, args):
+    def join(ctx, args):
         [sep, args] = args
         return String(sep.value.join(a.value for a in args), info=sep)
-    def encode(obj, ctx, args):
+    def encode(ctx, args):
         [arg, encoding] = args
         if not isinstance(encoding, String) or encoding.value not in {'ascii',
                 'utf-8'}:
-            obj.error('encoding must be one of "ascii" or "utf-8"', ctx=ctx)
+            arg.error('encoding must be one of "ascii" or "utf-8"', ctx=ctx)
         try:
             encoded = arg.value.encode(encoding.value)
         except UnicodeEncodeError as e:
-            obj.error(str(e), ctx=ctx) # just copy the Python exception message...
+            arg.error(str(e), ctx=ctx) # just copy the Python exception message...
         # XXX create list of integers, as we don't yet have a 'bytes' object
         return List(list(Integer(i, info=arg) for i in encoded), info=arg)
-    def format(obj, ctx, args):
+    def format(ctx, args):
         [fmt, *args] = args
         if not isinstance(fmt, String):
-            obj.error('encoding must be one of "ascii" or "utf-8"', ctx=ctx)
+            fmt.error('self is not a string', ctx=ctx)
         args = [arg.str(ctx) for arg in args]
         return String(fmt.value.format(*args), info=fmt)
 
@@ -1427,7 +1427,7 @@ class BuiltinList(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return List(list(arg), info=arg)
-    def index(obj, ctx, args):
+    def index(ctx, args):
         [self, item] = args
         return Integer(self.items.index(item), info=self)
 
@@ -1437,10 +1437,10 @@ class BuiltinDict(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return Dict(collections.OrderedDict(list(arg)), info=arg)
-    def keys(obj, ctx, args):
+    def keys(ctx, args):
         [arg] = args
         return List(list(arg.items.keys()), info=arg)
-    def values(obj, ctx, args):
+    def values(ctx, args):
         [arg] = args
         return List(list(arg.items.values()), info=arg)
 
@@ -1453,7 +1453,7 @@ class BuiltinSet(BuiltinClass):
             [arg_iter] = args
             items = ((arg, NONE) for arg in arg_iter)
         return Set(collections.OrderedDict(items), info=self)
-    def pop(obj, ctx, args):
+    def pop(ctx, args):
         [self] = args
         assert isinstance(self, Set)
         items = self.items.copy()

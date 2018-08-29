@@ -7,17 +7,17 @@ from syntax import *
 builtins = collections.OrderedDict()
 
 def create_builtin_function(name, fn, arg_types):
-    def builtin_call(obj, ctx, args):
+    def builtin_call(ctx, args):
         # HACK: inspect context to get the call site of this function for better errors
         info = ctx.current_node
         if arg_types is not None:
             if len(args) != len(arg_types):
                 info.error('incorrect number of arguments to builtin %s' %
-                        obj.name, ctx=ctx)
+                        name, ctx=ctx)
             for a, t in zip(args, arg_types):
                 if not isinstance(a, t):
                     info.error('bad argument to builtin %s, expected %s, got %s' %
-                            (obj.name, t.__name__, type(a).__name__), ctx=ctx)
+                            (name, t.__name__, type(a).__name__), ctx=ctx)
         return fn(ctx, *args)
     return BuiltinFunction(name, builtin_call, info=BUILTIN_INFO)
 
