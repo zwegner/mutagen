@@ -827,17 +827,20 @@ class EffectHandler(Node):
 @node('&block, *handlers')
 class Consume(Node):
     def eval(self, ctx):
-        # Dumb 'lambda' with None return value
-        def run_block():
-            self.block.eval(ctx)
+        # Sentinel to capture the return value of the block being evaluated (in case it's an expression)
+        # so we can return it normally. The greenlet API is kinda weird.
+        class DumbSentinel:
+            def __init__(self, value):
+                self.value = value
 
         # Create a coroutine thread to run the consumed block.
         current = ctx.effect_child
-        ctx.effect_child = greenlet.greenlet(run_block)
+        ctx.effect_child = greenlet.greenlet(lambda: DumbSentinel(self.block.eval(ctx)))
 
         # Weird control flow sentinels. See comments below
         args = []
         pass_to_parent = False
+        return_value = None
 
         while True:
             if pass_to_parent:
@@ -855,7 +858,8 @@ class Consume(Node):
 
             # Check for None as a return value from switch(). This is a sentinel value, which
             # means the block has finished.
-            if effect is None:
+            if isinstance(effect, DumbSentinel):
+                return_value = effect.value
                 break
 
             # Reset control flow stuff for the next iteration
@@ -897,11 +901,12 @@ class Consume(Node):
                         args = [r.value]
                         ctx.effect_child = old_child
                         break
-                    return
+                    return return_value
             else:
                 pass_to_parent = True
 
         ctx.effect_child = current
+        return return_value
 
     def repr(self, ctx):
         return 'consume%s %s' % (self.block.repr(ctx), ' '.join(h.repr(ctx) for h in self.handlers))
