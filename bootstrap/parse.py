@@ -8,6 +8,7 @@ import lexer
 import sprdpl.lex as liblex
 import sprdpl.parse as libparse
 
+import effect_io
 import mg_builtins
 from syntax import *
 
@@ -401,6 +402,7 @@ def parse(path, import_builtins=True, eval_ctx=None):
     return block
 
 def preprocess_program(ctx, stmt):
+    stmt = effect_io.wrap_with_io_consumer(ctx, stmt)
     analyze_scoping(ctx, stmt)
     return stmt
 
