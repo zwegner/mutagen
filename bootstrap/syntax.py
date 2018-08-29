@@ -60,6 +60,7 @@ class Context:
         self.current_node = None
         self.generator_parent = parent_ctx.generator_child if parent_ctx else None
         self.generator_child = greenlet.getcurrent()
+        self.effect_child = None
         self.parent_ctx = parent_ctx
         self.callsite_ctx = callsite_ctx
         self.syms = collections.OrderedDict()
@@ -755,6 +756,10 @@ class ReturnExc(Exception):
         self.value = value
         self.return_node = return_node
 
+class ResumeExc(Exception):
+    def __init__(self, value):
+        self.value = value
+
 @node()
 class Break(Node):
     def eval(self, ctx):
@@ -783,6 +788,106 @@ class Yield(Node):
         ctx.generator_parent.switch(value)
     def repr(self, ctx):
         return 'yield %s' % self.expr.repr(ctx)
+
+@node('&expr')
+class Perform(Node):
+    def eval(self, ctx):
+        value = self.expr.eval(ctx)
+        child = greenlet.getcurrent()
+        return child.parent.switch(value)
+    def repr(self, ctx):
+        return '(perform %s)' % self.expr.repr(ctx)
+
+@node('&expr')
+class Resume(Node):
+    def eval(self, ctx):
+        raise ResumeExc(self.expr.eval(ctx))
+    def repr(self, ctx):
+        return 'resume %s' % self.expr.repr(ctx)
+
+@node('&type, &effect_target, &block')
+class EffectHandler(Node):
+    def handle_effect(self, ctx, effect):
+        self.effect_target.assign_values(ctx, effect)
+        self.block.eval(ctx)
+    def repr(self, ctx):
+        return 'effect %s as %s%s' % (self.type.repr(ctx), self.effect_target.repr(ctx), self.block.repr(ctx))
+
+@node('&block, *handlers')
+class Consume(Node):
+    def eval(self, ctx):
+        # Dumb 'lambda' with None return value
+        def run_block():
+            self.block.eval(ctx)
+
+        # Create a coroutine thread to run the consumed block.
+        current = ctx.effect_child
+        ctx.effect_child = greenlet.greenlet(run_block)
+
+        # Weird control flow sentinels. See comments below
+        args = []
+        pass_to_parent = False
+
+        while True:
+            if pass_to_parent:
+                # Weird case: if pass_to_parent is True, we need to pass an effect up the chain to our
+                # parent block (if it exists). If/when a parent resumes the effect, it will jump directly into
+                # it (ctx.effect_child is still set, we only need to manually pass like this in one direction).
+                # So this switch() call will only return when the child performs its next effect or returns,
+                # and we act like the return value here is the same as in the pass_to_parent=False case.
+                if current is None:
+                    self.error('unhandled effect %s' % (effect.repr(ctx)), ctx=ctx)
+                effect = current.parent.switch(effect)
+            else:
+                # Get the next effect from the consumed block. If it's None, the block is done.
+                effect = ctx.effect_child.switch(*args)
+
+            # Check for None as a return value from switch(). This is a sentinel value, which
+            # means the block has finished.
+            if effect is None:
+                break
+
+            # Reset control flow stuff for the next iteration
+            args = []
+            pass_to_parent = False
+
+            # Check if the effect can be handled by any of the handler blocks for this Consume.
+            # This involves some control flow gymnastics: if we have a matching handler, we
+            # have two cases: the handler resumes control flow in the enclosed block, or it
+            # doesn't. And we also need to handle when no handler is found.
+            # Case 1: If the handler resumes, we want to do it from the top of this block,
+            #   so that we can properly capture the next effect from that switch(). And since
+            #   we don't have multiply-resumable effects, we can just bubble up to here with
+            #   an exception when we hit a resume (similar to a return). We save the value
+            #   that we resumed with in args, to pass back into the child in the next loop iteration.
+            # Case 2: If the handler doesn't resume, we break completely out of the consume block.
+            #   No values need to be marshaled around, so we can just return, but we do need to
+            #   reset ctx.effect_child so that the consumed block doesn't get restarted.
+            # Case 3: No matching handler is found. We catch this in the 'else' for the for loop.
+            #   Because the parent handler will resume execution directly into the child (if it
+            #   resumes; if it doesn't this whole consume block won't continue executing), we
+            #   want to handle the switch in the same place as the normal pass-to-child case,
+            #   so we set a sentinel and continue on to the next loop iteration.
+            obj_type = effect.get_obj_class()
+            for handler in self.handlers:
+                # Match the effect by type. This is hacky!
+                # XXX we reevaluate the type expression each time, this is dumb
+                type_eval = handler.type.eval(ctx)
+                if obj_type is type_eval:
+                    try:
+                        handler.handle_effect(ctx, effect)
+                    except ResumeExc as r:
+                        args = [r.value]
+                        break
+                    ctx.effect_child = current
+                    return
+            else:
+                pass_to_parent = True
+
+        ctx.effect_child = current
+
+    def repr(self, ctx):
+        return 'consume%s %s' % (self.block.repr(ctx), ' '.join(h.repr(ctx) for h in self.handlers))
 
 @node('*stmts')
 class Block(Node):

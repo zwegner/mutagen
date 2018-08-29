@@ -32,7 +32,7 @@ rule_table = [
         Boolean({'True': True, 'False': False}[p[0]], info=p.get_info(0)))],
     ['integer', ('INTEGER', lambda p: Integer(p[0], info=p.get_info(0)))],
     ['string', ('STRING', lambda p: String(p[0], info=p.get_info(0)))],
-    ['parenthesized', ('LPAREN test RPAREN', lambda p: p[1])],
+    ['parenthesized', ('LPAREN (test|perform_expr) RPAREN', lambda p: p[1])],
     ['atom', 'identifier|none|boolean|integer|string|parenthesized|list_comp|'
         'dict_comp|set_comp'],
 ]
@@ -184,9 +184,9 @@ rule_table += [
 
     # Statements
     ['pass', ('PASS', lambda p: None)],
-    ['small_stmt', '(expr_stmt|pass|break|continue|return|yield|import|assert)'],
+    ['small_stmt', '(expr_stmt|pass|break|continue|return|yield|perform_expr|resume|import|assert)'],
     ['simple_stmt', ('small_stmt (NEWLINE|SEMICOLON)', lambda p: p[0])],
-    ['stmt', ('(simple_stmt|if_stmt|for_stmt|while_stmt|def_stmt|class_stmt) '
+    ['stmt', ('(simple_stmt|if_stmt|for_stmt|while_stmt|consume_stmt|def_stmt|class_stmt) '
         '(NEWLINE|SEMICOLON)*', lambda p: p[0])],
     ['stmt_list', ('stmt*', lambda p: [x for x in p[0] if x is not None])],
 
@@ -196,6 +196,8 @@ rule_table += [
     ['continue', ('CONTINUE', lambda p: Continue(info=p.get_info(0)))],
     ['return', ('RETURN test', lambda p: Return(p[1]))],
     ['yield', ('YIELD test', lambda p: Yield(p[1]))],
+    ['perform_expr', ('PERFORM test', lambda p: Perform(p[1]))],
+    ['resume', ('RESUME test', lambda p: Resume(p[1]))],
     ['assert', ('ASSERT test', lambda p: Assert(p[1]))],
 ]
 
@@ -237,6 +239,15 @@ def parse_if_stmt(p):
     for elif_stmt in reversed(p[3]):
         else_block = IfElse(elif_stmt[1], elif_stmt[2], else_block)
     return IfElse(p[1], p[2], else_block)
+
+@libparse.rule_fn(rule_table,
+    'consume_stmt', 'CONSUME block (EFFECT test AS IDENTIFIER block)+')
+def parse_consume_stmt(p):
+    handlers = []
+    for item in p[2]:
+        handlers.append(EffectHandler(item[1],
+            Target([item[3]], info=NULL_INFO), item[4]))
+    return Consume(p[1], handlers)
 
 # Params
 @libparse.rule_fn(rule_table, 'param', 'IDENTIFIER [COLON test] [EQUALS test]')
