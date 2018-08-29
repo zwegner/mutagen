@@ -874,12 +874,18 @@ class Consume(Node):
                 # XXX we reevaluate the type expression each time, this is dumb
                 type_eval = handler.type.eval(ctx)
                 if obj_type is type_eval:
+                    # More weirdness: reset ctx.effect_child to this thread while we're inside
+                    # the effect handler. This means we can perform effects inside handlers,
+                    # which is useful for wrapping/modifying effects. If the handler resumes,
+                    # we'll restore ctx.effect_child to the thread running our inner block.
+                    old_child = ctx.effect_child
+                    ctx.effect_child = current
                     try:
                         handler.handle_effect(ctx, effect)
                     except ResumeExc as r:
                         args = [r.value]
+                        ctx.effect_child = old_child
                         break
-                    ctx.effect_child = current
                     return
             else:
                 pass_to_parent = True
