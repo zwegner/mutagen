@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
-import mg_builtins
 import parse
 import syntax
 
 def repl():
     eval_ctx = syntax.Context('__main__', None, None)
+    eval_ctx.fill_in_builtins()
     parse_ctx = parse.ParseContext()
 
-    # Add all the builtins, first from the __builtins__.mg file
+    # Add all the builtins from the __builtins__.mg file
     imp = parse.get_builtins_import()
     parse.handle_import(imp, parse_ctx)
-    syntax.preprocess_program(eval_ctx, [imp])
+    imp = parse.preprocess_program(eval_ctx, imp)
     imp.eval(eval_ctx)
-
-    # ...and then those defined in mg_builtins.py
-    for k, v in mg_builtins.builtins.items():
-        stmt = syntax.Assignment(syntax.Target([k], info=syntax.BUILTIN_INFO), v)
-        stmt.eval(eval_ctx)
 
     while True:
         # Read lines until the parser hits an error or has parsed a full statement
@@ -43,10 +38,10 @@ def repl():
             continue
 
         # Preprocess the statement, run it, and print the result, if any
-        syntax.preprocess_program(eval_ctx, [stmt])
+        stmt = parse.preprocess_program(eval_ctx, stmt)
         (result, error) = parse.eval_statement(stmt, eval_ctx)
         if not error and result is not syntax.NONE:
-            print(result.str(eval_ctx))
+            print(result.repr(eval_ctx))
 
 if __name__ == '__main__':
     print('Mutagen v0.0.0, (c)2013-2018 Zach Wegner')

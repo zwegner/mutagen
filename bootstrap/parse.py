@@ -362,7 +362,6 @@ def handle_import(scope, parse_ctx, eval_ctx=None):
         print('checking paths: %s' % import_paths, file=sys.stderr)
         raise Exception('could not find import in path: %s' % imp.name)
 
-    imp.parent_ctx = Context(imp.name, None, eval_ctx)
     imp.stmts = parse(import_path, import_builtins=not imp.is_builtins,
             eval_ctx=eval_ctx)
 
@@ -393,20 +392,17 @@ def parse(path, import_builtins=True, eval_ctx=None):
         parse_ctx.all_imports.append(imp)
         block = [imp] + block
 
-    new_block = []
-
-    for k, v in mg_builtins.builtins.items():
-        new_block.append(Assignment(Target([k], info=BUILTIN_INFO), v))
-
     # Recursively parse imports
     for imp in parse_ctx.all_imports:
         handle_import(imp, parse_ctx, eval_ctx=eval_ctx)
 
-    new_block.extend(block)
-
     # Be sure and return a duplicate of the list...
-    module_cache[path] = new_block[:]
-    return new_block
+    module_cache[path] = block[:]
+    return block
+
+def preprocess_program(ctx, stmt):
+    analyze_scoping(ctx, stmt)
+    return stmt
 
 # Evaluate a single statement in a given context. Mainly a wrapper for error handling code.
 def eval_statement(stmt, ctx):
@@ -445,16 +441,17 @@ def eval_statement(stmt, ctx):
 
 def interpret(path):
     ctx = Context('__main__', None, None)
+    ctx.fill_in_builtins()
     try:
         stmts = parse(path, eval_ctx=ctx)
     except libparse.ParseError as e:
         e.print()
         sys.exit(1)
-    preprocess_program(ctx, stmts)
-    for stmt in stmts:
-        (result, error) = eval_statement(stmt, ctx)
-        if error:
-            sys.exit(1)
+    block = Block(stmts, info=BUILTIN_INFO)
+    block = preprocess_program(ctx, block)
+    (result, error) = eval_statement(block, ctx)
+    if error:
+        sys.exit(1)
 
 def main(args):
     assert len(args) == 2

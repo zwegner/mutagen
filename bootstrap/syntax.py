@@ -21,6 +21,13 @@ INV_STR_ESCAPES = [
 # Info object to represent a non-existent source location for all builtins defined in Python
 BUILTIN_INFO = sprdpl.lex.Info('__builtins__')
 
+# This dictionary keeps all builtins implemented in Python. There is some rather shitty logic
+# around this, where it primarily gets filled in by a decorator, but there are other modules
+# that also add builtins. These will just modify this global dict when their builtins are defined,
+# but they depend on this module, so we have to rely on all of these files being imported
+# by a module that isn't depended on (right now, parse.py). Not pretty but it's simple.
+builtins = collections.OrderedDict()
+
 # Constants to add to various classes' __hash__ implementation to distinguish their types.
 # Since the hash functions are based on a tuple of their child objects, we want to make
 # sure that [[0, 0]] has a different hash than {0: 0}, etc.
@@ -43,16 +50,15 @@ def check_obj_type(info, msg_type, ctx, obj, type):
     if type is not NONE:
         obj_type = obj.get_obj_class()
         if obj_type is not type:
-            info.error('bad %s type %s, expected %s' % (msg_type,
-                get_class_name(ctx, obj_type), get_class_name(ctx, type)), ctx=ctx)
+            info.error('bad type %s for %s, expected %s' % (get_class_name(ctx, obj_type),
+                msg_type, get_class_name(ctx, type)), ctx=ctx)
 
-def preprocess_program(ctx, block):
+def analyze_scoping(ctx, stmt):
     seen = set()
     # Analyze nested functions
-    for expr in block:
-        for node in expr.iterate_graph(seen, iterate_across_scopes=False):
-            if isinstance(node, Scope):
-                node.analyze_scoping(ctx)
+    for node in stmt.iterate_graph(seen, iterate_across_scopes=False):
+        if isinstance(node, Scope):
+            node.analyze_scoping(ctx)
 
 class Context:
     def __init__(self, name, parent_ctx, callsite_ctx):
@@ -63,6 +69,11 @@ class Context:
         self.parent_ctx = parent_ctx
         self.callsite_ctx = callsite_ctx
         self.syms = collections.OrderedDict()
+    # Prepopulate the symbol table with all the Python-level builtin objects. See comments for
+    # the builtins dictionary at the top of the file.
+    def fill_in_builtins(self):
+        for k, v in builtins.items():
+            self.syms[k] = v.eval(self)
     def store(self, name, value):
         self.syms[name] = value
     def load(self, node, name):
@@ -1181,8 +1192,10 @@ class Scope(Node):
         # up a context with the current values of said symbols, and making
         # the context available to the object. Objects may also need to do
         # further specialization at this point (e.g. evaluating types of params)
-        child_ctx = Context(self.expr.name, None, ctx)
-        if not isinstance(self.expr, Import):
+        child_ctx = Context(self.expr.name, ctx, None)
+        if isinstance(self.expr, Import):
+            child_ctx.fill_in_builtins()
+        else:
             for a in self.extra_args:
                 child_ctx.store(a, ctx.load(self, a))
         new_expr = copy.copy(self.expr)
@@ -1330,81 +1343,158 @@ class Class(Node):
     def __hash__(self):
         return hash((self.name, self.params, self.block)) + HASH_BASE_CLASS
 
+# Superclass for every Mutagen-exposed builtin class. Mainly just some machinery for
+# simplifying parameter passing and builtin methods.
 class BuiltinClass(Class):
-    def __init__(self, name):
+    name = None
+    params = None
+    def __init__(self):
         self.spec_ctx = None
         cls = type(self)
-        methods = set(dir(cls)) - set(dir(BuiltinClass))
+        assert cls.name is not None
+        params = cls.params or Params([], [], None, [], None, info=BUILTIN_INFO)
+
         stmts = []
-        for method in methods:
-            fn = getattr(cls, method)
-            stmts.append(Assignment(Target([method], info=BUILTIN_INFO),
-                BuiltinFunction(method, fn, info=BUILTIN_INFO)))
-        super().__init__(name, Params([], [], None, [], None, info=BUILTIN_INFO),
+        for k in dir(cls):
+            v = getattr(cls, k)
+            if hasattr(v, '_is_builtin_method'):
+                # Yuck: decorated methods don't know what class they're in, so pass it back
+                # through this attribute
+                v._cls = cls
+                stmts.append(Assignment(Target([k], info=BUILTIN_INFO),
+                    BuiltinFunction(k, v, info=BUILTIN_INFO)))
+
+        super().__init__(cls.name, params,
             Block(stmts, info=BUILTIN_INFO), None)
 
-class BuiltinNone(BuiltinClass):
+# Decorator for builtin classes, mainly just to attach a parameter specification and a name
+def builtin_class(name, *, params=None, types=[], kw_params={}):
+    def wrap(cls):
+        nonlocal kw_params
+
+        assert issubclass(cls, BuiltinClass)
+        cls.name = name
+
+        if params is not None:
+            assert len(params) == len(types)
+            kw_params = [KeywordParam(k, v, NONE)
+                    for k, v in kw_params.items()]
+
+            cls.params = Params(params, types, None, kw_params, None, info=BUILTIN_INFO)
+            # HACK: builtins don't get scoped/evaluated/etc. normally, so we trust that all of
+            # the parameter types are already evaluated.
+            cls.params.type_evals = types
+            cls.params.keyword_evals = {p.name: p for p in kw_params}
+
+        # Kinda weird: instead of returning the actual class, return an instance
+        # of the inner class. This is a Mutagen-level class, and can be used elsewhere naturally,
+        # whereas the original class is mostly useless on its own, its just a convenient
+        # syntactical way to group methods/params together.
+        instance = cls()
+        builtins[cls.name] = instance
+        return instance
+    return wrap
+
+# Decorator for builtin methods. This checks arguments, and annotates the functions so
+# it can be properly exposed to user-level code.
+def builtin_method(params=[], types=[], var_params=None):
+    def wrap(fn):
+        nonlocal params, types
+        params = ['self'] + params
+        types = [None] + types
+
+        def inner(ctx, args):
+            if var_params:
+                args_are_bad = len(args) < len(types)
+                mod = 'at least '
+                var_args = args[len(types):]
+                args = args[:len(types)]
+            else:
+                args_are_bad = len(args) != len(types)
+                mod = ''
+
+            if args_are_bad:
+                ctx.current_node.error('wrong number of arguments to %s.%s, '
+                        'expected %s%s, got %s' % (inner._cls.name, fn.__name__,
+                            mod, len(types), len(args)), ctx=ctx)
+
+            # Check argument types. Because the @builtin_method decorator is used in places
+            # where we generally can't use StrClass etc., we pass the raw String etc. types,
+            # and do a simple isinstance instead of a comparison with obj.get_obj_class().
+            for param, type, arg in zip(params, types, args):
+                if type is not None and not isinstance(arg, type):
+                    arg.error('bad type %s for argument %s, expected %s' % (
+                        get_type_name(ctx, arg), param, type), ctx=ctx)
+
+            if var_params:
+                args.append(var_args)
+
+            return fn(ctx, *args)
+
+        inner._is_builtin_method = True
+        return inner
+    return wrap
+
+@builtin_class('NoneType')
+class NoneClass(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         return NONE
 
-NoneClass = BuiltinNone('NoneType')
-
-class BuiltinStr(BuiltinClass):
+@builtin_class('str')
+class StrClass(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return String(arg.str(ctx), info=arg)
-    def count(ctx, args):
-        [arg, counted] = args
-        return Integer(arg.value.count(counted.value), info=arg)
-    def islower(ctx, args):
-        [arg] = args
-        return Boolean(arg.value.islower(), info=arg)
-    def lower(ctx, args):
-        [arg] = args
-        return String(arg.value.lower(), info=arg)
-    def isupper(ctx, args):
-        [arg] = args
-        return Boolean(arg.value.isupper(), info=arg)
-    def upper(ctx, args):
-        [arg] = args
-        return String(arg.value.upper(), info=arg)
-    def startswith(ctx, args):
-        [arg, suffix] = args
-        return Boolean(arg.value.startswith(suffix.value), info=arg)
-    def endswith(ctx, args):
-        [arg, suffix] = args
-        return Boolean(arg.value.endswith(suffix.value), info=arg)
-    def replace(ctx, args):
-        [arg, pattern, repl] = args
-        return String(arg.value.replace(pattern.value, repl.value), info=arg)
-    def split(ctx, args):
-        [arg, splitter] = args
-        items = [String(s, info=arg) for s in arg.value.split(splitter.value)]
-        return List(items, info=arg)
-    def join(ctx, args):
-        [sep, args] = args
-        return String(sep.value.join(a.value for a in args), info=sep)
-    def encode(ctx, args):
-        [arg, encoding] = args
-        if not isinstance(encoding, String) or encoding.value not in {'ascii',
-                'utf-8'}:
-            arg.error('encoding must be one of "ascii" or "utf-8"', ctx=ctx)
+    @builtin_method(['counted'], [String])
+    def count(ctx, self, counted):
+        return Integer(self.value.count(counted.value), info=self)
+    @builtin_method()
+    def islower(ctx, self):
+        return Boolean(self.value.islower(), info=self)
+    @builtin_method()
+    def lower(ctx, self):
+        return String(self.value.lower(), info=self)
+    @builtin_method()
+    def isupper(ctx, self):
+        return Boolean(self.value.isupper(), info=self)
+    @builtin_method()
+    def upper(ctx, self):
+        return String(self.value.upper(), info=self)
+    @builtin_method(['prefix'], [String])
+    def startswith(ctx, self, prefix):
+        return Boolean(self.value.startswith(prefix.value), info=self)
+    @builtin_method(['suffix'], [String])
+    def endswith(ctx, self, suffix):
+        return Boolean(self.value.endswith(suffix.value), info=self)
+    @builtin_method(['pattern', 'repl'], [String, String])
+    def replace(ctx, self, pattern, repl):
+        return String(self.value.replace(pattern.value, repl.value), info=self)
+    @builtin_method(['splitter'], [String])
+    def split(ctx, self, splitter):
+        items = [String(s, info=self) for s in self.value.split(splitter.value)]
+        return List(items, info=self)
+    @builtin_method(['args'], [None])
+    def join(ctx, self, args):
+        return String(self.value.join(a.value for a in args), info=self)
+    @builtin_method(['encoding'], [String])
+    def encode(ctx, self, encoding):
+        if encoding.value not in {'ascii', 'utf-8'}:
+            self.error('encoding must be one of "ascii" or "utf-8"', ctx=ctx)
         try:
-            encoded = arg.value.encode(encoding.value)
+            encoded = self.value.encode(encoding.value)
         except UnicodeEncodeError as e:
-            arg.error(str(e), ctx=ctx) # just copy the Python exception message...
+            self.error(str(e), ctx=ctx) # just copy the Python exception message...
         # XXX create list of integers, as we don't yet have a 'bytes' object
-        return List(list(Integer(i, info=arg) for i in encoded), info=arg)
-    def format(ctx, args):
-        [fmt, *args] = args
-        if not isinstance(fmt, String):
-            fmt.error('self is not a string', ctx=ctx)
+        return List(list(Integer(i, info=self) for i in encoded), info=self)
+    @builtin_method(var_params='args')
+    def format(ctx, self, args):
+        if not isinstance(self, String):
+            self.error('self is not a string', ctx=ctx)
         args = [arg.str(ctx) for arg in args]
-        return String(fmt.value.format(*args), info=fmt)
+        return String(self.value.format(*args), info=self)
 
-StrClass = BuiltinStr('str')
-
-class BuiltinInt(BuiltinClass):
+@builtin_class('int')
+class IntClass(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         if len(args) == 2:
             result = int(args[0].value, args[1].value)
@@ -1414,47 +1504,43 @@ class BuiltinInt(BuiltinClass):
             ctx.error('bad args to int()')
         return Integer(result, info=args[0])
 
-IntClass = BuiltinInt('int')
-
-class BuiltinBool(BuiltinClass):
+@builtin_class('bool')
+class BoolClass(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return Boolean(arg.bool(ctx), info=arg)
 
-BoolClass = BuiltinBool('bool')
-
-class BuiltinList(BuiltinClass):
+@builtin_class('list')
+class ListClass(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return List(list(arg), info=arg)
-    def index(ctx, args):
-        [self, item] = args
+    @builtin_method(['item'], [None])
+    def index(ctx, self, item):
         return Integer(self.items.index(item), info=self)
 
-ListClass = BuiltinList('list')
-
-class BuiltinDict(BuiltinClass):
+@builtin_class('dict')
+class DictClass(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return Dict(collections.OrderedDict(list(arg)), info=arg)
-    def keys(ctx, args):
-        [arg] = args
-        return List(list(arg.items.keys()), info=arg)
-    def values(ctx, args):
-        [arg] = args
-        return List(list(arg.items.values()), info=arg)
+    @builtin_method()
+    def keys(ctx, self):
+        return List(list(self.items.keys()), info=self)
+    @builtin_method()
+    def values(ctx, self):
+        return List(list(self.items.values()), info=self)
 
-DictClass = BuiltinDict('dict')
-
-class BuiltinSet(BuiltinClass):
+@builtin_class('set')
+class SetClass(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         items = []
         if args:
             [arg_iter] = args
             items = ((arg, NONE) for arg in arg_iter)
         return Set(collections.OrderedDict(items), info=self)
-    def pop(ctx, args):
-        [self] = args
+    @builtin_method()
+    def pop(ctx, self):
         assert isinstance(self, Set)
         items = self.items.copy()
         if not items:
@@ -1462,9 +1548,8 @@ class BuiltinSet(BuiltinClass):
         [item, _] = items.popitem()
         return List([item, Set(items, info=self)], info=self)
 
-SetClass = BuiltinSet('set')
-
-class BuiltinType(BuiltinClass):
+@builtin_class('type')
+class TypeClass(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         item = arg.get_obj_class()
@@ -1473,12 +1558,9 @@ class BuiltinType(BuiltinClass):
                     get_type_name(ctx, arg), ctx=ctx)
         return item
 
-TypeClass = BuiltinType('type')
-
-class BuiltinModule(BuiltinClass):
+@builtin_class('module')
+class ModuleClass(BuiltinClass):
     pass
-
-ModuleClass = BuiltinModule('module')
 
 @node('*stmts, name, names, path, is_builtins')
 class Import(Node):

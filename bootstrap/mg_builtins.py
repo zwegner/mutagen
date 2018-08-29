@@ -4,8 +4,6 @@ import sys
 
 from syntax import *
 
-builtins = collections.OrderedDict()
-
 def create_builtin_function(name, fn, arg_types):
     def builtin_call(ctx, args):
         # HACK: inspect context to get the call site of this function for better errors
@@ -175,14 +173,3 @@ def mgb_re_compile_match(ctx, regex):
         end = Integer(m.end(), info=info)
         return List([type, start, end], info=info)
     return create_builtin_function('re_compile_match', match_internal, [String, Integer])
-
-# Add builtin classes
-builtins['str'] = StrClass
-builtins['int'] = IntClass
-builtins['bool'] = BoolClass
-builtins['list'] = ListClass
-builtins['dict'] = DictClass
-builtins['set'] = SetClass
-builtins['type'] = TypeClass
-
-__all__ = builtins
