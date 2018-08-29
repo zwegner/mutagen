@@ -58,8 +58,7 @@ class Context:
     def __init__(self, name, parent_ctx, callsite_ctx):
         self.name = name
         self.current_node = None
-        self.generator_parent = parent_ctx.generator_child if parent_ctx else None
-        self.generator_child = greenlet.getcurrent()
+        self.generator_child = None
         self.effect_child = None
         self.parent_ctx = parent_ctx
         self.callsite_ctx = callsite_ctx
@@ -785,7 +784,8 @@ class Return(Node):
 class Yield(Node):
     def eval(self, ctx):
         value = self.expr.eval(ctx)
-        ctx.generator_parent.switch(value)
+        child = greenlet.getcurrent()
+        child.parent.switch(value)
     def repr(self, ctx):
         return 'yield %s' % self.expr.repr(ctx)
 
@@ -1262,16 +1262,14 @@ class Generator(Node):
             self.error('generator exhausted', ctx=self.ctx)
         def run_generator():
             self.block.eval(self.ctx)
-        grandparent = ctx.generator_parent
-        ctx.generator_parent = ctx.generator_child
-        ctx.generator_child = greenlet.greenlet(run_generator, parent=ctx.generator_parent)
+        current = ctx.generator_child
+        ctx.generator_child = greenlet.greenlet(run_generator)
         while True:
             value = ctx.generator_child.switch()
             if value is None:
                 break
             yield value
-        ctx.generator_child = ctx.generator_parent 
-        ctx.generator_parent = grandparent
+        ctx.generator_child = current
         self.exhausted = True
 
 @node('name, fn')
