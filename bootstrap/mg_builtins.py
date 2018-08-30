@@ -5,7 +5,8 @@ import sys
 from syntax import *
 
 def create_builtin_function(name, fn, arg_types):
-    def builtin_call(ctx, args):
+    def builtin_call(ctx, args, kwargs):
+        assert kwargs == {}
         # HACK: inspect context to get the call site of this function for better errors
         info = ctx.current_node
         if arg_types is not None:

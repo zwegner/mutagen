@@ -1120,7 +1120,7 @@ class Params(Node):
         # Check argument types
         args = []
         for p, t, a in zip(self.params, self.type_evals, pos_args):
-            check_obj_type(info, 'argument', ctx, a, t)
+            check_obj_type(info, 'argument %s' % p, ctx, a, t)
             args += [(p, a)]
 
         # Bind var args
@@ -1130,7 +1130,7 @@ class Params(Node):
         # Bind keyword arguments
         for name, arg in kwargs.items():
             if name in self.keyword_evals:
-                check_obj_type(info, 'argument', ctx, arg, self.keyword_evals[name].type)
+                check_obj_type(info, 'keyword argument %s' % name, ctx, arg, self.keyword_evals[name].type)
             elif not self.kw_var_params:
                 info.error('got unexpected keyword argument \'%s\'' % name, ctx=ctx)
 
@@ -1299,8 +1299,7 @@ class Generator(Node):
 @node('name, fn')
 class BuiltinFunction(Node):
     def eval_call(self, ctx, args, kwargs):
-        assert kwargs == {}
-        return self.fn(ctx, args)
+        return self.fn(ctx, args, kwargs)
     def repr(self, ctx):
         return '<builtin %s>' % self.name
 
@@ -1348,6 +1347,13 @@ class Class(Node):
     def __hash__(self):
         return hash((self.name, self.params, self.block)) + HASH_BASE_CLASS
 
+# Sentinel used for annotating builtin class method types, signifying the enclosing class
+# should be substituted (the class isn't available at the time the methods are decorated,
+# since they are inside the class statement). This must be a Node.
+class SelfTypeSentinel(Node): pass
+SELF_TYPE = SelfTypeSentinel()
+SELF_TYPE.info = BUILTIN_INFO
+
 # Superclass for every Mutagen-exposed builtin class. Mainly just some machinery for
 # simplifying parameter passing and builtin methods.
 class BuiltinClass(Class):
@@ -1360,20 +1366,36 @@ class BuiltinClass(Class):
         params = cls.params or Params([], [], None, [], None, info=BUILTIN_INFO)
 
         stmts = []
-        for k in dir(cls):
-            v = getattr(cls, k)
-            if hasattr(v, '_is_builtin_method'):
-                # Yuck: decorated methods don't know what class they're in, so pass it back
-                # through this attribute
-                v._cls = cls
-                stmts.append(Assignment(Target([k], info=BUILTIN_INFO),
-                    BuiltinFunction(k, v, info=BUILTIN_INFO)))
+        # Nasty stuff here. We now have an instantiation of this class, so we need to
+        # do some post-processing on any class attributes that needed the class.
+        for attr in dir(cls):
+            method = getattr(cls, attr)
+            if hasattr(method, '_is_builtin_method'):
+                method.name = '%s.%s' % (cls.name, method.__name__)
+                # NASTY HACK! Now that the class is instantiated, fill it in in the types
+                # for parameters wherever the SELF_TYPE sentinel is. This is the price
+                # we pay for decent type checking without boilerplate (making sure you can't call
+                # str.upper(0), etc.)
+                method._params.types = [self if t == SELF_TYPE else t for t in method._params.types]
+                for kwparam in method._params.kw_params:
+                    if kwparam.type == SELF_TYPE:
+                        kwparam.type = self
+                # HACK: builtins don't get scoped/evaluated/etc. normally, so we trust that all of
+                # the parameter types are already evaluated.
+                method._params.type_evals = method._params.types
+                method._params.keyword_evals = {p.name: p for p in method._params.kw_params}
+
+                # Wrap the method with parameter type checking
+                method = wrap_with_type_checks(method, method._params)
+
+                stmts.append(Assignment(Target([attr], info=BUILTIN_INFO),
+                    BuiltinFunction(attr, method, info=BUILTIN_INFO)))
 
         super().__init__(cls.name, params,
             Block(stmts, info=BUILTIN_INFO), None)
 
 # Decorator for builtin classes, mainly just to attach a parameter specification and a name
-def builtin_class(name, *, params=None, types=[], kw_params={}):
+def builtin_class(name, *, params=None, types=[], var_params=None, kw_params={}):
     def wrap(cls):
         nonlocal kw_params
 
@@ -1385,7 +1407,7 @@ def builtin_class(name, *, params=None, types=[], kw_params={}):
             kw_params = [KeywordParam(k, v, NONE)
                     for k, v in kw_params.items()]
 
-            cls.params = Params(params, types, None, kw_params, None, info=BUILTIN_INFO)
+            cls.params = Params(params, types, var_params, kw_params, None, info=BUILTIN_INFO)
             # HACK: builtins don't get scoped/evaluated/etc. normally, so we trust that all of
             # the parameter types are already evaluated.
             cls.params.type_evals = types
@@ -1400,44 +1422,27 @@ def builtin_class(name, *, params=None, types=[], kw_params={}):
         return instance
     return wrap
 
+def wrap_with_type_checks(fn, params):
+    def inner(ctx, args, kwargs):
+        # Ignore the return value, just do the error checking
+        params.bind(fn, ctx, args, kwargs)
+
+        return fn(ctx, *args, **kwargs)
+    return inner
+
 # Decorator for builtin methods. This checks arguments, and annotates the functions so
 # it can be properly exposed to user-level code.
-def builtin_method(params=[], types=[], var_params=None):
+def builtin_method(params=[], types=[], var_params=None, kw_params={}):
+    kw_params = [KeywordParam(k, v, NONE)
+            for k, v in kw_params.items()]
     def wrap(fn):
         nonlocal params, types
         params = ['self'] + params
-        types = [None] + types
+        types = [SELF_TYPE] + types
 
-        def inner(ctx, args):
-            if var_params:
-                args_are_bad = len(args) < len(types)
-                mod = 'at least '
-                var_args = args[len(types):]
-                args = args[:len(types)]
-            else:
-                args_are_bad = len(args) != len(types)
-                mod = ''
-
-            if args_are_bad:
-                ctx.current_node.error('wrong number of arguments to %s.%s, '
-                        'expected %s%s, got %s' % (inner._cls.name, fn.__name__,
-                            mod, len(types), len(args)), ctx=ctx)
-
-            # Check argument types. Because the @builtin_method decorator is used in places
-            # where we generally can't use StrClass etc., we pass the raw String etc. types,
-            # and do a simple isinstance instead of a comparison with obj.get_obj_class().
-            for param, type, arg in zip(params, types, args):
-                if type is not None and not isinstance(arg, type):
-                    arg.error('bad type %s for argument %s, expected %s' % (
-                        get_type_name(ctx, arg), param, type), ctx=ctx)
-
-            if var_params:
-                args.append(var_args)
-
-            return fn(ctx, *args)
-
-        inner._is_builtin_method = True
-        return inner
+        fn._params = Params(params, types, var_params, kw_params, None, info=fn)
+        fn._is_builtin_method = True
+        return fn
     return wrap
 
 @builtin_class('NoneType')
@@ -1450,7 +1455,7 @@ class StrClass(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return String(arg.str(ctx), info=arg)
-    @builtin_method(['counted'], [String])
+    @builtin_method(['counted'], [SELF_TYPE])
     def count(ctx, self, counted):
         return Integer(self.value.count(counted.value), info=self)
     @builtin_method()
@@ -1465,23 +1470,23 @@ class StrClass(BuiltinClass):
     @builtin_method()
     def upper(ctx, self):
         return String(self.value.upper(), info=self)
-    @builtin_method(['prefix'], [String])
+    @builtin_method(['prefix'], [SELF_TYPE])
     def startswith(ctx, self, prefix):
         return Boolean(self.value.startswith(prefix.value), info=self)
-    @builtin_method(['suffix'], [String])
+    @builtin_method(['suffix'], [SELF_TYPE])
     def endswith(ctx, self, suffix):
         return Boolean(self.value.endswith(suffix.value), info=self)
-    @builtin_method(['pattern', 'repl'], [String, String])
+    @builtin_method(['pattern', 'repl'], [SELF_TYPE, SELF_TYPE])
     def replace(ctx, self, pattern, repl):
         return String(self.value.replace(pattern.value, repl.value), info=self)
-    @builtin_method(['splitter'], [String])
+    @builtin_method(['splitter'], [SELF_TYPE])
     def split(ctx, self, splitter):
         items = [String(s, info=self) for s in self.value.split(splitter.value)]
         return List(items, info=self)
-    @builtin_method(['args'], [None])
+    @builtin_method(['args'], [NONE])
     def join(ctx, self, args):
         return String(self.value.join(a.value for a in args), info=self)
-    @builtin_method(['encoding'], [String])
+    @builtin_method(['encoding'], [SELF_TYPE])
     def encode(ctx, self, encoding):
         if encoding.value not in {'ascii', 'utf-8'}:
             self.error('encoding must be one of "ascii" or "utf-8"', ctx=ctx)
@@ -1492,9 +1497,7 @@ class StrClass(BuiltinClass):
         # XXX create list of integers, as we don't yet have a 'bytes' object
         return List(list(Integer(i, info=self) for i in encoded), info=self)
     @builtin_method(var_params='args')
-    def format(ctx, self, args):
-        if not isinstance(self, String):
-            self.error('self is not a string', ctx=ctx)
+    def format(ctx, self, *args):
         args = [arg.str(ctx) for arg in args]
         return String(self.value.format(*args), info=self)
 
@@ -1520,7 +1523,7 @@ class ListClass(BuiltinClass):
     def eval_call(self, ctx, args, kwargs):
         [arg] = args
         return List(list(arg), info=arg)
-    @builtin_method(['item'], [None])
+    @builtin_method(['item'], [NONE])
     def index(ctx, self, item):
         return Integer(self.items.index(item), info=self)
 
