@@ -1197,10 +1197,11 @@ class Scope(Node):
         # up a context with the current values of said symbols, and making
         # the context available to the object. Objects may also need to do
         # further specialization at this point (e.g. evaluating types of params)
-        child_ctx = Context(self.expr.name, ctx, None)
         if isinstance(self.expr, Import):
+            child_ctx = Context(self.expr.name, None, None)
             child_ctx.fill_in_builtins()
         else:
+            child_ctx = Context(self.expr.name, ctx, None)
             for a in self.extra_args:
                 child_ctx.store(a, ctx.load(self, a))
         new_expr = copy.copy(self.expr)
