@@ -2,6 +2,10 @@
 ## Mutagen builtin functions ###################################################
 ################################################################################
 
+_stdin_handle = _GET_STDIN_HANDLE()
+_stdout_handle = _GET_STDOUT_HANDLE()
+_stderr_handle = _GET_STDERR_HANDLE()
+
 def reversed(iterable):
     i = len(iterable)
     while i > 0:
@@ -102,8 +106,8 @@ def all(gen):
             return False
     return True
 
-def print(*args):
-    return putstr(' '.join(map(str, args)) + '\n')
+def print(*args, sep=' ', end='\n'):
+    perform IOWriteEffect(_stdout_handle, sep.join(map(str, args)) + end)
 
 def isinstance(obj, cls):
     t = type(obj)

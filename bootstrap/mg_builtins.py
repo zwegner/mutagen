@@ -43,11 +43,6 @@ def mgb_write_binary_file(ctx, path, data):
         f.write(data)
     return NONE
 
-@mg_builtin([String])
-def mgb_putstr(ctx, arg):
-    sys.stdout.write(arg.value)
-    return NONE
-
 @mg_builtin([Node])
 def mgb_len(ctx, arg):
     return Integer(arg.len(ctx), info=arg)

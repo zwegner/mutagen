@@ -1,3 +1,5 @@
+import sys
+
 from syntax import *
 
 @builtin_class('IOHandle', params=[])
@@ -6,6 +8,10 @@ class BuiltinIOHandle(BuiltinClass):
 
 @builtin_class('IOOpenEffect', params=['path'], types=[StrClass], kw_params={'mode': StrClass})
 class BuiltinIOOpenEffect(BuiltinClass):
+    pass
+
+@builtin_class('IOCloseEffect', params=['handle'], types=[BuiltinIOHandle])
+class BuiltinIOCloseEffect(BuiltinClass):
     pass
 
 @builtin_class('IOReadEffect', params=['handle'], types=[BuiltinIOHandle])
@@ -32,6 +38,11 @@ def handle_open(ctx, effect):
     handle._handle = open(path.value, mode)
     raise ResumeExc(handle)
 
+def handle_close(ctx, effect):
+    handle = effect.get_attr(ctx, 'handle')
+    handle._handle.close()
+    raise ResumeExc(NONE)
+
 def handle_read(ctx, effect):
     handle = effect.get_attr(ctx, 'handle')
     raise ResumeExc(String(handle._handle.read(), info=BUILTIN_INFO))
@@ -43,8 +54,25 @@ def handle_write(ctx, effect):
     handle._handle.write(bytes.value)
     raise ResumeExc(NONE)
 
+# Create builtin functions to get default handles (stdin etc.). This is kinda ridiculous,
+# we can't create objects yet because we don't have a context, so we can't store these
+# directly in the builtins. And we do some dumb caching just for the hell of it.
+for name, stream in [['IN', sys.stdin], ['OUT', sys.stdout], ['ERR', sys.stderr]]:
+    name = '_GET_STD%s_HANDLE' % name
+    def capture(stream):
+        handle = None
+        def create(ctx, args, kwargs):
+            nonlocal handle
+            if not handle:
+                handle = BuiltinIOHandle.eval_call(ctx, [], {})
+                handle._handle = stream
+            return handle
+        return BuiltinFunction(name, create, info=BUILTIN_INFO)
+    builtins[name] = capture(stream)
+
 io_effect_handlers = [
     BuiltinEffectHandler(BuiltinIOOpenEffect, handle_open),
+    BuiltinEffectHandler(BuiltinIOCloseEffect, handle_close),
     BuiltinEffectHandler(BuiltinIOReadEffect, handle_read),
     BuiltinEffectHandler(BuiltinIOWriteEffect, handle_write),
 ]
