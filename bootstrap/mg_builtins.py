@@ -27,22 +27,6 @@ def mg_builtin(arg_types):
         return None
     return annotate
 
-# XXX hack
-@mg_builtin([String])
-def mgb_read_file(ctx, path):
-    with open(path.value) as f:
-        return String(f.read(), info=path)
-
-# XXX hack
-@mg_builtin([String, List])
-def mgb_write_binary_file(ctx, path, data):
-    if any(not isinstance(i, Integer) or not 0 <= i.value < 256 for i in data):
-        return data.error('data must be an array of integers from 0-255', ctx=ctx)
-    data = bytes(i.value for i in data)
-    with open(path.value, 'wb') as f:
-        f.write(data)
-    return NONE
-
 @mg_builtin([Node])
 def mgb_len(ctx, arg):
     return Integer(arg.len(ctx), info=arg)

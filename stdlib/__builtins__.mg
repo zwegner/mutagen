@@ -109,6 +109,17 @@ def all(gen):
 def print(*args, sep=' ', end='\n'):
     perform IOWriteEffect(_stdout_handle, sep.join(map(str, args)) + end)
 
+def read_file(path, mode='r'):
+    f = (perform IOOpenEffect(path, mode=mode))
+    result = (perform IOReadEffect(f))
+    perform IOCloseEffect(f)
+    return result
+
+def write_binary_file(path, data):
+    f = (perform IOOpenEffect(path, mode='wb'))
+    perform IOWriteEffect(f, data)
+    perform IOCloseEffect(f)
+
 def isinstance(obj, cls):
     t = type(obj)
     while t != cls and hasattr(t, '__parent__'):

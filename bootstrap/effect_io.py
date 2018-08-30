@@ -18,7 +18,7 @@ class BuiltinIOCloseEffect(BuiltinClass):
 class BuiltinIOReadEffect(BuiltinClass):
     pass
 
-@builtin_class('IOWriteEffect', params=['handle', 'bytes'], types=[BuiltinIOHandle, StrClass])
+@builtin_class('IOWriteEffect', params=['handle', 'data'], types=[BuiltinIOHandle, NONE])
 class BuiltinIOWriteEffect(BuiltinClass):
     pass
 
@@ -36,6 +36,7 @@ def handle_open(ctx, effect):
     assert isinstance(path, String)
     handle = BuiltinIOHandle.eval_call(ctx, [], {})
     handle._handle = open(path.value, mode)
+    handle._mode = mode
     raise ResumeExc(handle)
 
 def handle_close(ctx, effect):
@@ -45,13 +46,27 @@ def handle_close(ctx, effect):
 
 def handle_read(ctx, effect):
     handle = effect.get_attr(ctx, 'handle')
-    raise ResumeExc(String(handle._handle.read(), info=BUILTIN_INFO))
+    data = handle._handle.read()
+    if 'b' in handle._mode:
+        result = List([Integer(i, info=BUILTIN_INFO) for i in data], info=BUILTIN_INFO)
+    else:
+        result = String(data, info=BUILTIN_INFO)
+    raise ResumeExc(result)
 
 def handle_write(ctx, effect):
     handle = effect.get_attr(ctx, 'handle')
-    bytes = effect.get_attr(ctx, 'bytes')
-    assert isinstance(bytes, String)
-    handle._handle.write(bytes.value)
+    data = effect.get_attr(ctx, 'data')
+    if 'b' in handle._mode:
+        # XXX remove when we have a proper bytes class
+        if not isinstance(data, List) or any(not isinstance(i, Integer) or
+                not 0 <= i.value < 256 for i in data):
+            return data.error('data must be an array of integers from 0-255', ctx=ctx)
+        data = bytes(i.value for i in data)
+    else:
+        if not isinstance(data, String):
+            return data.error('data must be a string', ctx=ctx)
+        data = data.value
+    handle._handle.write(data)
     raise ResumeExc(NONE)
 
 # Create builtin functions to get default handles (stdin etc.). This is kinda ridiculous,
@@ -66,6 +81,7 @@ for name, stream in [['IN', sys.stdin], ['OUT', sys.stdout], ['ERR', sys.stderr]
             if not handle:
                 handle = BuiltinIOHandle.eval_call(ctx, [], {})
                 handle._handle = stream
+                handle._mode = ''
             return handle
         return BuiltinFunction(name, create, info=BUILTIN_INFO)
     builtins[name] = capture(stream)
