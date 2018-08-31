@@ -28,6 +28,9 @@ BUILTIN_INFO = sprdpl.lex.Info('__builtins__')
 # by a module that isn't depended on (right now, parse.py). Not pretty but it's simple.
 builtins = collections.OrderedDict()
 
+# Global variable to track the current innermost greenlet of execution for effect handling.
+EFFECT_CHILD = None
+
 # Constants to add to various classes' __hash__ implementation to distinguish their types.
 # Since the hash functions are based on a tuple of their child objects, we want to make
 # sure that [[0, 0]] has a different hash than {0: 0}, etc.
@@ -65,7 +68,6 @@ class Context:
         self.name = name
         self.current_node = None
         self.generator_child = None
-        self.effect_child = None
         self.parent_ctx = parent_ctx
         self.callsite_ctx = callsite_ctx
         self.syms = collections.OrderedDict()
@@ -827,6 +829,8 @@ class EffectHandler(Node):
 @node('&block, *handlers')
 class Consume(Node):
     def eval(self, ctx):
+        global EFFECT_CHILD
+
         # Sentinel to capture the return value of the block being evaluated (in case it's an expression)
         # so we can return it normally. The greenlet API is kinda weird.
         class DumbSentinel:
@@ -834,8 +838,8 @@ class Consume(Node):
                 self.value = value
 
         # Create a coroutine thread to run the consumed block.
-        current = ctx.effect_child
-        ctx.effect_child = greenlet.greenlet(lambda: DumbSentinel(self.block.eval(ctx)))
+        current = EFFECT_CHILD
+        EFFECT_CHILD = greenlet.greenlet(lambda: DumbSentinel(self.block.eval(ctx)))
 
         # Weird control flow sentinels. See comments below
         args = []
@@ -846,7 +850,7 @@ class Consume(Node):
             if pass_to_parent:
                 # Weird case: if pass_to_parent is True, we need to pass an effect up the chain to our
                 # parent block (if it exists). If/when a parent resumes the effect, it will jump directly into
-                # it (ctx.effect_child is still set, we only need to manually pass like this in one direction).
+                # it (EFFECT_CHILD is still set, we only need to manually pass like this in one direction).
                 # So this switch() call will only return when the child performs its next effect or returns,
                 # and we act like the return value here is the same as in the pass_to_parent=False case.
                 if current is None:
@@ -854,7 +858,7 @@ class Consume(Node):
                 effect = current.parent.switch(effect)
             else:
                 # Get the next effect from the consumed block. If it's None, the block is done.
-                effect = ctx.effect_child.switch(*args)
+                effect = EFFECT_CHILD.switch(*args)
 
             # Check for None as a return value from switch(). This is a sentinel value, which
             # means the block has finished.
@@ -877,7 +881,7 @@ class Consume(Node):
             #   that we resumed with in args, to pass back into the child in the next loop iteration.
             # Case 2: If the handler doesn't resume, we break completely out of the consume block.
             #   No values need to be marshaled around, so we can just return, but we do need to
-            #   reset ctx.effect_child so that the consumed block doesn't get restarted.
+            #   reset EFFECT_CHILD so that the consumed block doesn't get restarted.
             # Case 3: No matching handler is found. We catch this in the 'else' for the for loop.
             #   Because the parent handler will resume execution directly into the child (if it
             #   resumes; if it doesn't this whole consume block won't continue executing), we
@@ -889,23 +893,23 @@ class Consume(Node):
                 # XXX we reevaluate the type expression each time, this is dumb
                 type_eval = handler.type.eval(ctx)
                 if obj_type is type_eval:
-                    # More weirdness: reset ctx.effect_child to this thread while we're inside
+                    # More weirdness: reset EFFECT_CHILD to this thread while we're inside
                     # the effect handler. This means we can perform effects inside handlers,
                     # which is useful for wrapping/modifying effects. If the handler resumes,
-                    # we'll restore ctx.effect_child to the thread running our inner block.
-                    old_child = ctx.effect_child
-                    ctx.effect_child = current
+                    # we'll restore EFFECT_CHILD to the thread running our inner block.
+                    old_child = EFFECT_CHILD
+                    EFFECT_CHILD = current
                     try:
                         handler.handle_effect(ctx, effect)
                     except ResumeExc as r:
                         args = [r.value]
-                        ctx.effect_child = old_child
+                        EFFECT_CHILD = old_child
                         break
                     return return_value
             else:
                 pass_to_parent = True
 
-        ctx.effect_child = current
+        EFFECT_CHILD = current
         return return_value
 
     def repr(self, ctx):
