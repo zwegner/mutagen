@@ -1,27 +1,11 @@
+import random
+
 import asm from '../../compiler/asm.mg'
 import elf from '../../compiler/elf.mg'
 
-# RKISS algorithm
-def gen_rand_64(n):
-    def rol(x, y):
-        return (x << y) | (x >> 64 - y)
-    def int64(x):
-        return x & (1 << 64) - 1
-
-    rand_state = [0x8C84A911159F4017, 0x062C0B602809C02E, 0xA48B831518DEA5D7,
-            0x55AB3636D17F3AD3]
-    for i in range(n):
-        [a, b, c, d] = rand_state
-        e = a - rol(b, 7)
-        a = b ^ rol(c, 13)
-        b = c + rol(d, 37)
-        c = d + e
-        d = e + a
-        rand_state = [int64(a), int64(b), int64(c), int64(d)]
-        yield int64(d)
-
-def rand_select(l, i):
-    return [l[i % len(l)], i // len(l)]
+def rand_select(l):
+    r = (perform random.GetRandomInt64Effect())
+    return l[r % len(l)]
 
 regs = [asm.Register(i) for i in range(16)]
 bases = list(range(-1, 16))
@@ -33,36 +17,40 @@ imms = [0, 1, 7, 37, 0xFF, 0x100, 0xFFFFFF]
 
 labels = [asm.LocalLabel(l) for l in ['_start', '_end']]
 
-# Generate a bunch of random instructions. Should make sure this hits every
-# instruction somehow (random.shuffle?). This is also a good case for figuring
-# out some way to thread a stream of random numbers through for every place
-# that needs one.
 inst_specs = list(asm.get_inst_specs())
-insts = [asm.GlobalLabel('_start')]
-for rand in gen_rand_64(1000):
-    [inst_spec, rand] = rand_select(inst_specs, rand)
-    args = []
-    for arg_spec in inst_spec[1:]:
-        [arg_type, rand] = rand_select(arg_spec, rand)
-        if arg_type == 'r':
-            [arg, rand] = rand_select(regs, rand)
-        elif arg_type == 'a':
-            [base, rand] = rand_select(bases, rand)
-            if base == -1:
-                [scale, index] = [0, 0]
+
+# Generate a bunch of random instructions. Should make sure this hits every
+# instruction somehow (random.shuffle?). This is a function so we can provide
+# randomness by handling effects in random.handle_randomness().
+def gen_random_insts():
+    insts = [asm.GlobalLabel('_start')]
+    for i in range(500):
+        inst_spec = rand_select(inst_specs)
+        args = []
+        for arg_spec in inst_spec[1:]:
+            arg_type = rand_select(arg_spec)
+            if arg_type == 'r':
+                arg = rand_select(regs)
+            elif arg_type == 'a':
+                base = rand_select(bases)
+                if base == -1:
+                    [scale, index] = [0, 0]
+                else:
+                    scale = rand_select(scales)
+                    index = rand_select(indices)
+                disp = rand_select(imms)
+                arg = asm.Address(base, scale, index, disp)
+            elif arg_type == 'i':
+                arg = rand_select(imms)
+            elif arg_type == 'l':
+                arg = rand_select(labels)
             else:
-                [scale, rand] = rand_select(scales, rand)
-                [index, rand] = rand_select(indices, rand)
-            [disp, rand] = rand_select(imms, rand)
-            arg = asm.Address(base, scale, index, disp)
-        elif arg_type == 'i':
-            [arg, rand] = rand_select(imms, rand)
-        elif arg_type == 'l':
-            [arg, rand] = rand_select(labels, rand)
-        else:
-            assert False
-        args = args + [arg]
-    insts = insts + [asm.Instruction(inst_spec[0], *args)]
+                assert False
+            args = args + [arg]
+        insts = insts + [asm.Instruction(inst_spec[0], *args)]
+    return insts
+
+insts = random.handle_randomness(gen_random_insts)
 
 # Add the end label, plus an extra instruction, so objdump still prints it
 insts = insts + [asm.GlobalLabel('_end'), asm.Instruction('ret')]
