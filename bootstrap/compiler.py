@@ -17,72 +17,233 @@ def add_to(cls):
 # Machinery for 'smart' nodes in the IR graph, that track uses and can replace a given
 # node in all nodes that use it.
 
-# Edge class. This adds a layer of indirection, and is what is tracked by the node's
-# 'refs' attribute. The indirect values/nodes are accessed by calling the edge, i.e.
-# node.edge(), for brevity. Replacing the value is done by node.edge.set(value)
-class Edge:
-    def __init__(self, value):
-        self.value = value
-        if value is not None:
-            value.add_ref(self)
+class Usage:
+    def __init__(self, user, edge_name, type, index=None):
+        self.user = user
+        self.type = type
+        self.edge_name = edge_name
+        self.index = index
+    def replace_use(self, old_node, new_node):
+        if self.type in {ArgType.EDGE, ArgType.OPT}:
+            assert getattr(self.user, self.edge_name) is old_node
+            setattr(self.user, self.edge_name, new_node)
+        elif self.type in {ArgType.LIST, ArgType.DICT}:
+            container = getattr(self.user, self.edge_name)
+            assert container[self.index] is old_node
+            container[self.index] = new_node
 
-    def __call__(self):
-        return self.value
-
-    def set(self, value):
-        if self.value is not None:
-            self.value.remove_ref(self)
-        self.value = value
-        if value is not None:
-            value.add_ref(self)
-
-@add_to(syntax.Node)
-def add_ref(self, edge):
-    assert edge not in self.refs
-    self.refs.append(edge)
-
-@add_to(syntax.Node)
-def remove_ref(self, edge):
-    assert edge in self.refs
-    self.refs.remove(edge)
+        if old_node is not None:
+            old_node._uses.pop(old_node._uses.index(self))
+        if new_node is not None:
+            new_node._uses.append(self)
 
 @add_to(syntax.Node)
 def forward(self, new_value):
-    for edge in self.refs:
-        edge.set(new_value)
+    for usage in self._uses:
+        usage.replace_use(self, new_value)
+
+@add_to(syntax.Node)
+def remove_uses_by(self, user):
+    self._uses = [usage for usage in self._uses if usage.user is not user]
+
+def append_to_edge_list(node, name, item):
+    edge_list = getattr(node, name)
+    item._uses.append(Usage(node, name, ArgType.LIST, index=len(edge_list)))
+    edge_list.append(item)
+
+def set_edge_key(node, name, key, value):
+    edge_dict = getattr(node, name)
+    value._uses.append(Usage(node, name, ArgType.DICT, index=key))
+    edge_dict[key] = value
 
 def transform_to_graph(block):
-    seen = set()
-    for stmt in block:
-        # Iterate the graph in reverse depth-first order to get a topological ordering
-        for node in reversed(list(stmt.iterate_graph(seen))):
-            # First, add a list of references. This is used for value forwarding and
-            # (eventually) DCE.
-            node.refs = []
+    # Iterate the graph in reverse depth-first order to get a topological ordering
+    for node in reversed(list(block.iterate_graph())):
+        node._uses = []
+        # For every node that this node uses, add a Usage object to its _uses list.
+        for (arg_type, arg_name) in type(node).arg_defs:
+            child = getattr(node, arg_name)
+            if arg_type in {ArgType.EDGE, ArgType.OPT}:
+                if child is not None:
+                    child._uses.append(Usage(node, arg_name, arg_type))
+            elif arg_type in {ArgType.LIST, ArgType.DICT}:
+                children = enumerate(child) if arg_type == ArgType.LIST else child.items()
+                for index, item in children:
+                    item._uses.append(Usage(node, arg_name, arg_type, index=index))
 
-            # For every node that this node uses, replace the normal Python attribute
-            # with an Edge containing the same node.
-            for (arg_type, arg_name) in type(node).arg_defs:
-                if arg_type in (ArgType.EDGE, ArgType.OPT):
-                    child = getattr(node, arg_name)
-                    setattr(node, arg_name, Edge(child))
-                elif arg_type == ArgType.LIST:
-                    children = getattr(node, arg_name)
-                    setattr(node, arg_name, [Edge(child) for child in children])
-                elif arg_type == ArgType.DICT:
-                    children = getattr(node, arg_name)
-                    setattr(node, arg_name, collections.OrderedDict((Edge(key), Edge(value))
-                        for key, value in children.items()))
+################################################################################
+## CFG stuff ###################################################################
+################################################################################
+
+BLOCK_ID = 0
+@syntax.node('*stmts, *phis, *preds, ?test, *succs, #exit_states')
+class BasicBlock(syntax.Node):
+    def setup(self):
+        global BLOCK_ID
+        self.block_id = BLOCK_ID
+        BLOCK_ID += 1
+
+# Just a dumb helper because our @node() decorator doesn't support keyword args/defaults
+def basic_block(stmts=None, phis=None, preds=None, test=None, succs=None, exit_states=None):
+    return BasicBlock(stmts or [], phis or [], preds or [], test, succs or [],
+            exit_states or {}, info=syntax.BUILTIN_INFO)
+
+@syntax.node('name')
+class Phi(syntax.Node):
+    def setup(self):
+        self._uses = []
+    def repr(self, ctx):
+        return '<Phi "%s">' % self.name
+
+def link_blocks(pred, succ):
+    pred.succs.append(succ)
+    succ.preds.append(pred)
+
+def walk_blocks(block):
+    work_list = [block]
+    seen = {block}
+    while work_list:
+        block = work_list.pop(0)
+        yield block
+        new = [succ for succ in block.succs if succ not in seen]
+        work_list.extend(new)
+        seen.update(new)
+
+def print_blocks(block):
+    for block in walk_blocks(block):
+        print('Block', block.block_id)
+        print('  preds:', ' '.join([str(b.block_id) for b in block.preds]))
+        print('  succs:', ' '.join([str(b.block_id) for b in block.succs]))
+        if block.phis:
+            print('  phis:')
+            for phi in block.phis:
+                print('    ', phi.repr(None))
+        if block.stmts:
+            print('  stmts:')
+            for stmt in block.stmts:
+                print('    ', stmt.repr(None))
+        if block.test:
+            print('  test', block.test.repr(None))
+
+@add_to(syntax.Node)
+def gen_blocks(self, current):
+    for child in self.iterate_children():
+        if child:
+            current = child.gen_blocks(current)
+    return None
+
+@add_to(syntax.Block)
+def gen_blocks(self, current):
+    for stmt in self.stmts:
+        result = stmt.gen_blocks(current)
+        if result:
+            current = result
+        else:
+            current.stmts.append(stmt)
+    return current
+
+@add_to(syntax.While)
+def gen_blocks(self, current):
+    test_block = basic_block(test=self.expr)
+    first = basic_block()
+    exit_block = basic_block()
+
+    last = self.block.gen_blocks(first)
+    test_block_last = self.expr.gen_blocks(test_block)
+    assert test_block == test_block_last
+
+    link_blocks(current, test_block)
+    link_blocks(test_block, first)
+    link_blocks(test_block, exit_block)
+    link_blocks(last, test_block)
+    return exit_block
+
+@add_to(syntax.IfElse)
+def gen_blocks(self, current):
+    assert not current.test
+    self.expr.gen_blocks(current)
+    current.test = self.expr
+    if_first = basic_block()
+    if_last = self.if_block.gen_blocks(if_first)
+    else_first = basic_block()
+    else_last = self.else_block.gen_blocks(else_first)
+    exit_block = basic_block()
+    link_blocks(current, if_first)
+    link_blocks(current, else_first)
+    link_blocks(if_last, exit_block)
+    link_blocks(else_last, exit_block)
+    return exit_block
+
+################################################################################
+## SSA stuff ###################################################################
+################################################################################
+
+def gen_ssa(block):
+    first_block = basic_block()
+    last = block.gen_blocks(first_block)
+
+    for block in walk_blocks(first_block):
+        statements = []
+        for stmt in block.stmts:
+            for node in reversed(list(stmt.iterate_graph())):
+                # Handle loads
+                if isinstance(node, syntax.Identifier):
+                    if node.name in block.exit_states:
+                        value = block.exit_states[node.name]
+                    else:
+                        value = Phi(node.name, info=node)
+                        append_to_edge_list(block, 'phis', value)
+                        set_edge_key(block, 'exit_states', node.name, value)
+                    node.forward(value)
+                # Handle stores
+                elif isinstance(node, syntax.Assignment):
+                    for target in node.target.targets:
+                        # XXX destructuring assignment is more complicated, we would need to desugar it
+                        # to involve temporaries and indexing
+                        assert isinstance(target, str)
+                        set_edge_key(block, 'exit_states', target, node.rhs)
+                elif isinstance(node, syntax.Target):
+                    pass
+                else:
+                    statements.append(node)
+
+            # XXX need to prevent deletion here eventually
+            stmt.remove_uses_by(block)
+
+        block.stmts = []
+        for stmt in statements:
+            append_to_edge_list(block, 'stmts', stmt)
+
+    # Propagate phis backwards through the CFG
+    def propagate_phi(block, phi_name):
+        for pred in block.preds:
+            if phi_name not in pred.exit_states:
+                value = Phi(phi_name, info=node)
+                append_to_edge_list(pred, 'phis', value)
+                set_edge_key(pred, 'exit_states', phi_name, value)
+                propagate_phi(pred, phi_name)
+
+    for block in walk_blocks(first_block):
+        for phi in block.phis:
+            propagate_phi(block, phi.name)
+
+    return first_block
 
 def compile(path, print_program=False):
     ctx = syntax.Context('__main__', None, None)
     try:
-        block = parse.parse(path, ctx=ctx)
+        stmts = parse.parse(path, import_builtins=False, eval_ctx=ctx)
     except libparse.ParseError as e:
-        e.print_and_exit()
-    syntax.preprocess_program(ctx, block)
+        e.print()
+        sys.exit(1)
+    block = syntax.Block(stmts, info=syntax.BUILTIN_INFO)
+    block = parse.preprocess_program(ctx, block, include_io_handlers=False)
 
     transform_to_graph(block)
+
+    first_block = gen_ssa(block)
+
+    print_blocks(first_block)
 
 def main(args):
     compile(args[1])

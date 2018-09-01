@@ -401,8 +401,9 @@ def parse(path, import_builtins=True, eval_ctx=None):
     module_cache[path] = block[:]
     return block
 
-def preprocess_program(ctx, stmt):
-    stmt = effect_io.wrap_with_io_consumer(ctx, stmt)
+def preprocess_program(ctx, stmt, include_io_handlers=True):
+    if include_io_handlers:
+        stmt = effect_io.wrap_with_io_consumer(ctx, stmt)
     analyze_scoping(ctx, stmt)
     return stmt
 
