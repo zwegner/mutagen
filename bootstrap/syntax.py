@@ -202,6 +202,9 @@ def node(arg_spec='', compare=False, base_type=None, ops=[]):
             if hasattr(self, 'setup'):
                 self.setup()
 
+            # XXX kinda nasty, put this here for possible use by compiler.py later
+            self._uses = []
+
         # Iterate through all child nodes of this node
         def iterate_children(self):
             for (arg_type, arg_name) in args:
@@ -577,28 +580,31 @@ class UnaryOp(Node):
     def repr(self, ctx):
         return '(%s %s)' % (self.type, self.rhs.repr(ctx))
 
+BINARY_OP_TABLE = {
+    '==': 'eq',
+    '!=': 'ne',
+    '>':  'gt',
+    '>=': 'ge',
+    '>>': 'rshift',
+    '<':  'lt',
+    '<=': 'le',
+    '<<': 'lshift',
+    '+':  'add',
+    '-':  'sub',
+    '*':  'mul',
+    '**': 'pow',
+    '//': 'floordiv',
+    '%':  'mod',
+    '&':  'and',
+    '|':  'or',
+    '^':  'xor',
+    'in': 'contains',
+}
+BINARY_OP_TABLE = {k: '__%s__' % v for k, v in BINARY_OP_TABLE.items()}
+
 def eval_binary_op(self, ctx, operator, lhs, rhs):
     # This is a bit of an abuse of Python operator overloading! Oh well...
-    operator = '__%s__' % {
-        '==': 'eq',
-        '!=': 'ne',
-        '>':  'gt',
-        '>=': 'ge',
-        '>>': 'rshift',
-        '<':  'lt',
-        '<=': 'le',
-        '<<': 'lshift',
-        '+':  'add',
-        '-':  'sub',
-        '*':  'mul',
-        '**': 'pow',
-        '//': 'floordiv',
-        '%':  'mod',
-        '&':  'and',
-        '|':  'or',
-        '^':  'xor',
-        'in': 'contains',
-    }[operator]
+    operator = BINARY_OP_TABLE[operator]
 
     overloaded = lhs.overload(ctx, operator, [rhs])
     if overloaded is not None:

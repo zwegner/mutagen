@@ -32,8 +32,9 @@ class Usage:
             assert container[self.index] is old_node
             container[self.index] = new_node
 
-        if old_node is not None:
-            old_node._uses.pop(old_node._uses.index(self))
+        #if old_node is not None:
+        #    old_node._uses.pop(old_node._uses.index(self))
+
         if new_node is not None:
             new_node._uses.append(self)
 
@@ -41,6 +42,7 @@ class Usage:
 def forward(self, new_value):
     for usage in self._uses:
         usage.replace_use(self, new_value)
+    self._uses = []
 
 @add_to(syntax.Node)
 def remove_uses_by(self, user):
@@ -90,8 +92,6 @@ def basic_block(stmts=None, phis=None, preds=None, test=None, succs=None, exit_s
 
 @syntax.node('name')
 class Phi(syntax.Node):
-    def setup(self):
-        self._uses = []
     def repr(self, ctx):
         return '<Phi "%s">' % self.name
 
@@ -139,7 +139,7 @@ def gen_blocks(self, current):
         if result:
             current = result
         else:
-            current.stmts.append(stmt)
+            append_to_edge_list(current, 'stmts', stmt)
     return current
 
 @add_to(syntax.While)
@@ -229,6 +229,43 @@ def gen_ssa(block):
 
     return first_block
 
+DCE_WHITELIST = {syntax.BinaryOp, syntax.Integer}
+
+def simplify_blocks(first_block):
+    # Basic simplification pass
+    for block in walk_blocks(first_block):
+        for stmt in block.stmts:
+            if isinstance(stmt, syntax.BinaryOp):
+                if isinstance(stmt.lhs, syntax.Integer) and isinstance(stmt.rhs, syntax.Integer):
+                    if stmt.type not in {'and', 'or'}:
+                        [lhs, rhs] = [stmt.lhs.value, stmt.rhs.value]
+                        op = syntax.BINARY_OP_TABLE[stmt.type]
+                        result = getattr(lhs, op)(rhs)
+                        stmt.forward(syntax.Integer(result, info=stmt))
+                        # XXX this should not have to be done manually
+                        stmt.lhs.remove_uses_by(stmt)
+                        stmt.rhs.remove_uses_by(stmt)
+
+    # Run DCE
+    any_removed = True
+    while any_removed:
+        any_removed = False
+        for block in walk_blocks(first_block):
+            statements = []
+            for stmt in block.stmts:
+                if type(stmt) in DCE_WHITELIST and len(stmt._uses) == 1:
+                    assert stmt._uses[0].user == block
+                    any_removed = True
+                else:
+                    statements.append(stmt)
+
+                # XXX need to prevent deletion here eventually
+                stmt.remove_uses_by(block)
+
+            block.stmts = []
+            for stmt in statements:
+                append_to_edge_list(block, 'stmts', stmt)
+
 def compile(path, print_program=False):
     ctx = syntax.Context('__main__', None, None)
     try:
@@ -242,6 +279,8 @@ def compile(path, print_program=False):
     transform_to_graph(block)
 
     first_block = gen_ssa(block)
+
+    simplify_blocks(first_block)
 
     print_blocks(first_block)
 
