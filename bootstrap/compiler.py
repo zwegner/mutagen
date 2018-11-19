@@ -189,6 +189,15 @@ def gen_blocks(self, current):
     link_blocks(else_last, exit_block)
     return exit_block
 
+# Conditional expressions are, up until this point, a wrapper around IfElse that evaluates to a
+# a variable set in each branch. Now that we're using a graph representation, we can generate the
+# CFG for the IfElse, and forward the variable, and thus forget about this CondExpr.
+@add_to(syntax.CondExpr)
+def gen_blocks(self, current):
+    current = self.if_else.gen_blocks(current)
+    self.forward(self.result)
+    return current
+
 ################################################################################
 ## SSA stuff ###################################################################
 ################################################################################

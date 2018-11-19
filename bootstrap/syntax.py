@@ -952,11 +952,20 @@ class IfElse(Node):
             else_block = '\nelse%s' % self.else_block.repr(ctx)
         return 'if %s%s%s' % (self.expr.repr(ctx), self.if_block.repr(ctx), else_block)
 
-# A special subclass of if-else blocks for conditional expressions, just to print them properly
-class CondExpr(IfElse):
+# Conditional expressions are a weird case. We used to just subclass IfElse and print it differently,
+# but needing to use blocks as expressions is hard to handle downstream. So in the parser, we desugar
+# conditional expressions to a regular if-else with assignments to a temp, followed by a load of that temp.
+@node('&if_else, &result')
+class CondExpr(Node):
+    def eval(self, ctx):
+        self.if_else.eval(ctx)
+        return self.result.eval(ctx)
     def repr(self, ctx):
-        return '(%s if %s else %s)' % (self.if_block.repr(ctx), self.expr.repr(ctx),
-            self.else_block.repr(ctx))
+        # Weird resugaring--should maybe sanity check here but its too annoying
+        if_expr = self.if_else.if_block.stmts[0].rhs
+        else_expr = self.if_else.else_block.stmts[0].rhs
+        return '(%s if %s else %s)' % (if_expr.repr(ctx), self.if_else.expr.repr(ctx),
+                else_expr.repr(ctx))
 
 @node('&target, &expr, &block')
 class For(Node):

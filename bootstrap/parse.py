@@ -169,7 +169,17 @@ rule_table += [
 @libparse.rule_fn(rule_table, 'test', 'or_test [IF or_test ELSE test]')
 def parse_test(p):
     if p[1]:
-        return CondExpr(p[1][1], p[0], p[1][3])
+        # Create a temporary variable to write in for the desugaring. Since the writes are
+        # followed immediately by the loads after the control flow jump, we don't need to worry
+        # about different conditional expressions overwriting the value.
+        temp_id = '$COND_EXPR_TEMP'
+        temp = Target([temp_id], info=p.get_info(0))
+
+        if_block = Block([Assignment(temp, p[0])], info=p.get_info(0))
+        else_block = Block([Assignment(temp, p[1][3])], info=p.get_info(0))
+
+        if_else = IfElse(p[1][1], if_block, else_block)
+        return CondExpr(if_else, Identifier(temp_id, info=p.get_info(0)))
     return p[0]
 
 rule_table += [
