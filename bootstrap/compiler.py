@@ -32,21 +32,31 @@ class Usage:
             assert container[self.index] is old_node
             container[self.index] = new_node
 
-        #if old_node is not None:
-        #    old_node._uses.pop(old_node._uses.index(self))
+        if old_node is not None:
+            old_node._uses.pop(old_node._uses.index(self))
 
         if new_node is not None:
             new_node._uses.append(self)
 
 @add_to(syntax.Node)
 def forward(self, new_value):
-    for usage in self._uses:
-        usage.replace_use(self, new_value)
-    self._uses = []
+    while self._uses:
+        self._uses[0].replace_use(self, new_value)
 
 @add_to(syntax.Node)
 def remove_uses_by(self, user):
+    # How much usage could a usage user use if a usage user could use usage?
     self._uses = [usage for usage in self._uses if usage.user is not user]
+
+def set_edge(node, name, value):
+    old = getattr(node, name)
+    if old is not None:
+        old.remove_uses_by(node)
+    setattr(node, name, value)
+    if value is not None:
+        # XXX ArgType.EDGE is not necessarily accurate, for now rely on identical handling
+        # of EDGE/OPT for Usage, cuz I'm lazy
+        value._uses.append(Usage(node, name, ArgType.EDGE))
 
 def append_to_edge_list(node, name, item):
     edge_list = getattr(node, name)
@@ -130,39 +140,38 @@ def gen_blocks(self, current):
     for child in self.iterate_children():
         if child:
             current = child.gen_blocks(current)
-    return None
+    return current
 
 @add_to(syntax.Block)
 def gen_blocks(self, current):
     for stmt in self.stmts:
-        result = stmt.gen_blocks(current)
-        if result:
-            current = result
-        else:
+        current = stmt.gen_blocks(current)
+        # Hacky way to check for default implementation
+        if type(stmt).gen_blocks is syntax.Node.gen_blocks:
             append_to_edge_list(current, 'stmts', stmt)
     return current
 
 @add_to(syntax.While)
 def gen_blocks(self, current):
-    test_block = basic_block(test=self.expr)
     first = basic_block()
-    exit_block = basic_block()
-
     last = self.block.gen_blocks(first)
-    test_block_last = self.expr.gen_blocks(test_block)
-    assert test_block == test_block_last
 
+    test_block = basic_block()
+    test_block_last = self.expr.gen_blocks(test_block)
+    set_edge(test_block_last, 'test', self.expr)
+
+    exit_block = basic_block()
     link_blocks(current, test_block)
-    link_blocks(test_block, first)
-    link_blocks(test_block, exit_block)
+    link_blocks(test_block_last, first)
+    link_blocks(test_block_last, exit_block)
     link_blocks(last, test_block)
     return exit_block
 
 @add_to(syntax.IfElse)
 def gen_blocks(self, current):
+    current = self.expr.gen_blocks(current)
     assert not current.test
-    self.expr.gen_blocks(current)
-    current.test = self.expr
+    set_edge(current, 'test', self.expr)
     if_first = basic_block()
     if_last = self.if_block.gen_blocks(if_first)
     else_first = basic_block()
@@ -178,6 +187,29 @@ def gen_blocks(self, current):
 ## SSA stuff ###################################################################
 ################################################################################
 
+def gen_ssa_for_stmt(block, statements, stmt):
+    for node in reversed(list(stmt.iterate_graph())):
+        # Handle loads
+        if isinstance(node, syntax.Identifier):
+            if node.name in block.exit_states:
+                value = block.exit_states[node.name]
+            else:
+                value = Phi(node.name, info=node)
+                append_to_edge_list(block, 'phis', value)
+                set_edge_key(block, 'exit_states', node.name, value)
+            node.forward(value)
+        # Handle stores
+        elif isinstance(node, syntax.Assignment):
+            for target in node.target.targets:
+                # XXX destructuring assignment is more complicated, we would need to desugar it
+                # to involve temporaries and indexing
+                assert isinstance(target, str)
+                set_edge_key(block, 'exit_states', target, node.rhs)
+        elif isinstance(node, syntax.Target):
+            pass
+        else:
+            statements.append(node)
+
 def gen_ssa(block):
     first_block = basic_block()
     last = block.gen_blocks(first_block)
@@ -185,47 +217,30 @@ def gen_ssa(block):
     for block in walk_blocks(first_block):
         statements = []
         for stmt in block.stmts:
-            for node in reversed(list(stmt.iterate_graph())):
-                # Handle loads
-                if isinstance(node, syntax.Identifier):
-                    if node.name in block.exit_states:
-                        value = block.exit_states[node.name]
-                    else:
-                        value = Phi(node.name, info=node)
-                        append_to_edge_list(block, 'phis', value)
-                        set_edge_key(block, 'exit_states', node.name, value)
-                    node.forward(value)
-                # Handle stores
-                elif isinstance(node, syntax.Assignment):
-                    for target in node.target.targets:
-                        # XXX destructuring assignment is more complicated, we would need to desugar it
-                        # to involve temporaries and indexing
-                        assert isinstance(target, str)
-                        set_edge_key(block, 'exit_states', target, node.rhs)
-                elif isinstance(node, syntax.Target):
-                    pass
-                else:
-                    statements.append(node)
+            add_stmt = gen_ssa_for_stmt(block, statements, stmt)
 
             # XXX need to prevent deletion here eventually
             stmt.remove_uses_by(block)
+
+        if block.test:
+            gen_ssa_for_stmt(block, statements, block.test)
 
         block.stmts = []
         for stmt in statements:
             append_to_edge_list(block, 'stmts', stmt)
 
     # Propagate phis backwards through the CFG
-    def propagate_phi(block, phi_name):
+    def propagate_phi(block, phi):
         for pred in block.preds:
-            if phi_name not in pred.exit_states:
-                value = Phi(phi_name, info=node)
+            if phi.name not in pred.exit_states:
+                value = Phi(phi.name, info=phi)
                 append_to_edge_list(pred, 'phis', value)
-                set_edge_key(pred, 'exit_states', phi_name, value)
-                propagate_phi(pred, phi_name)
+                set_edge_key(pred, 'exit_states', phi.name, value)
+                propagate_phi(pred, phi)
 
     for block in walk_blocks(first_block):
         for phi in block.phis:
-            propagate_phi(block, phi.name)
+            propagate_phi(block, phi)
 
     return first_block
 
