@@ -22,13 +22,6 @@ class BuiltinIOReadEffect(BuiltinClass):
 class BuiltinIOWriteEffect(BuiltinClass):
     pass
 
-@node('&type, fn')
-class BuiltinEffectHandler(EffectHandler):
-    def handle_effect(self, ctx, effect):
-        self.fn(ctx, effect)
-    def repr(self, ctx):
-        return '<builtin effect handler %s>' % self.fn.__name__
-
 def handle_open(ctx, effect):
     path = effect.get_attr(ctx, 'path')
     mode = effect.get_attr(ctx, 'mode')

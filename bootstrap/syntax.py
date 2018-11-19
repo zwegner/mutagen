@@ -838,6 +838,13 @@ class EffectHandler(Node):
     def repr(self, ctx):
         return 'effect %s as %s%s' % (self.type.repr(ctx), self.effect_target.repr(ctx), self.block.repr(ctx))
 
+@node('&type, fn')
+class BuiltinEffectHandler(EffectHandler):
+    def handle_effect(self, ctx, effect):
+        self.fn(ctx, effect)
+    def repr(self, ctx):
+        return '<builtin effect handler %s>' % self.fn.__name__
+
 @node('&block, *handlers')
 class Consume(Node):
     def eval(self, ctx):
