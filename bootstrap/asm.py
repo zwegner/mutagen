@@ -147,7 +147,6 @@ arg1_table = {
     'not': 2,
     'neg': 3,
     'mul': 4,
-    'imul': 5,
     'div': 6,
     'idiv': 7,
 }
@@ -218,7 +217,7 @@ canon_table = {prefix + cond: prefix + canon for [cond, canon] in cond_canon.ite
         for prefix in ['j', 'set']}
 
 destructive_ops = set(list(arg2_table.keys()) + list(shift_table.keys()) +
-        list(setcc_table.keys()) + ['lea', 'pop']) - {'cmp'}
+        list(setcc_table.keys()) + ['imul', 'lea', 'pop']) - {'cmp'}
 no_reg_ops = {'cmp', 'test'}
 
 jump_ops = set(list(jump_table.keys()) + ['jmp'])
@@ -328,6 +327,12 @@ class Instruction:
             [dst] = self.args
             assert isinstance(dst, Register)
             return rex(0, 0, dst) + [0x58 | (dst.index & 7)]
+        elif self.opcode == 'imul':
+            # XXX only 2-operand version for now
+            [dst, src] = self.args
+            assert isinstance(src, Register) or isinstance(src, Address)
+            assert isinstance(dst, Register)
+            return rex(w, dst, src) + [0x0F, 0xAF] + mod_rm_sib(dst, src)
         elif self.opcode == 'xchg':
             [dst, src] = self.args
             assert isinstance(src, Register)
@@ -481,6 +486,7 @@ def get_inst_specs():
         yield ['push', 'ri']
         yield ['pop', 'r']
 
+        yield ['imul{}'.format(size), 'r', 'ra']
         yield ['xchg{}'.format(size), 'ra', 'r']
         yield ['lea{}'.format(size), 'r', 'a']
         yield ['test{}'.format(size), 'ra', 'r']

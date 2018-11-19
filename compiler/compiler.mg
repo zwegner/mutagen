@@ -343,6 +343,8 @@ def simplify_node(graph, ctx, node):
                 result = lhs + rhs
             elif node.op == '-':
                 result = lhs - rhs
+            elif node.op == '*':
+                result = lhs * rhs
             elif node.op == '&':
                 result = lhs & rhs
             elif node.op == '|':
@@ -397,6 +399,7 @@ def simplify_blocks(graph, ctx, first_block):
 BINOP_TABLE = {
     '+': ['__add__', lir.add64],
     '-': ['__sub__', lir.sub64],
+    '*': ['__mul__', lir.mul64],
     '&': ['__and__', lir.and64],
     '|': ['__or__',  lir.or64],
 }
