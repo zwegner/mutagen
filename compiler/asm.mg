@@ -477,14 +477,14 @@ def get_inst_specs():
                 [src2, src1] = [src1, src2]
             yield ['{}{}'.format(inst, size), 'r', src1, src2]
 
-        # Push/pop don't have a 32-bit operand encoding in 64-bit mode...
-        yield ['push', 'ri']
-        yield ['pop', 'r']
-
         yield ['imul{}'.format(size), 'r', 'ra']
         yield ['xchg{}'.format(size), 'ra', 'r']
         yield ['lea{}'.format(size), 'r', 'a']
         yield ['test{}'.format(size), 'ra', 'r']
+
+    # Push/pop don't have a 32-bit operand encoding in 64-bit mode...
+    yield ['push', 'ri']
+    yield ['pop', 'r']
 
     # Make sure all of the condition codes are tested, to test canonicalization
     for [cond, code] in Instruction.jump_table:
