@@ -4,9 +4,15 @@ import sys
 
 import sprdpl.parse as libparse
 
+import asm
+import dumb_regalloc
+import lir
 import parse
 import syntax
 from syntax import ArgType
+
+# Dumb alias
+BI = syntax.BUILTIN_INFO
 
 def add_to(cls):
     def deco(fn):
@@ -98,7 +104,7 @@ class BasicBlock(syntax.Node):
 # Just a dumb helper because our @node() decorator doesn't support keyword args/defaults
 def basic_block(stmts=None, phis=None, preds=None, test=None, succs=None, exit_states=None):
     return BasicBlock(stmts or [], phis or [], preds or [], test, succs or [],
-            exit_states or {}, info=syntax.BUILTIN_INFO)
+            exit_states or {}, info=BI)
 
 @syntax.node('name')
 class Phi(syntax.Node):
@@ -281,6 +287,94 @@ def simplify_blocks(first_block):
             for stmt in statements:
                 append_to_edge_list(block, 'stmts', stmt)
 
+BINOP_TABLE = {
+    '+': lir.add64,
+    '-': lir.sub64,
+    '*': lir.mul64,
+    '&': lir.and64,
+    '|': lir.or64,
+}
+CMP_TABLE = {
+    '<': 'l',
+    '<=': 'le',
+    '==': 'e',
+    '>=': 'ge',
+    '>': 'g',
+}
+
+def gen_lir_for_node(node):
+    if isinstance(node, Phi):
+        return lir.phi_ref(node.name)
+    elif isinstance(node, syntax.BinaryOp):
+        if node.type in BINOP_TABLE:
+            fn = BINOP_TABLE[node.type]
+            return fn(lir.NR(node.lhs), lir.NR(node.rhs))
+        elif node.type in CMP_TABLE:
+            cc = CMP_TABLE[node.type]
+            return [lir.cmp64(lir.NR(node.lhs), lir.NR(node.rhs)), lir.Inst('set' + cc)]
+        assert False, str(node)
+    elif isinstance(node, syntax.Parameter):
+        return lir.parameter(node.index)
+    elif isinstance(node, syntax.Integer):
+        return lir.mov64(node.value)
+    elif isinstance(node, syntax.Call):
+        # Stupid temporary hack
+        assert isinstance(node.fn, Phi)
+        fn = node.fn.name
+        if fn in {'test', 'test2', 'deref', 'atoi'}:
+            fn = asm.ExternLabel('_' + fn)
+
+        return lir.call(fn, *[lir.NR(arg) for arg in node.args])
+    elif isinstance(node, syntax.Return):
+        return lir.ret(lir.NR(node.expr))
+    assert False, str(node)
+
+def block_name(block):
+    return 'block$%s' % block.block_id
+
+def block_label(block):
+    return asm.LocalLabel(block_name(block))
+
+def generate_lir(first_block):
+    node_map = lir.NodeDict()
+    new_blocks = []
+
+    for block in walk_blocks(first_block):
+        instructions = []
+        phis = []
+
+        for phi in block.phis:
+            args = [pred.exit_states[phi.name] for pred in block.preds]
+            node_map[phi] = [block_name(block), phi.name]
+            phis.append(lir.phi(phi.name, args))
+
+        for stmt in block.stmts:
+            assert stmt not in node_map
+            insts = gen_lir_for_node(stmt)
+            if not isinstance(insts, list):
+                insts = [insts]
+            instructions.extend(insts)
+            node_map[stmt] = [block_name(block), len(instructions) - 1]
+
+        if block.test:
+            [if_label, else_label] = [block_label(succ) for succ in block.succs]
+            # XXX for now use two jumps, don't rely on physical ordering
+            instructions += [
+                lir.test64(lir.NR(block.test), lir.NR(block.test)),
+                lir.jnz(if_label),
+                lir.jmp(else_label),
+            ]
+        elif len(block.succs) == 1:
+            instructions.append(lir.jmp(block_label(block.succs[0])))
+        else:
+            # Kinda hacky: add a jump to the exit block, since we don't rely on physical ordering
+            instructions.append(lir.jmp(asm.LocalLabel('exit')))
+            assert not block.succs
+
+        new_blocks.append(dumb_regalloc.BasicBlock(block_name(block), phis, instructions))
+
+    return [node_map, new_blocks]
+
 def compile(path, print_program=False):
     ctx = syntax.Context('__main__', None, None)
     try:
@@ -288,7 +382,14 @@ def compile(path, print_program=False):
     except libparse.ParseError as e:
         e.print()
         sys.exit(1)
-    block = syntax.Block(stmts, info=syntax.BUILTIN_INFO)
+
+    # Create a prelude with the standard C main parameters
+    parameters = ['argc', 'argv']
+    prelude = [syntax.Assignment(syntax.Target([name], info=BI), syntax.Parameter(i, info=BI), info=BI)
+            for i, name in enumerate(parameters)]
+    stmts = prelude + stmts
+
+    block = syntax.Block(stmts, info=BI)
     block = parse.preprocess_program(ctx, block, include_io_handlers=False)
 
     transform_to_graph(block)
@@ -298,6 +399,13 @@ def compile(path, print_program=False):
     simplify_blocks(first_block)
 
     print_blocks(first_block)
+
+    node_map, lir_blocks = generate_lir(first_block)
+
+    # Create a main function with all the code in it (no user-defined functions for now)
+    fn = dumb_regalloc.Function(parameters, lir_blocks, node_map)
+
+    dumb_regalloc.export_functions('elfout.o', {'_main': fn})
 
 def main(args):
     compile(args[1])

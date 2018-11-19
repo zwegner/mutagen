@@ -318,6 +318,12 @@ class None_(Node):
 NONE = None_(info=BUILTIN_INFO)
 None_.__init__ = None
 
+# Just a proxy for an ABI function argument, used in the compiler
+@node('index')
+class Parameter(Node):
+    def repr(self, ctx):
+        return 'Param(%s)' % self.index
+
 @node('name')
 class Identifier(Node):
     def eval(self, ctx):
