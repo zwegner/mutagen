@@ -68,6 +68,16 @@ def test_scoping():
         return y + z
 test_scoping()
 
+def test_nested_scoping(a):
+    def child(b):
+        def child(c):
+            def child(d):
+                return a + b + c + d
+            return child('d')
+        return child('c')
+    return child('b')
+assert test_nested_scoping('a') == 'abcd'
+
 # Test parameter errors
 def test_fn(a: int, b: str, c: int = 1234):
     return str(a) + b + str(c)

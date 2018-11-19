@@ -30,6 +30,7 @@ print(type(None))
 
 # Test list operations
 print([0] + [1])
+print([0] * -5)
 print([0] * 0)
 print([0] * 1)
 print([0] * 20)

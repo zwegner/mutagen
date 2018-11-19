@@ -7,6 +7,19 @@ import tempfile
 
 root_dir = os.path.dirname(os.path.dirname(sys.path[0]))
 
+def diff_strings(a, b):
+    if a != b:
+        with tempfile.NamedTemporaryFile() as f1:
+            f1.write(a.encode('ascii'))
+            f1.flush()
+            with tempfile.NamedTemporaryFile() as f2:
+                f2.write(b.encode('ascii'))
+                f2.flush()
+                subprocess.call(['diff', f1.name, f2.name])
+
+        sys.exit(1)
+
+raw_outputs = []
 for exec_path in [['python3', '%s/tests/raw/test_asm.py' % root_dir],
         ['%s/bootstrap/parse.py' % root_dir, '%s/tests/raw/test_asm.mg' % root_dir]]:
     # Create a temporary directory to take care of any files we create
@@ -14,6 +27,7 @@ for exec_path in [['python3', '%s/tests/raw/test_asm.py' % root_dir],
         os.chdir(tmp_dir)
 
         raw_output = subprocess.check_output(exec_path).decode('ascii')
+        raw_outputs.append(raw_output)
 
         dump_output = subprocess.check_output(['gobjdump', '--no-show-raw-insn',
             '-Mintel', '-D', 'elfout.o']).decode('ascii')
@@ -42,14 +56,8 @@ for exec_path in [['python3', '%s/tests/raw/test_asm.py' % root_dir],
     lines.append('')
     dump_output = '\n'.join(lines)
 
-    if raw_output != dump_output:
-        with tempfile.NamedTemporaryFile() as f1:
-            f1.write(raw_output.encode('ascii'))
-            f1.flush()
-            with tempfile.NamedTemporaryFile() as f2:
-                f2.write(dump_output.encode('ascii'))
-                f2.flush()
-                subprocess.call(['diff', f1.name, f2.name])
-        sys.exit(1)
+    diff_strings(raw_output, dump_output)
+
+diff_strings(raw_outputs[0], raw_outputs[1])
 
 sys.exit(0)
