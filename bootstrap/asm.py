@@ -62,7 +62,12 @@ class Address:
         return 'Address({}, {}, {}, {})'.format(self.base, self.scale, self.index, self.disp)
 
 def fits_8bit(imm: int):
-    return -128 <= imm and imm <= 127
+    limit = 1 << 7
+    return -limit <= imm <= limit - 1
+
+def fits_32bit(imm: int):
+    limit = 1 << 31
+    return -limit <= imm <= limit - 1
 
 def pack8(imm: int):
     return list(struct.pack('<b', imm))
@@ -275,14 +280,18 @@ class Instruction:
 
             # Immediates have separate opcodes, so handle them specially here.
             if isinstance(src, int):
-                assert isinstance(dst, Register)
                 if self.opcode == 'mov':
+                    if isinstance(dst, Address):
+                        if fits_32bit(src):
+                            return rex(w, 0, dst) + [0xC7] + mod_rm_sib(0, dst) + pack32(src)
+                        assert False
                     if w:
                         imm_bytes = pack64(src)
                     else:
                         imm_bytes = pack32(src)
                     return rex(w, 0, dst) + [0xB8 | dst.index & 7] + imm_bytes
                 else:
+                    assert isinstance(dst, Register)
                     if fits_8bit(src):
                         [size_flag, imm_bytes] = [0x2, pack8(src)]
                     else:
