@@ -806,15 +806,6 @@ class Return(Node):
         return 'return %s' % self.expr.repr(ctx)
 
 @node('&expr')
-class Yield(Node):
-    def eval(self, ctx):
-        value = self.expr.eval(ctx)
-        child = greenlet.getcurrent()
-        child.parent.switch(value)
-    def repr(self, ctx):
-        return 'yield %s' % self.expr.repr(ctx)
-
-@node('&expr')
 class Perform(Node):
     def eval(self, ctx):
         value = self.expr.eval(ctx)
@@ -864,20 +855,28 @@ class Consume(Node):
         args = []
         pass_to_parent = False
         return_value = None
+        return_exc = None
 
         while True:
-            if pass_to_parent:
-                # Weird case: if pass_to_parent is True, we need to pass an effect up the chain to our
-                # parent block (if it exists). If/when a parent resumes the effect, it will jump directly into
-                # it (EFFECT_CHILD is still set, we only need to manually pass like this in one direction).
-                # So this switch() call will only return when the child performs its next effect or returns,
-                # and we act like the return value here is the same as in the pass_to_parent=False case.
-                if current is None:
-                    self.error('unhandled effect %s' % (effect.repr(ctx)), ctx=ctx)
-                effect = current.parent.switch(effect)
-            else:
-                # Get the next effect from the consumed block. If it's None, the block is done.
-                effect = EFFECT_CHILD.switch(*args)
+            try:
+                if pass_to_parent:
+                    # Weird case: if pass_to_parent is True, we need to pass an effect up the chain to our
+                    # parent block (if it exists). If/when a parent resumes the effect, it will jump directly into
+                    # it (EFFECT_CHILD is still set, we only need to manually pass like this in one direction).
+                    # So this switch() call will only return when the child performs its next effect or returns,
+                    # and we act like the return value here is the same as in the pass_to_parent=False case.
+                    if current is None:
+                        self.error('unhandled effect %s' % (effect.repr(ctx)), ctx=ctx)
+                    effect = current.parent.switch(effect)
+                else:
+                    # Get the next effect from the consumed block. If it's None, the block is done.
+                    effect = EFFECT_CHILD.switch(*args)
+            # Be sure to catch any exceptions that happen inside the consumed block, and reraise them
+            # outside of the loop below. We have to properly clean up the greenlet state (i.e. by
+            # resetting EFFECT_CHILD so we don't try to pass control back to the consumed block)
+            except (ReturnExc, BreakExc, ContinueExc) as e:
+                return_exc = e
+                break
 
             # Check for None as a return value from switch(). This is a sentinel value, which
             # means the block has finished.
@@ -928,11 +927,88 @@ class Consume(Node):
             else:
                 pass_to_parent = True
 
+        EFFECT_CHILD.throw()
         EFFECT_CHILD = current
+
+        if return_exc is not None:
+            raise return_exc
+
         return return_value
 
     def repr(self, ctx):
         return 'consume%s %s' % (self.block.repr(ctx), ' '.join(h.repr(ctx) for h in self.handlers))
+
+@node('&value')
+class YieldedValueWrapper(Node):
+    pass
+
+@node('&expr')
+class Yield(Node):
+    def eval(self, ctx):
+        value = YieldedValueWrapper(self.expr.eval(ctx))
+        #value = self.expr.eval(ctx)
+        child = greenlet.getcurrent()
+        child.parent.switch(value)
+    def repr(self, ctx):
+        return 'yield %s' % self.expr.repr(ctx)
+
+@node('ctx, &block')
+class Generator(Node):
+    def setup(self):
+        self.exhausted = False
+    def eval(self, ctx):
+        return self
+    def __iter__(self):
+        if self.exhausted:
+            self.error('generator exhausted', ctx=self.ctx)
+        def run_generator():
+            self.block.eval(self.ctx)
+
+        global EFFECT_CHILD
+
+        current = EFFECT_CHILD
+        EFFECT_CHILD = greenlet.greenlet(run_generator)
+
+        # Loop through the generator by passing control to the child greenlet, and either yielding values
+        # when we get a YieldedValueWrapper, or passing control up to parent greenlets.
+        # XXX There's too much similarity with this code and the Consume code above, try and refactor it...
+        pass_to_parent = False
+        while True:
+            try:
+                if pass_to_parent:
+                    # Weird case: if pass_to_parent is True, we need to pass an effect up the chain to our
+                    # parent block (if it exists). If/when a parent resumes the effect, it will jump directly into
+                    # it (EFFECT_CHILD is still set, we only need to manually pass like this in one direction).
+                    # So this switch() call will only return when the child performs its next effect or returns,
+                    # and we act like the return value here is the same as in the pass_to_parent=False case.
+                    if current is None:
+                        self.error('unhandled effect %s' % (effect.repr(ctx)), ctx=ctx)
+                    effect = current.parent.switch(effect)
+                else:
+                    # Get the next effect from the consumed block. If it's None, the block is done.
+                    effect = EFFECT_CHILD.switch()
+            # Sanity check: generators should not be throwing any control flow exceptions
+            except (ReturnExc, BreakExc, ContinueExc) as e:
+                self.error('Fatal error: got unexpected exception %s from generator' % e, ctx=ctx)
+
+            if effect is None:
+                break
+
+            if isinstance(effect, YieldedValueWrapper):
+                # Reset EFFECT_CHILD before yielding
+                old_child = EFFECT_CHILD
+                EFFECT_CHILD = current
+
+                yield effect.value
+
+                EFFECT_CHILD = old_child
+                pass_to_parent = False
+            else:
+                pass_to_parent = True
+
+        EFFECT_CHILD.throw()
+        EFFECT_CHILD = current
+        self.exhausted = True
 
 @node('*stmts')
 class Block(Node):
@@ -1306,28 +1382,6 @@ class Function(Node):
     def repr(self, ctx):
         ret_str = ' -> %s' % self.return_type.repr(ctx) if self.return_type else ''
         return '<function %s%s%s>' % (self.name, self.params.repr(ctx), ret_str)
-
-@node('ctx, &block')
-class Generator(Node):
-    def setup(self):
-        self.exhausted = False
-    def eval(self, ctx):
-        return self
-    def __iter__(self):
-        ctx = self.ctx
-        if self.exhausted:
-            self.error('generator exhausted', ctx=self.ctx)
-        def run_generator():
-            self.block.eval(self.ctx)
-        current = ctx.generator_child
-        ctx.generator_child = greenlet.greenlet(run_generator)
-        while True:
-            value = ctx.generator_child.switch()
-            if value is None:
-                break
-            yield value
-        ctx.generator_child = current
-        self.exhausted = True
 
 @node('name, fn')
 class BuiltinFunction(Node):
