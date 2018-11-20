@@ -20,6 +20,46 @@ def add_to(cls):
         return fn
     return deco
 
+# Here we have a dumb custom dict class to be able to hash nodes based on just
+# their identity and not use the regular __hash__/__eq__ machinery (which works
+# with Mutagen semantics, possibly calling user code, since we need a fast dict
+# implementation in the bootstrap).
+
+# Basic wrapper for every node to override its __hash__/__eq__. Sucks
+# that we have this O(n) memory overhead...
+class NodeWrapper:
+    def __init__(self, node):
+        assert isinstance(node, syntax.Node), '%s: %s' % (type(node), repr(node))
+        self.node = node
+    def __hash__(self):
+        return id(self.node)
+    def __eq__(self, other):
+        return self.node is other.node
+    def __repr__(self):
+        return 'NW(%s)' % repr(self.node)
+
+# Dictionary that wraps every key with a NodeWrapper
+class NodeDict(collections.MutableMapping):
+    def __init__(self, *args, **kwargs):
+        self._items = {}
+        self.update(dict(*args, **kwargs))
+
+    def __getitem__(self, key):
+        return self._items[NodeWrapper(key)]
+    def __setitem__(self, key, value):
+        self._items[NodeWrapper(key)] = value
+    def __delitem__(self, key):
+        del self._items[NodeWrapper(key)]
+
+    def __iter__(self):
+        for key in self._items:
+            yield key.node
+    def __len__(self):
+        return len(self._items)
+
+    def __repr__(self):
+        return repr(self._items)
+
 # Machinery for 'smart' nodes in the IR graph, that track uses and can replace a given
 # node in all nodes that use it.
 
@@ -311,16 +351,16 @@ CMP_TABLE = {
     '>': 'g',
 }
 
-def gen_lir_for_node(node):
+def gen_lir_for_node(node, node_map):
     if isinstance(node, Phi):
         return lir.phi_ref(node.name)
     elif isinstance(node, syntax.BinaryOp):
         if node.type in BINOP_TABLE:
             fn = BINOP_TABLE[node.type]
-            return fn(lir.NR(node.lhs), lir.NR(node.rhs))
+            return fn(node_map[node.lhs], node_map[node.rhs])
         elif node.type in CMP_TABLE:
             cc = CMP_TABLE[node.type]
-            return [lir.cmp64(lir.NR(node.lhs), lir.NR(node.rhs)), lir.Inst('set' + cc)]
+            return [lir.cmp64(node_map[node.lhs], node_map[node.rhs]), lir.Inst('set' + cc)]
         assert False, str(node)
     elif isinstance(node, syntax.Parameter):
         return lir.parameter(node.index)
@@ -333,9 +373,9 @@ def gen_lir_for_node(node):
         if fn in {'test', 'test2', 'deref', 'atoi'}:
             fn = asm.ExternLabel('_' + fn)
 
-        return lir.call(fn, *[lir.NR(arg) for arg in node.args])
+        return lir.call(fn, *[node_map[arg] for arg in node.args])
     elif isinstance(node, syntax.Return):
-        return lir.ret(lir.NR(node.expr))
+        return lir.ret(node_map[node.expr])
     assert False, str(node)
 
 def block_name(block):
@@ -345,7 +385,7 @@ def block_label(block):
     return asm.LocalLabel(block_name(block))
 
 def generate_lir(first_block):
-    node_map = lir.NodeDict()
+    node_map = NodeDict()
     new_blocks = []
 
     for block in walk_blocks(first_block):
@@ -354,22 +394,23 @@ def generate_lir(first_block):
 
         for phi in block.phis:
             args = [pred.exit_states[phi.name] for pred in block.preds]
-            node_map[phi] = [block_name(block), phi.name]
-            phis.append(lir.phi(phi.name, args))
+            lir_phi = lir.Phi(phi.name, args)
+            phis.append(lir_phi)
+            node_map[phi] = lir_phi
 
         for stmt in block.stmts:
             assert stmt not in node_map
-            insts = gen_lir_for_node(stmt)
+            insts = gen_lir_for_node(stmt, node_map)
             if not isinstance(insts, list):
                 insts = [insts]
             instructions.extend(insts)
-            node_map[stmt] = [block_name(block), len(instructions) - 1]
+            node_map[stmt] = instructions[-1]
 
         if block.test:
             [if_label, else_label] = [block_label(succ) for succ in block.succs]
             # XXX for now use two jumps, don't rely on physical ordering
             instructions += [
-                lir.test64(lir.NR(block.test), lir.NR(block.test)),
+                lir.test64(node_map[block.test], node_map[block.test]),
                 lir.jnz(if_label),
                 lir.jmp(else_label),
             ]
@@ -380,9 +421,16 @@ def generate_lir(first_block):
             instructions.append(lir.jmp(asm.LocalLabel('exit')))
             assert not block.succs
 
-        new_blocks.append(dumb_regalloc.BasicBlock(block_name(block), phis, instructions))
+        new_blocks.append(lir.BasicBlock(block_name(block), phis, instructions))
 
-    return [node_map, new_blocks]
+    # Fix up phis: since phis can contain forward references, we can't look up their
+    # LIR values from node_map in the above construction. Now that we've constructed all the
+    # LIR objects, look up the values of the phi arguments and replace them.
+    for block in new_blocks:
+        for phi in block.phis:
+            phi.args = [node_map[a] for a in phi.args]
+
+    return new_blocks
 
 def compile(path, print_program=False):
     ctx = syntax.Context('__main__', None, None)
@@ -407,12 +455,10 @@ def compile(path, print_program=False):
 
     simplify_blocks(first_block)
 
-    print_blocks(first_block)
-
-    node_map, lir_blocks = generate_lir(first_block)
+    lir_blocks = generate_lir(first_block)
 
     # Create a main function with all the code in it (no user-defined functions for now)
-    fn = dumb_regalloc.Function(parameters, lir_blocks, node_map)
+    fn = lir.Function(parameters, lir_blocks)
 
     dumb_regalloc.export_functions('elfout.o', {'_main': fn})
 

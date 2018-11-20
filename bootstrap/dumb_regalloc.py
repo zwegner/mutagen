@@ -2,26 +2,16 @@ import asm
 import elf
 import lir
 
-class Function:
-    def __init__(self, parameters, blocks, node_map):
-        self.parameters = parameters
-        self.blocks = blocks
-        self.node_map = node_map
-
-class BasicBlock:
-    def __init__(self, name, phis, insts):
-        self.name = name
-        self.phis = phis
-        self.insts = insts
-
 # SysV AMD64 calling convention
 PARAM_REGS = [7, 6, 2, 1] # rdi, rsi, rdx, rcx
 RETURN_REGS = [0] # rax
 
 def get_arg_reg(arg, reg_assns, free_regs, insts, force_move=False):
-    if isinstance(arg, lir.NR) or force_move:
-        if isinstance(arg, lir.NR):
-            arg = reg_assns[arg.node]
+    is_lir_node = isinstance(arg, lir.Node)
+    if is_lir_node or force_move:
+        # Anything that isn't a LIR node, we assume is a literal that asm.py can handle
+        if is_lir_node:
+            arg = reg_assns[arg]
         reg = free_regs.pop(0)
         reg = asm.Register(reg)
         insts.append(asm.Instruction('mov64', reg, arg))
@@ -36,10 +26,8 @@ def allocate_registers(name, fn):
     [rsp, rbp, rax] = [asm.Register(4), asm.Register(5), asm.Register(0)]
     all_registers = list(set(range(16)) - set(PARAM_REGS) - {rsp.index, rbp.index})
 
-    reg_assns = lir.NodeDict()
-    phi_reg_assns = lir.NodeDict()
-
-    inv_node_map = {(block_name, inst_idx): node for node, [block_name, inst_idx] in fn.node_map.items()}
+    reg_assns = {}
+    phi_reg_assns = {}
 
     # Assign phi stack slots. Since multiple phis can read the same value, we
     # need to maintain a list of slot assignments, not just one. Each value that
@@ -49,12 +37,11 @@ def allocate_registers(name, fn):
             # Assign a slot
             dest = asm.Address(rbp.index, 0, 0, stack_slot)
             stack_slot -= 8
-            orig_node = inv_node_map[(block.name, phi.args[0])]
-            assert orig_node not in reg_assns
-            reg_assns[orig_node] = dest
+            assert phi not in reg_assns
+            reg_assns[phi] = dest
 
             # Add it to the phi list of each phi argument
-            for src_node in phi.args[1:]:
+            for src_node in phi.args:
                 if src_node not in phi_reg_assns:
                     phi_reg_assns[src_node] = []
                 phi_reg_assns[src_node] += [dest]
@@ -63,18 +50,16 @@ def allocate_registers(name, fn):
         insts.append(asm.LocalLabel(block.name))
 
         for phi in block.phis:
-            assert phi.opcode == 'phi'
             # We assigned stack slots for phis above, but we delegate the responsibility
             # of writing to the slot to the source instructions in all predecessor blocks.
             # Given that, we need to check if this phi is a source for another phi.
-            orig_node = inv_node_map[(block.name, phi.args[0])]
-            if orig_node in phi_reg_assns:
+            if phi in phi_reg_assns:
                 reg = asm.Register(all_registers[0])
                 # For each phi that reads this phi value, we need two movs, since
                 # x86 doesn't have mem->mem copies.
-                for phi_dest in phi_reg_assns[orig_node]:
+                for phi_dest in phi_reg_assns[phi]:
                     insts += [
-                            asm.Instruction('mov64', reg, reg_assns[orig_node]),
+                            asm.Instruction('mov64', reg, reg_assns[phi]),
                             asm.Instruction('mov64', phi_dest, reg)]
 
         for [inst_id, inst] in enumerate(block.insts):
@@ -130,8 +115,7 @@ def allocate_registers(name, fn):
                         asm.Instruction(opcode, dst)
                     ]
                 elif args:
-                    # Load all arguments from the corresponding stack locations. Anything
-                    # that isn't an NR, we assume is a literal
+                    # Load all arguments from the corresponding stack locations.
                     free_regs = all_registers.copy()
                     arg_regs = []
                     for arg in args:
@@ -148,27 +132,20 @@ def allocate_registers(name, fn):
                     # Add the instruction as well as a store into our stack slot
                     insts.append(asm.Instruction(opcode, *arg_regs))
 
-                key = (block.name, inst_id)
-                orig_node = None
-                if key in inv_node_map:
-                    orig_node = inv_node_map[(block.name, inst_id)]
-                else:
-                    assert opcode in ['cmp64', 'test64', 'jnz', 'jmp']
-
                 # Store the result on the stack
                 if asm.needs_register(opcode):
                     # Assign a stack slot
                     dest = asm.Address(rbp.index, 0, 0, stack_slot)
                     stack_slot = stack_slot - 8
-                    reg_assns[orig_node] = dest
+                    reg_assns[inst] = dest
 
                     insts.append(asm.Instruction('mov64', dest, reg))
                     # ...and again for any phi that references it
-                    if orig_node in phi_reg_assns:
-                        for phi in phi_reg_assns[orig_node]:
+                    if inst in phi_reg_assns:
+                        for phi in phi_reg_assns[inst]:
                             insts.append(asm.Instruction('mov64', phi, reg))
                 else:
-                    assert orig_node is None or orig_node not in phi_reg_assns
+                    assert inst not in phi_reg_assns
 
     # Round up to the nearest multiple of 16. Only add 7 since -stack_slot is 8 more
     # the actual stack size needed.
@@ -199,7 +176,6 @@ def export_functions(file, fns):
     all_insts = []
     for [name, fn] in fns.items():
         insts = allocate_registers(name, fn)
-        print_insts(insts)
         all_insts = all_insts + insts
     elf_file = elf.create_elf_file(*asm.build(all_insts))
     with open(file, 'wb') as f:
