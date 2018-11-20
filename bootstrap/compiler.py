@@ -242,12 +242,19 @@ def gen_blocks(self, current):
 ## SSA stuff ###################################################################
 ################################################################################
 
+# Stupid temporary hack
+INTRINSICS = {'test', 'test2', 'deref', 'atoi'}
+
 def gen_ssa_for_stmt(block, statements, stmt):
     for node in reversed(list(stmt.iterate_graph())):
         # Handle loads
         if isinstance(node, syntax.Identifier):
             if node.name in block.exit_states:
                 value = block.exit_states[node.name]
+            elif node.name in INTRINSICS:
+                value = syntax.ExternSymbol('_' + node.name, info=node)
+                # meh. Make sure this symbol gets LIR-ified later
+                statements.append(value)
             else:
                 value = Phi(node.name, info=node)
                 append_to_edge_list(block, 'phis', value)
@@ -364,16 +371,12 @@ def gen_lir_for_node(node, node_map):
         assert False, str(node)
     elif isinstance(node, syntax.Parameter):
         return lir.parameter(node.index)
+    elif isinstance(node, syntax.ExternSymbol):
+        return lir.literal(asm.ExternLabel(node.name))
     elif isinstance(node, syntax.Integer):
         return lir.literal(node.value)
     elif isinstance(node, syntax.Call):
-        # Stupid temporary hack
-        assert isinstance(node.fn, Phi)
-        fn = node.fn.name
-        if fn in {'test', 'test2', 'deref', 'atoi'}:
-            fn = asm.ExternLabel('_' + fn)
-
-        return lir.call(fn, *[node_map[arg] for arg in node.args])
+        return lir.call(node_map[node.fn], *[node_map[arg] for arg in node.args])
     elif isinstance(node, syntax.Return):
         return lir.ret(node_map[node.expr])
     assert False, str(node)

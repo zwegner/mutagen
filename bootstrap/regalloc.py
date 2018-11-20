@@ -107,7 +107,11 @@ def get_arg_reg(arg, reg_assns, insts, free_regs, force_move=False):
         if is_lir_node:
             arg = reg_assns[arg]
         reg = free_regs.pop(0)
-        insts.append(asm.Instruction('mov64', reg, arg))
+        # Need special handling for labels--use lea of the RIP-relative address, provided by a relocation later
+        if isinstance(arg, asm.ExternLabel):
+            insts.append(asm.Instruction('lea64', reg, arg))
+        else:
+            insts.append(asm.Instruction('mov64', reg, arg))
         return reg
     else:
         return arg
@@ -156,6 +160,13 @@ def allocate_registers(fn):
                 # Force a move into the proper slot for literals/parameters
                 if block_outs[block][inst]:
                     src = reg_assns[inst]
+                    # For labels, we need to have an extra lea of the address literal
+                    # into a register (provided by a relocation)
+                    if isinstance(src, asm.ExternLabel):
+                        reg = free_regs[0]
+                        insts.append(asm.Instruction('lea64', reg, src))
+                        src = reg
+
                     for dest in block_outs[block][inst]:
                         insts.append(asm.Instruction('mov64', reg_assns[dest], src))
 

@@ -324,6 +324,12 @@ class Parameter(Node):
     def repr(self, ctx):
         return 'Param(%s)' % self.index
 
+# Same for external symbols
+@node('name')
+class ExternSymbol(Node):
+    def repr(self, ctx):
+        return 'ExternSymbol(%s)' % self.name
+
 @node('name')
 class Identifier(Node):
     def eval(self, ctx):

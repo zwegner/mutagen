@@ -81,6 +81,10 @@ def mod_rm_sib(reg, rm):
     if isinstance(rm, Register):
         mod = 3
         base = rm.index
+    elif isinstance(rm, Label):
+        mod = 0
+        base = 5
+        disp_bytes = [Relocation(rm, 4)]
     else:
         addr = rm
         base = addr.base
@@ -110,6 +114,8 @@ def mod_rm_sib(reg, rm):
 def ex_transform(r, addr):
     if isinstance(addr, Address):
         [x, b] = [addr.index, addr.base]
+    elif isinstance(addr, Label):
+        [x, b] = [0, 5]
     else:
         [x, b] = [0, addr]
 
@@ -122,7 +128,7 @@ def ex_transform(r, addr):
 
     return [r, x, b]
 
-def rex(w, r, addr, force=0):
+def rex(w, r, addr, force=False):
     [r, x, b] = ex_transform(r, addr)
     value = w << 3 | (r & 8) >> 1 | (x & 8) >> 2 | (b & 8) >> 3
     if value or force:
@@ -340,7 +346,7 @@ class Instruction:
             return rex(w, src, dst) + [0x87] + mod_rm_sib(src, dst)
         elif self.opcode == 'lea':
             [dst, src] = self.args
-            assert isinstance(dst, Register) and isinstance(src, Address)
+            assert isinstance(dst, Register) and isinstance(src, (Address, Label))
             return rex(w, dst, src) + [0x8D] + mod_rm_sib(dst, src)
         elif self.opcode == 'test':
             # Test has backwards arguments, weird
