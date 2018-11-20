@@ -19,19 +19,24 @@ class Inst(Node):
     def __init__(self, opcode, *args):
         self.opcode = opcode
         self.args = args
-    def __repr__(self):
+    def __str__(self):
         return '{}({})'.format(self.opcode, ', '.join(map(repr, self.args)))
 
 class Function:
-    def __init__(self, parameters, blocks):
+    def __init__(self, name, parameters, blocks):
+        self.name = name
         self.parameters = parameters
         self.blocks = blocks
 
 class BasicBlock:
-    def __init__(self, name, phis, insts):
+    def __init__(self, name, phis, insts, preds, succs):
         self.name = name
         self.phis = phis
         self.insts = insts
+        self.preds = preds
+        self.succs = succs
+
+def literal(a): return Inst('literal', a)
 
 # Instruction wrappers
 def test64(a, b): return Inst('test64', a, b)

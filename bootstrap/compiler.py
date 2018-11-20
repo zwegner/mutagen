@@ -5,9 +5,9 @@ import sys
 import sprdpl.parse as libparse
 
 import asm
-import dumb_regalloc
 import lir
 import parse
+import regalloc
 import syntax
 from syntax import ArgType
 
@@ -365,7 +365,7 @@ def gen_lir_for_node(node, node_map):
     elif isinstance(node, syntax.Parameter):
         return lir.parameter(node.index)
     elif isinstance(node, syntax.Integer):
-        return lir.mov64(node.value)
+        return lir.literal(node.value)
     elif isinstance(node, syntax.Call):
         # Stupid temporary hack
         assert isinstance(node.fn, Phi)
@@ -386,6 +386,7 @@ def block_label(block):
 
 def generate_lir(first_block):
     node_map = NodeDict()
+    block_map = NodeDict()
     new_blocks = []
 
     for block in walk_blocks(first_block):
@@ -421,7 +422,9 @@ def generate_lir(first_block):
             instructions.append(lir.jmp(asm.LocalLabel('exit')))
             assert not block.succs
 
-        new_blocks.append(lir.BasicBlock(block_name(block), phis, instructions))
+        b = lir.BasicBlock(block_name(block), phis, instructions, block.preds, block.succs)
+        new_blocks.append(b)
+        block_map[block] = b
 
     # Fix up phis: since phis can contain forward references, we can't look up their
     # LIR values from node_map in the above construction. Now that we've constructed all the
@@ -429,6 +432,11 @@ def generate_lir(first_block):
     for block in new_blocks:
         for phi in block.phis:
             phi.args = [node_map[a] for a in phi.args]
+
+    # Fix up CFG: same deal as phis, look up LIR blocks for preds/succs
+    for block in new_blocks:
+        block.preds = [block_map[b] for b in block.preds]
+        block.succs = [block_map[b] for b in block.succs]
 
     return new_blocks
 
@@ -458,9 +466,9 @@ def compile(path, print_program=False):
     lir_blocks = generate_lir(first_block)
 
     # Create a main function with all the code in it (no user-defined functions for now)
-    fn = lir.Function(parameters, lir_blocks)
+    fn = lir.Function('_main', parameters, lir_blocks)
 
-    dumb_regalloc.export_functions('elfout.o', {'_main': fn})
+    regalloc.export_functions('elfout.o', [fn])
 
 def main(args):
     compile(args[1])
