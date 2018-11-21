@@ -84,20 +84,23 @@ def mod_rm_sib(reg, rm):
     else:
         addr = rm
         base = addr.base
-        if addr.scale or addr.base & 7 == 4:
+        # RSP/R12 base needs a SIB byte. It uses RSP as an index, and scale is ignored
+        if addr.base & 7 == 4 and not addr.scale:
+            sib_bytes = [4 << 3 | 4]
+        elif addr.scale:
             assert addr.base != -1
             assert addr.index != 4
             base = 4
             scale = {1: 0, 2: 1, 4: 2, 8: 3}[addr.scale]
             sib_bytes = [scale << 6 | (addr.index & 7) << 3 | addr.base & 7]
 
-        # RIP+offset: this steals the encoding for RSP with no displacement
+        # RIP+offset: this steals the encoding for RBP with no displacement
         if addr.base == -1:
             mod = 0
             base = 5
             disp_bytes = pack32(addr.disp)
         # Otherwise, encode the displacement as 1 or 4 bytes if needed: if the disp is nonzero
-        # obviously, but also if RSP is the base, the no-disp encoding is stolen above, so
+        # obviously, but also if RBP is the base, the no-disp encoding is stolen above, so
         # encode that with a single byte displacement of zero.
         elif addr.disp or addr.base & 7 == 5:
             [disp_bytes, mod] = choose_8_or_32_bit(addr.disp, 1, 2)
@@ -315,9 +318,8 @@ class Instruction(opcode: str, size: int, *args):
             if isinstance(src, int):
                 [imm_bytes, opcode] = choose_8_or_32_bit(src, 0x6A, 0x68)
                 return [opcode] + imm_bytes
-            else:
-                assert isinstance(src, Register)
-                return rex(0, 0, src) + [0x50 | (src.index & 7)]
+            assert isinstance(src, Register)
+            return rex(0, 0, src) + [0x50 | (src.index & 7)]
         elif self.opcode == 'pop':
             [dst] = self.args
             assert isinstance(dst, Register)

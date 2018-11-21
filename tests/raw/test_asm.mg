@@ -9,7 +9,7 @@ def rand_select(l):
 
 regs = [asm.Register(i) for i in range(16)]
 bases = list(range(-1, 16))
-scales = [1, 2, 4, 8]
+scales = [0, 1, 2, 4, 8]
 indices = list(range(4)) + list(range(5, 16)) # index can't be RSP
 # Our IR can't properly print unsigned integers without a bunch of work,
 # as they appear in the objdump output. So no negative numbers for now.
@@ -37,7 +37,7 @@ def gen_random_insts():
                     [scale, index] = [0, 0]
                 else:
                     scale = rand_select(scales)
-                    index = rand_select(indices)
+                    index = rand_select(indices) if scale else 0
                 disp = rand_select(imms)
                 arg = asm.Address(base, scale, index, disp)
             elif arg_type == 'i':
