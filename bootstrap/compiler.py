@@ -114,20 +114,59 @@ def set_edge_key(node, name, key, value):
     value._uses.append(Usage(node, name, ArgType.DICT, index=key))
     edge_dict[key] = value
 
+def add_node_usages(node):
+    # For every node that this node uses, add a Usage object to its _uses list.
+    for (arg_type, arg_name) in type(node).arg_defs:
+        child = getattr(node, arg_name)
+        if arg_type in {ArgType.EDGE, ArgType.OPT}:
+            if child is not None:
+                child._uses.append(Usage(node, arg_name, arg_type))
+        elif arg_type in {ArgType.LIST, ArgType.DICT}:
+            children = enumerate(child) if arg_type == ArgType.LIST else child.items()
+            for index, item in children:
+                item._uses.append(Usage(node, arg_name, arg_type, index=index))
+
 def transform_to_graph(block):
     # Iterate the graph in reverse depth-first order to get a topological ordering
     for node in reversed(list(block.iterate_graph())):
         node._uses = []
-        # For every node that this node uses, add a Usage object to its _uses list.
-        for (arg_type, arg_name) in type(node).arg_defs:
-            child = getattr(node, arg_name)
-            if arg_type in {ArgType.EDGE, ArgType.OPT}:
-                if child is not None:
-                    child._uses.append(Usage(node, arg_name, arg_type))
-            elif arg_type in {ArgType.LIST, ArgType.DICT}:
-                children = enumerate(child) if arg_type == ArgType.LIST else child.items()
-                for index, item in children:
-                    item._uses.append(Usage(node, arg_name, arg_type, index=index))
+        add_node_usages(node)
+
+################################################################################
+## INTRINSICS ##################################################################
+################################################################################
+
+INTRINSICS = {}
+
+def mg_intrinsic(arg_types):
+    def decorate(fn):
+        # Create a wrapper that does some common argument checking. Since we can't be
+        # sure all arguments are simplified enough to be their final types, we can't
+        # throw errors here, but simply fail the simplification.
+        def simplify(node, args):
+            if arg_types is not None:
+                if len(args) != len(arg_types):
+                    return False
+                for a, t in zip(args, arg_types):
+                    if t is not None and not isinstance(a, t):
+                        return False
+            new_node = fn(node, *args)
+            if new_node is not None:
+                add_node_usages(new_node)
+                node.forward(new_node)
+                for arg in args:
+                    arg.remove_uses_by(node)
+                return True
+            return False
+
+        name = fn.__name__.replace('mgi_', '')
+        INTRINSICS[name] = syntax.Intrinsic(name, simplify, info=BI)
+        return None
+    return decorate
+
+@mg_intrinsic([syntax.String])
+def mgi__extern_label(node, label):
+    return syntax.ExternSymbol('_' + label.value, info=node)
 
 ################################################################################
 ## CFG stuff ###################################################################
@@ -242,9 +281,6 @@ def gen_blocks(self, current):
 ## SSA stuff ###################################################################
 ################################################################################
 
-# Stupid temporary hack
-INTRINSICS = {'test', 'test2', 'deref', 'atoi'}
-
 def gen_ssa_for_stmt(block, statements, stmt):
     for node in reversed(list(stmt.iterate_graph())):
         # Handle loads
@@ -252,9 +288,7 @@ def gen_ssa_for_stmt(block, statements, stmt):
             if node.name in block.exit_states:
                 value = block.exit_states[node.name]
             elif node.name in INTRINSICS:
-                value = syntax.ExternSymbol('_' + node.name, info=node)
-                # meh. Make sure this symbol gets LIR-ified later
-                statements.append(value)
+                value = INTRINSICS[node.name]
             else:
                 value = Phi(node.name, info=node)
                 append_to_edge_list(block, 'phis', value)
@@ -306,7 +340,7 @@ def gen_ssa(block):
 
     return first_block
 
-DCE_WHITELIST = {syntax.BinaryOp, syntax.Integer}
+DCE_WHITELIST = {syntax.BinaryOp, syntax.Integer, syntax.String}
 
 def simplify_blocks(first_block):
     # Basic simplification pass
@@ -322,6 +356,10 @@ def simplify_blocks(first_block):
                         # XXX this should not have to be done manually
                         stmt.lhs.remove_uses_by(stmt)
                         stmt.rhs.remove_uses_by(stmt)
+
+            elif isinstance(stmt, syntax.Call):
+                if isinstance(stmt.fn, syntax.Intrinsic):
+                    stmt.fn.simplify_fn(stmt, stmt.args)
 
     # Run DCE
     any_removed = True
@@ -368,7 +406,6 @@ def gen_lir_for_node(node, node_map):
         elif node.type in CMP_TABLE:
             cc = CMP_TABLE[node.type]
             return [lir.cmp64(node_map[node.lhs], node_map[node.rhs]), lir.Inst('set' + cc)]
-        assert False, str(node)
     elif isinstance(node, syntax.Parameter):
         return lir.parameter(node.index)
     elif isinstance(node, syntax.ExternSymbol):
@@ -379,6 +416,8 @@ def gen_lir_for_node(node, node_map):
         return lir.call(node_map[node.fn], *[node_map[arg] for arg in node.args])
     elif isinstance(node, syntax.Return):
         return lir.ret(node_map[node.expr])
+    elif isinstance(node, syntax.Instruction):
+        return lir.Inst(node.opcode, *[node_map[arg] for arg in node.args])
     assert False, str(node)
 
 def block_name(block):

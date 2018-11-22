@@ -330,6 +330,12 @@ class ExternSymbol(Node):
     def repr(self, ctx):
         return 'ExternSymbol(%s)' % self.name
 
+# Placeholder for intrinsic functions
+@node('name, simplify_fn')
+class Intrinsic(Node):
+    def repr(self, ctx):
+        return '<intrinsic-fn %s>' % self.name
+
 @node('name')
 class Identifier(Node):
     def eval(self, ctx):
