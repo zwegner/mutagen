@@ -336,6 +336,12 @@ class Intrinsic(Node):
     def repr(self, ctx):
         return '<intrinsic-fn %s>' % self.name
 
+# Wrapper for raw instructions
+@node('opcode, *args')
+class Instruction(Node):
+    def repr(self, ctx):
+        return '<instruction %s>(%s)' % (self.opcode, self.args)
+
 @node('name')
 class Identifier(Node):
     def eval(self, ctx):

@@ -138,35 +138,64 @@ def transform_to_graph(block):
 
 INTRINSICS = {}
 
+def create_intrinsic(name, fn, arg_types):
+    # Create a wrapper that does some common argument checking. Since we can't be
+    # sure all arguments are simplified enough to be their final types, we can't
+    # throw errors here, but simply fail the simplification.
+    def simplify(node, args):
+        if arg_types is not None:
+            if len(args) != len(arg_types):
+                return False
+            for a, t in zip(args, arg_types):
+                if t is not None and not isinstance(a, t):
+                    return False
+
+        new_node = fn(node, *args)
+        if new_node is not None:
+            # If the simplify function returns a new node, update the graph tracking.
+            # This is not very clean, and there should be a better long term way of
+            # keeping the graph up-to-date when creating/deleting nodes, but for now
+            # having this isolated just here is acceptable.
+            add_node_usages(new_node)
+            node.forward(new_node)
+            for arg in args:
+                arg.remove_uses_by(node)
+            return True
+        return False
+
+    INTRINSICS[name] = syntax.Intrinsic(name, simplify, info=BI)
+
 def mg_intrinsic(arg_types):
     def decorate(fn):
-        # Create a wrapper that does some common argument checking. Since we can't be
-        # sure all arguments are simplified enough to be their final types, we can't
-        # throw errors here, but simply fail the simplification.
-        def simplify(node, args):
-            if arg_types is not None:
-                if len(args) != len(arg_types):
-                    return False
-                for a, t in zip(args, arg_types):
-                    if t is not None and not isinstance(a, t):
-                        return False
-            new_node = fn(node, *args)
-            if new_node is not None:
-                add_node_usages(new_node)
-                node.forward(new_node)
-                for arg in args:
-                    arg.remove_uses_by(node)
-                return True
-            return False
-
         name = fn.__name__.replace('mgi_', '')
-        INTRINSICS[name] = syntax.Intrinsic(name, simplify, info=BI)
+        create_intrinsic(name, fn, arg_types)
         return None
     return decorate
 
 @mg_intrinsic([syntax.String])
 def mgi__extern_label(node, label):
     return syntax.ExternSymbol('_' + label.value, info=node)
+
+# Instruction wrappers
+inst_specs = {
+    'lzcnt': 1,
+    'popcnt': 1,
+    'tzcnt': 1,
+    'pext': 2,
+    'pdep': 2,
+}
+
+def add_inst_instrinsic(opcode, n_args):
+    if n_args == 1:
+        fn = lambda node, a: syntax.Instruction(opcode, [a], info=node)
+    elif n_args == 2:
+        fn = lambda node, a, b: syntax.Instruction(opcode, [a, b], info=node)
+    else:
+        assert False
+    create_intrinsic('_builtin_' + opcode, fn, [None] * n_args)
+
+for inst, n_args in inst_specs.items():
+    add_inst_instrinsic(inst, n_args)
 
 ################################################################################
 ## CFG stuff ###################################################################
