@@ -4,12 +4,40 @@ import asm
 import elf
 import lir
 
-PARAM_REGS = tuple(asm.Register(i) for i in [7, 6, 2, 1]) # rdi, rsi, rdx, rcx
-RETURN_REGS = (asm.Register(0),) # rax
+class RegSet:
+    def __init__(self, *items):
+        if len(items) == 1:
+            items = items[0]
+        self.items = [i.index if isinstance(i, asm.Register) else i for i in items]
+    def add(self, item):
+        if isinstance(item, asm.Register):
+            item = item.index
+        self.items.insert(0, item)
+    def pop(self):
+        index = self.items.pop(0)
+        return asm.Register(index)
+    def copy(self):
+        return RegSet(self.items)
+    def __getitem__(self, index):
+        return asm.Register(self.items[index])
+    def __contains__(self, item):
+        if isinstance(item, asm.Register):
+            item = item.index
+        return item in self.items
+    def __len__(self):
+        return len(self.items)
+
+PARAM_REGS = RegSet(7, 6, 2, 1, 8, 9) # rdi, rsi, rdx, rcx, r8, r9
+RETURN_REGS = RegSet([0]) # rax
 [RSP, RBP] = [asm.Register(4), asm.Register(5)]
 # All regular registers. Blacklist all param/return/stack registers until we can deal with
 # them properly.
-ALL_REGISTERS = tuple(asm.Register(i) for i in range(16) if i not in [0, 1, 2, 4, 5, 6, 7])
+#ALL_REGISTERS = RegSet(3, 12, 13, 14, 15)
+ALL_REGISTERS = RegSet(i for i in range(16) if i not in [0, 1, 2, 4, 5, 6, 7, 8, 9])
+
+def log(*args, **kwargs):
+    if 0:
+        print(*args, **kwargs)
 
 def get_live_sets(block, outs):
     # Generate the set of live vars at each point in the instruction list
@@ -26,8 +54,8 @@ def get_live_sets(block, outs):
                 live_set.add(arg)
 
         # Make sure we aren't live before we exist
-        if i in live_set:
-            live_set.remove(i)
+        if inst in live_set:
+            live_set.remove(inst)
 
     # Be sure to put the list back in forward order
     return list(reversed(live_sets))
@@ -38,7 +66,7 @@ class VirtualRegister:
     def __str__(self):
         return 'VReg({})'.format(self.index)
 
-def get_liveness(blocks):
+def get_live_outs(blocks):
     block_outs = {block: collections.defaultdict(list) for block in blocks}
     phi_reg_assns = {}
     # Use negative numbers for virtual registers so they don't collide with real ones
@@ -100,28 +128,52 @@ def get_block_dominance(start, preds, succs):
 def is_register(reg):
     return (isinstance(reg, asm.Register) or isinstance(reg, VirtualRegister))
 
-def get_arg_reg(arg, reg_assns, insts, free_regs, force_move=False):
+def get_arg_reg(arg, reg_assns, phi_slot_assns, insts, free_regs, force_move=False, assign=False, can_handle_labels=False):
     is_lir_node = isinstance(arg, lir.Node)
     if is_lir_node or force_move:
+        orig_arg = arg
         # Anything that isn't a LIR node, we assume is a literal that asm.py can handle
         if is_lir_node:
-            arg = reg_assns[arg]
-        reg = free_regs.pop(0)
+            if arg in reg_assns:
+                arg = reg_assns[arg]
+            else:
+                arg = phi_slot_assns[arg]
+        # Minor optimization: if the instruction can directly handle labels (jmp/call etc),
+        # we don't need to lea it
+        if isinstance(arg, asm.ExternLabel) and can_handle_labels:
+            return arg
+        if isinstance(arg, asm.Register) and not force_move:
+            return arg
+        reg = free_regs.pop()
+        if assign:
+            reg_assns[orig_arg] = reg
         # Need special handling for labels--use lea of the RIP-relative address, provided by a relocation later
         if isinstance(arg, asm.ExternLabel):
             insts.append(asm.Instruction('lea64', reg, arg))
         else:
             insts.append(asm.Instruction('mov64', reg, arg))
+        log('instantiate', insts[-1], free_regs.items)
         return reg
     else:
         return arg
 
+def update_free_regs(node, free_regs, reg_assns, live_set):
+    if node not in reg_assns:
+        log('not in regs:', node)
+        return
+    reg = reg_assns[node]
+    log('checking', node, reg.to_str(64) if is_register(reg) else reg,
+            is_register(reg) and node not in live_set)
+    if is_register(reg) and node not in live_set:
+        free_regs.add(reg)
+        del reg_assns[node]
+
 def allocate_registers(fn):
-    [block_outs, phi_reg_assns] = get_liveness(fn.blocks)
+    [block_outs, phi_reg_assns] = get_live_outs(fn.blocks)
 
     insts = []
 
-    reg_assns = {}
+    phi_slot_assns = {}
 
     for block in fn.blocks:
         for phi in block.phis:
@@ -129,46 +181,60 @@ def allocate_registers(fn):
             # Stack slot assignment. Phi slots are numbered from -2 to -inf, and
             # stack slots are -8, -16, -24, etc.
             stack_slot = (phi_reg.index + 1) * 8
-            reg_assns[phi] = asm.Address(RBP.index, 0, 0, stack_slot)
+            phi_slot_assns[phi] = asm.Address(RBP.index, 0, 0, stack_slot)
 
     for block in fn.blocks:
         insts.append(asm.LocalLabel(block.name))
+        log('{}:'.format(insts[-1].name))
 
         live_sets = get_live_sets(block, set(block_outs[block]))
 
+        for i, [inst, live_set] in enumerate(zip(block.insts, live_sets)):
+            log('  i', i, hex(id(inst)), inst)
+            for l in live_set:
+                log('    ', hex(id(l)), l)
+
+            assert sum(not isinstance(l, lir.Phi) and l.opcode not in {'parameter'}
+                    for l in live_set) <= len(ALL_REGISTERS), 'Not enough registers, no spill/fill yet'
+
         # Now make a run through the instructions. Since we're assuming
         # spill/fill has been taken care of already, this can be done linearly.
-        free_regs = list(ALL_REGISTERS)
+        free_regs = ALL_REGISTERS.copy()
+
+        reg_assns = {}
 
         # Move phis into place. Insert moves from phi slots (that are live ins to this
         # block) to any phi slots where this phi is a live in. Since these are mem-mem
         # copies, we have to use a register intermediate.
         for phi in block.phis:
             for dest in block_outs[block][phi]:
-                insts.append(asm.Instruction('mov64', free_regs[0], reg_assns[phi]))
-                insts.append(asm.Instruction('mov64', reg_assns[dest], free_regs[0]))
+                insts.append(asm.Instruction('mov64', free_regs[0], phi_slot_assns[phi]))
+                insts.append(asm.Instruction('mov64', phi_slot_assns[dest], free_regs[0]))
+                log('phi-phi', insts[-1], free_regs.items)
 
         for [inst, live_set] in zip(block.insts, live_sets):
             if inst.opcode in {'parameter', 'literal'}:
                 if inst.opcode == 'parameter':
-                    reg_assns[inst] = PARAM_REGS[inst.args[0]]
+                    src = PARAM_REGS[inst.args[0]]
                 elif inst.opcode == 'literal':
-                    reg_assns[inst] = inst.args[0]
+                    src = inst.args[0]
                 else:
                     assert False
+                reg_assns[inst] = src
 
-                # Force a move into the proper slot for literals/parameters
+                # Force a move into the proper slot for literals/parameters that are sources of phis
                 if block_outs[block][inst]:
-                    src = reg_assns[inst]
                     # For labels, we need to have an extra lea of the address literal
                     # into a register (provided by a relocation)
                     if isinstance(src, asm.ExternLabel):
                         reg = free_regs[0]
                         insts.append(asm.Instruction('lea64', reg, src))
+                        log('label', insts[-1], free_regs.items)
                         src = reg
 
                     for dest in block_outs[block][inst]:
-                        insts.append(asm.Instruction('mov64', reg_assns[dest], src))
+                        insts.append(asm.Instruction('mov64', phi_slot_assns[dest], src))
+                        log('phi literal', insts[-1], free_regs.items)
 
             elif asm.is_jump_op(inst.opcode):
                 insts.append(asm.Instruction(inst.opcode, *inst.args))
@@ -176,20 +242,29 @@ def allocate_registers(fn):
                 [called_fn, args] = [inst.args[0], inst.args[1:]]
                 # Load all arguments from the corresponding stack locations
                 assert len(args) <= len(PARAM_REGS)
-                call_regs = list(PARAM_REGS)
+                call_regs = PARAM_REGS.copy()
                 for arg in args:
-                    _ = get_arg_reg(arg, reg_assns, insts, call_regs, force_move=True)
+                    _ = get_arg_reg(arg, reg_assns, phi_slot_assns, insts, call_regs, force_move=True)
 
-                called_fn = get_arg_reg(called_fn, reg_assns, insts, free_regs)
+                called_fn_arg = get_arg_reg(called_fn, reg_assns, phi_slot_assns, insts, free_regs,
+                        assign=True, can_handle_labels=True)
 
-                insts.append(asm.Instruction(inst.opcode, called_fn))
+                insts.append(asm.Instruction(inst.opcode, called_fn_arg))
+                log(insts[-1], free_regs.items)
+
+                # Return any now-unused sources to the free set.
+                for arg in args:
+                    update_free_regs(arg, free_regs, reg_assns, live_set)
+                update_free_regs(called_fn, free_regs, reg_assns, live_set)
+
                 # Use the ABI-specified register for pulling out the return value from the call
                 reg = RETURN_REGS[0]
             # Regular ops
             else:
                 reg = None
 
-                arg_regs = [get_arg_reg(arg, reg_assns, insts, free_regs) for arg in inst.args]
+                arg_regs = [get_arg_reg(arg, reg_assns, phi_slot_assns, insts, free_regs,
+                    assign=True) for arg in inst.args]
 
                 # Handle destructive ops first, which might need a move into
                 # a new register. Do this before we return any registers to the
@@ -205,21 +280,26 @@ def allocate_registers(fn):
                     # should probably be done during scheduling with spill/fill.
                     # This also needs to interact with coalescing, when we have that.
                     if inst.args[0] in live_set:
-                        reg = free_regs.pop(0)
+                        reg = free_regs.pop()
                         insts.append(asm.Instruction('mov64', reg, arg_regs[0]))
+                        log('destr copy', insts[-1], free_regs.items)
                         arg_regs[0] = reg
                     else:
                         reg = arg_regs[0]
+                        log('clobber', inst.args[0], reg)
+                        if inst.args[0] in reg_assns:
+                            del reg_assns[inst.args[0]]
+                            log('cl free instance')
 
                 # Return any now-unused sources to the free set.
-                for [arg, src] in list(zip(inst.args, arg_regs))[1:]:
-                    if is_register(src) and arg not in live_set:
-                        free_regs.insert(0, src)
+                for arg in inst.args:
+                    update_free_regs(arg, free_regs, reg_assns, live_set)
 
                 # Non-destructive ops need a register assignment for their implicit destination
                 if not destructive and asm.needs_register(inst.opcode):
-                    reg = free_regs.pop(0)
+                    reg = free_regs.pop()
                     arg_regs = [reg] + arg_regs
+                    log('nondestr assign', reg, free_regs.items)
 
                 reg_assns[inst] = reg
 
@@ -227,13 +307,17 @@ def allocate_registers(fn):
                 # free registers, although this only happens when the result
                 # is never used...
                 if inst not in live_set:
-                    free_regs.insert(0, arg_regs[0])
+                    log('free inst', inst, arg_regs[0])
+                    free_regs.add(arg_regs[0])
 
                 insts.append(asm.Instruction(inst.opcode, *arg_regs))
 
+                log('main', insts[-1], free_regs.items)
+
                 # Copy the result to any phi slots which need it
                 for dest in block_outs[block][inst]:
-                    insts.append(asm.Instruction('mov64', reg_assns[dest], reg_assns[inst]))
+                    insts.append(asm.Instruction('mov64', phi_slot_assns[dest], reg_assns[inst]))
+                    log('phi copy', insts[-1])
 
     # Round up to a multiple of 16
     stack_size = (len(phi_reg_assns)) * 8
@@ -298,6 +382,8 @@ def export_functions(file, fns):
     for fn in fns:
         insts = allocate_registers(fn)
         all_insts = all_insts + insts
+        print_insts(insts)
+
     elf_file = elf.create_elf_file(*asm.build(all_insts))
     with open(file, 'wb') as f:
         f.write(bytes(elf_file))
