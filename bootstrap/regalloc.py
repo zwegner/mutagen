@@ -6,13 +6,14 @@ import lir
 
 class RegSet:
     def __init__(self, *items):
-        if len(items) == 1:
+        if len(items) == 1 and isinstance(items[0], collections.Iterable):
             items = items[0]
         self.items = [i.index if isinstance(i, asm.Register) else i for i in items]
     def add(self, item):
         if isinstance(item, asm.Register):
             item = item.index
-        self.items.insert(0, item)
+        if item not in self.items:
+            self.items.insert(0, item)
     def pop(self):
         index = self.items.pop(0)
         return asm.Register(index)
@@ -27,13 +28,15 @@ class RegSet:
     def __len__(self):
         return len(self.items)
 
+# All general purpose registers. We can use all registers except RSP and RBP.
+ALL_REGISTERS = RegSet(i for i in range(16) if i not in {4, 5})
+
 PARAM_REGS = RegSet(7, 6, 2, 1, 8, 9) # rdi, rsi, rdx, rcx, r8, r9
-RETURN_REGS = RegSet([0]) # rax
+RETURN_REGS = RegSet(0) # rax
+CALLEE_SAVE = RegSet(3, 5, 12, 13, 14, 15) # rbx, rbp, r12, r13, r14, r15
+CALLER_SAVE = RegSet(i for i in ALL_REGISTERS if i not in CALLEE_SAVE)
+
 [RSP, RBP] = [asm.Register(4), asm.Register(5)]
-# All regular registers. Blacklist all param/return/stack registers until we can deal with
-# them properly.
-#ALL_REGISTERS = RegSet(3, 12, 13, 14, 15)
-ALL_REGISTERS = RegSet(i for i in range(16) if i not in [0, 1, 2, 4, 5, 6, 7, 8, 9])
 
 def log(*args, **kwargs):
     if 0:
@@ -128,7 +131,8 @@ def get_block_dominance(start, preds, succs):
 def is_register(reg):
     return (isinstance(reg, asm.Register) or isinstance(reg, VirtualRegister))
 
-def get_arg_reg(arg, reg_assns, phi_slot_assns, insts, free_regs, force_move=False, assign=False, can_handle_labels=False):
+def get_arg_reg(arg, reg_assns, clobbered_regs, phi_slot_assns, insts, free_regs,
+        force_move=False, assign=False, can_handle_labels=False):
     is_lir_node = isinstance(arg, lir.Node)
     if is_lir_node or force_move:
         orig_arg = arg
@@ -147,6 +151,7 @@ def get_arg_reg(arg, reg_assns, phi_slot_assns, insts, free_regs, force_move=Fal
         reg = free_regs.pop()
         if assign:
             reg_assns[orig_arg] = reg
+            clobbered_regs.add(reg)
         # Need special handling for labels--use lea of the RIP-relative address, provided by a relocation later
         if isinstance(arg, asm.ExternLabel):
             insts.append(asm.Instruction('lea64', reg, arg))
@@ -174,6 +179,8 @@ def allocate_registers(fn):
     insts = []
 
     phi_slot_assns = {}
+
+    clobbered_regs = RegSet()
 
     for block in fn.blocks:
         for phi in block.phis:
@@ -244,10 +251,11 @@ def allocate_registers(fn):
                 assert len(args) <= len(PARAM_REGS)
                 call_regs = PARAM_REGS.copy()
                 for arg in args:
-                    _ = get_arg_reg(arg, reg_assns, phi_slot_assns, insts, call_regs, force_move=True)
+                    _ = get_arg_reg(arg, reg_assns, clobbered_regs, phi_slot_assns, insts, call_regs,
+                            force_move=True)
 
-                called_fn_arg = get_arg_reg(called_fn, reg_assns, phi_slot_assns, insts, free_regs,
-                        assign=True, can_handle_labels=True)
+                called_fn_arg = get_arg_reg(called_fn, reg_assns, clobbered_regs, phi_slot_assns, insts,
+                        free_regs, assign=True, can_handle_labels=True)
 
                 insts.append(asm.Instruction(inst.opcode, called_fn_arg))
                 log(insts[-1], free_regs.items)
@@ -263,7 +271,7 @@ def allocate_registers(fn):
             else:
                 reg = None
 
-                arg_regs = [get_arg_reg(arg, reg_assns, phi_slot_assns, insts, free_regs,
+                arg_regs = [get_arg_reg(arg, reg_assns, clobbered_regs, phi_slot_assns, insts, free_regs,
                     assign=True) for arg in inst.args]
 
                 # Handle destructive ops first, which might need a move into
@@ -323,12 +331,18 @@ def allocate_registers(fn):
     stack_size = (len(phi_reg_assns)) * 8
     stack_size = (stack_size + 15) & ~15
 
+    save_insts = []
+    restore_insts = []
+    for reg in clobbered_regs:
+        if reg in CALLEE_SAVE:
+            save_insts.append(asm.Instruction('push64', reg))
+            restore_insts.append(asm.Instruction('pop64', reg))
     # Now that we know the total amount of stack space allocated, add a preamble and postamble
     insts = [asm.GlobalLabel(fn.name),
         asm.Instruction('push64', RBP),
         asm.Instruction('mov64', RBP, RSP),
         asm.Instruction('sub64', RSP, stack_size)
-    ] + insts + [
+    ] + save_insts + insts + restore_insts + [
         asm.LocalLabel('exit'),
         asm.Instruction('add64', RSP, stack_size),
         asm.Instruction('pop64', RBP),
