@@ -29,10 +29,11 @@ class Function:
         self.blocks = blocks
 
 class BasicBlock:
-    def __init__(self, name, phis, insts, preds, succs):
+    def __init__(self, name, phis, insts, test, preds, succs):
         self.name = name
         self.phis = phis
         self.insts = insts
+        self.test = test
         self.preds = preds
         self.succs = succs
 

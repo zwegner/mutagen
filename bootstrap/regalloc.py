@@ -88,6 +88,79 @@ def get_live_outs(blocks):
 
     return [block_outs, phi_reg_assns]
 
+def block_label(block):
+    return asm.LocalLabel(block.name)
+
+# Fix up the CFG to split critical edges. Critical edges are edges in the CFG that link a block with
+# multiple successors to one with multiple predecessors. Our register allocator can't deal with these,
+# because phis (that shuffle variables around) semantically happen on the control flow edges, and thus
+# the instructions to handle them have to be unique for a (pred, succ) pair. For non-critical edges,
+# the instructions can be inserted at the end of the predecessor or the beginning of the successor,
+# but for critical edges there's no place for them. So we insert a new basic block with no instructions
+# except what will later be added to implement the phi, and a jump at the end.
+def split_critical_edges(fn):
+    new_blocks = []
+    for block in fn.blocks:
+        new_blocks.append(block)
+        if len(block.succs) > 1:
+            for si, succ in enumerate(block.succs):
+                if len(succ.preds) > 1:
+                    for i, pred in enumerate(succ.preds):
+                        if pred is block:
+                            pi = i
+                            break
+                    else:
+                        assert False
+
+                    # Create new phis, and fix up the successor's phis to point to them
+                    phis = [lir.Phi(p.name, [p.args[pi]]) for p in succ.phis]
+                    for p, phi in zip(succ.phis, phis):
+                        p.args[pi] = phi
+
+                    name = 'block$split$%s$%s' % (block.name, succ.name)
+                    split_block = lir.BasicBlock(name, phis, [], None, [block], [succ])
+
+                    new_blocks.append(split_block)
+                    block.succs[si] = split_block
+                    succ.preds[pi] = split_block
+
+    fn.blocks = new_blocks
+
+# After we've made all modifications to the CFG that might get made, insert jumps to the proper
+# successors at the end of each block.
+def insert_jumps(fn):
+    # Create a physical ordering: for now just use the order they were created in
+    phys_idx = 0
+    for block in fn.blocks:
+        block.phys_idx = phys_idx
+        phys_idx += 1
+
+    for block in fn.blocks:
+        next_phys = block.phys_idx + 1
+        # Add a conditional jump if needed
+        if block.test:
+            assert len(block.succs) == 2
+            assert block.test is block.insts[-1]
+            if block.succs[0].phys_idx == next_phys:
+                block.insts.append(lir.jz(block_label(block.succs[1])))
+            elif block.succs[1].phys_idx == next_phys:
+                block.insts.append(lir.jnz(block_label(block.succs[0])))
+            else:
+                # If neither successor is the next physical block, we need two jumps
+                block.insts += [
+                    lir.jnz(block_label(block.succs[0])),
+                    lir.jmp(block_label(block.succs[1])),
+                ]
+        elif len(block.succs) == 1:
+            # Add a jump if we're not going to the next physical block
+            if block.succs[0].phys_idx != next_phys:
+                block.insts.append(lir.jmp(block_label(block.succs[0])))
+        else:
+            assert not block.succs
+            # Add a jump to the exit block, if the exit block isn't the last
+            if next_phys != phys_idx:
+                block.insts.append(lir.jmp(asm.LocalLabel('exit')))
+
 def postorder_traverse(succs, start, used=None):
     if used is None:
         used = set()
@@ -174,6 +247,10 @@ def update_free_regs(node, free_regs, reg_assns, live_set):
         del reg_assns[node]
 
 def allocate_registers(fn):
+    split_critical_edges(fn)
+
+    insert_jumps(fn)
+
     [block_outs, phi_reg_assns] = get_live_outs(fn.blocks)
 
     insts = []
@@ -338,51 +415,21 @@ def allocate_registers(fn):
             save_insts.append(asm.Instruction('push64', reg))
             restore_insts.append(asm.Instruction('pop64', reg))
     # Now that we know the total amount of stack space allocated, add a preamble and postamble
-    insts = [asm.GlobalLabel(fn.name),
+    insts = [
+        asm.GlobalLabel(fn.name),
         asm.Instruction('push64', RBP),
         asm.Instruction('mov64', RBP, RSP),
-        asm.Instruction('sub64', RSP, stack_size)
-    ] + save_insts + insts + restore_insts + [
+        asm.Instruction('sub64', RSP, stack_size),
+        *save_insts,
+        *insts,
         asm.LocalLabel('exit'),
+        *restore_insts,
         asm.Instruction('add64', RSP, stack_size),
         asm.Instruction('pop64', RBP),
         asm.Instruction('ret')
     ]
 
     return insts
-
-# Determine all predecessor and successor blocks
-def get_block_linkage(blocks):
-    preds = {block.name: [] for block in blocks}
-    succs = {}
-
-    for [i, block] in enumerate(blocks):
-        last_inst = block.insts[-1]
-        [opcode, args] = [last_inst[0], last_inst[1:]]
-        dests = []
-        # Jump: add the destination block and the fall-through block
-        if asm.is_jump_op(opcode):
-            [dest] = args
-            # XXX Look for labels
-            if isinstance(dest, asm.Label):
-                dest = dest.name
-            dests = [dest]
-            if opcode != 'jmp':
-                assert i + 1 < len(blocks)
-                dests = dests + [i + 1]
-        # ...or just the fallthrough
-        elif i + 1 < len(blocks):
-            dests = [i + 1]
-
-        # Link up blocks
-        succs[i] = dests
-        for dest in dests:
-            # XXX why are these different types?
-            if isinstance(dest, int):
-                dest = blocks[dest].name
-            preds[dest].append(i)
-
-    return [preds, succs]
 
 def print_insts(insts):
     for inst in insts:

@@ -452,9 +452,6 @@ def gen_lir_for_node(node, node_map):
 def block_name(block):
     return 'block$%s' % block.block_id
 
-def block_label(block):
-    return asm.LocalLabel(block_name(block))
-
 def generate_lir(first_block):
     node_map = NodeDict()
     block_map = NodeDict()
@@ -478,22 +475,12 @@ def generate_lir(first_block):
             instructions.extend(insts)
             node_map[stmt] = instructions[-1]
 
+        test = None
         if block.test:
-            [if_label, else_label] = [block_label(succ) for succ in block.succs]
-            # XXX for now use two jumps, don't rely on physical ordering
-            instructions += [
-                lir.test64(node_map[block.test], node_map[block.test]),
-                lir.jnz(if_label),
-                lir.jmp(else_label),
-            ]
-        elif len(block.succs) == 1:
-            instructions.append(lir.jmp(block_label(block.succs[0])))
-        else:
-            # Kinda hacky: add a jump to the exit block, since we don't rely on physical ordering
-            instructions.append(lir.jmp(asm.LocalLabel('exit')))
-            assert not block.succs
+            test = lir.test64(node_map[block.test], node_map[block.test])
+            instructions.append(test)
 
-        b = lir.BasicBlock(block_name(block), phis, instructions, block.preds, block.succs)
+        b = lir.BasicBlock(block_name(block), phis, instructions, test, block.preds, block.succs)
         new_blocks.append(b)
         block_map[block] = b
 
