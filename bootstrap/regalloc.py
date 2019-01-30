@@ -42,26 +42,24 @@ def log(*args, **kwargs):
     if 0:
         print(*args, **kwargs)
 
-def get_live_sets(block, outs):
-    # Generate the set of live vars at each point in the instruction list
-    # We go backwards so we know when things are actually used.
-    live_set = outs.copy()
-    live_sets = []
-    for [i, inst] in reversed(list(enumerate(block.insts))):
-        # Add the argument from the last iteration, since we're interested
-        # in what's used after the instruction
-        live_sets.append(live_set.copy())
-
+def get_live_sets(block, last_uses):
+    live_set = set(block.phis)
+    for inst in block.insts:
         for arg in inst.args:
-            if isinstance(arg, lir.Node):
-                live_set.add(arg)
+            if arg in last_uses and last_uses[arg] is inst:
+                live_set.remove(arg)
+        if inst in last_uses:
+            live_set.add(inst)
+        yield live_set
 
-        # Make sure we aren't live before we exist
-        if inst in live_set:
-            live_set.remove(inst)
+def get_last_uses(block, outs):
+    last_uses = {o: None for o in outs}
+    for inst in reversed(block.insts):
+        for arg in inst.args:
+            if isinstance(arg, lir.Node) and arg not in last_uses:
+                last_uses[arg] = inst
 
-    # Be sure to put the list back in forward order
-    return list(reversed(live_sets))
+    return last_uses
 
 class VirtualRegister:
     def __init__(self, index):
@@ -271,13 +269,13 @@ def allocate_registers(fn):
         insts.append(asm.LocalLabel(block.name))
         log('{}:'.format(insts[-1].name))
 
-        live_sets = get_live_sets(block, set(block_outs[block]))
+        last_uses = get_last_uses(block, block_outs[block])
+        live_set_iter = get_live_sets(block, last_uses)
 
-        for i, [inst, live_set] in enumerate(zip(block.insts, live_sets)):
+        for i, [inst, live_set] in enumerate(zip(block.insts, get_live_sets(block, last_uses))):
             log('  i', i, hex(id(inst)), inst)
             for l in live_set:
                 log('    ', hex(id(l)), l)
-
             assert sum(not isinstance(l, lir.Phi) and l.opcode not in {'parameter'}
                     for l in live_set) <= len(ALL_REGISTERS), 'Not enough registers, no spill/fill yet'
 
@@ -296,7 +294,7 @@ def allocate_registers(fn):
                 insts.append(asm.Instruction('mov64', phi_slot_assns[dest], free_regs[0]))
                 log('phi-phi', insts[-1], free_regs.items)
 
-        for [inst, live_set] in zip(block.insts, live_sets):
+        for [inst, live_set] in zip(block.insts, live_set_iter):
             if inst.opcode in {'parameter', 'literal'}:
                 if inst.opcode == 'parameter':
                     src = PARAM_REGS[inst.args[0]]
