@@ -794,12 +794,13 @@ class Modification(Node):
 
 # Exception for backing up the eval stack on break/continue/return
 class BreakExc(Exception):
-    pass
+    stmt = 'break'
 
 class ContinueExc(Exception):
-    pass
+    stmt = 'continue'
 
 class ReturnExc(Exception):
+    stmt = 'return'
     def __init__(self, value, return_node):
         self.value = value
         self.return_node = return_node
@@ -1013,7 +1014,7 @@ class Generator(Node):
                     effect = EFFECT_CHILD.switch()
             # Sanity check: generators should not be throwing any control flow exceptions
             except (ReturnExc, BreakExc, ContinueExc) as e:
-                self.error('Fatal error: got unexpected exception %s from generator' % e, ctx=ctx)
+                self.error('Fatal error: got unexpected control flow in generator: %s' % e.stmt, ctx=self.ctx)
 
             if effect is None:
                 break
