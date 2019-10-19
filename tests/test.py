@@ -6,7 +6,7 @@ import tempfile
 import time
 
 root_dir = os.path.dirname(sys.path[0])
-mutagen = '%s/bootstrap/parse.py' % root_dir
+mutagen = '%s/bootstrap/mutagen.py' % root_dir
 python = 'python3'
 
 passes = fails = 0

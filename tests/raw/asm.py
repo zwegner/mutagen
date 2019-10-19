@@ -21,7 +21,7 @@ def diff_strings(a, b):
 
 raw_outputs = []
 for exec_path in [['python3', '%s/tests/raw/test_asm.py' % root_dir],
-        ['%s/bootstrap/parse.py' % root_dir, '%s/tests/raw/test_asm.mg' % root_dir]]:
+        ['%s/bootstrap/mutagen.py' % root_dir, '%s/tests/raw/test_asm.mg' % root_dir]]:
     # Create a temporary directory to take care of any files we create
     with tempfile.TemporaryDirectory() as tmp_dir:
         os.chdir(tmp_dir)

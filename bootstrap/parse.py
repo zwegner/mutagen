@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
 import collections
-import inspect
 import os
 import sys
 
@@ -416,59 +414,3 @@ def preprocess_program(ctx, stmt, include_io_handlers=True):
         stmt = effect_io.wrap_with_io_consumer(ctx, stmt)
     analyze_scoping(ctx, stmt)
     return stmt
-
-# Evaluate a single statement in a given context. Mainly a wrapper for error handling code.
-def eval_statement(stmt, ctx):
-    try:
-        result = stmt.eval(ctx)
-        return (result, False)
-    except ProgramError as e:
-        if e.stack_trace:
-            for line in e.stack_trace:
-                print(line, file=sys.stderr)
-        print(e.msg, file=sys.stderr)
-        return (None, True)
-    except Exception as e:
-        # All other exceptions shouldn't happen in theory, but they still do, so reconstruct
-        # as much of the stack from Mutagen-space as we can
-        traceback = inspect.trace()
-        print('---------- INTERNAL COMPILER ERROR! ----------')
-        print('Mutagen traceback:')
-        last_index = 0
-        for i, (frame, *_) in enumerate(traceback):
-            # XXX this is pretty hacky--detect function calls by inspecting locals on the stack
-            self = frame.f_locals.get('self', None)
-            child_ctx = frame.f_locals.get('ctx', None)
-            if isinstance(self, Call) and child_ctx:
-                print('File "%s", line %s, in %s' % (self.info.filename, self.info.lineno, child_ctx.name))
-                last_index = i
-        # Below the part of the stack corresponding to the last Mutagen function call, print out
-        # all the Python stack frames
-        print('----------')
-        print('Python traceback (below Mutagen traceback):')
-        for frame, filename, lineno, function, code_context, index in traceback[last_index:]:
-                print('  File "%s", line %s, in %s' % (filename, lineno, function))
-                print('    ', code_context[index].strip())
-        print('%s: %s' % (type(e).__name__, e))
-        return (None, True)
-
-def interpret(path):
-    ctx = Context('__main__', None, None)
-    ctx.fill_in_builtins()
-    try:
-        stmts = parse(path, eval_ctx=ctx)
-    except libparse.ParseError as e:
-        e.print()
-        sys.exit(1)
-    block = Block(stmts, info=BUILTIN_INFO)
-    block = preprocess_program(ctx, block)
-    (result, error) = eval_statement(block, ctx)
-    if error:
-        sys.exit(1)
-
-def main(args):
-    assert len(args) == 2
-    interpret(args[1])
-
-if __name__ == '__main__':
-    main(sys.argv)
