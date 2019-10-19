@@ -15,7 +15,7 @@ exclude_set, test_set = [set(arg.replace('-', '') for arg in sys.argv[1:]
     if arg.startswith('-') ^ exclude) for exclude in range(2)]
 
 # Mutagen tests: these should just not throw any errors
-mg_tests = ['builtins', 'core']
+mg_tests = ['builtins', 'core', 'effects']
 mg_test_dir = 'tests/mg/'
 
 # Python tests: python/mutagen should produce the same output in each case.

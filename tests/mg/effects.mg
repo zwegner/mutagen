@@ -66,4 +66,34 @@ effect Eff1 as y:
     x = x * 2
     resume x
 
-assert values == [2, 4, 5, 6, 12, 24, 25, 26]
+expected = [2, 4, 5, 6, 12, 24, 25, 26]
+assert values == expected
+
+# Test 4: like test 3, but with more nesting + generators
+def g():
+    def f():
+        for i in range(2):
+            yield i
+    return f
+
+def big_crazy():
+    x = 1
+    consume:
+        for i in range(2):
+            consume:
+                for i in g()():
+                    yield (perform Eff1())
+                for i in g()():
+                    yield (perform Eff2())
+            effect Eff2 as y:
+                x = x + 1
+                resume x
+    effect Eff1 as y:
+        x = x * 2
+        resume x
+
+values = list(big_crazy())
+assert values == expected
+
+# Test 5: test unhandled effects
+assert_call_fails(lambda(): (perform Eff1()))
