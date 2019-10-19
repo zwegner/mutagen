@@ -830,12 +830,24 @@ class Return(Node):
     def repr(self, ctx):
         return 'return %s' % self.expr.repr(ctx)
 
+def perform_value(obj, ctx, value):
+    child = greenlet.getcurrent()
+    if not child.parent:
+        obj.error('unhandled effect %s' % (value.repr(ctx)), ctx=ctx)
+    try:
+        result = child.parent.switch(value)
+    except ProgramError as e:
+        # Reset exception info to come from this stack, rather than the stack of
+        # the handler
+        e.stack_trace = ctx.get_stack_trace()
+        e.info = obj.info
+        raise e
+    return result
+
 @node('&expr')
 class Perform(Node):
     def eval(self, ctx):
-        value = self.expr.eval(ctx)
-        child = greenlet.getcurrent()
-        return child.parent.switch(value)
+        return perform_value(self, ctx, self.expr.eval(ctx))
     def repr(self, ctx):
         return '(perform %s)' % self.expr.repr(ctx)
 
@@ -967,17 +979,19 @@ class Consume(Node):
     def repr(self, ctx):
         return 'consume%s %s' % (self.block.repr(ctx), ' '.join(h.repr(ctx) for h in self.handlers))
 
+# Sentinel wrapper for values that are yielded, so that they can be differentiated from
+# user-level effects, which use the same internal system
 @node('&value')
 class YieldedValueWrapper(Node):
-    pass
+    def repr(self, ctx):
+        return 'Yield(%s)' % self.value.repr(ctx)
 
 @node('&expr')
 class Yield(Node):
     def eval(self, ctx):
         value = YieldedValueWrapper(self.expr.eval(ctx))
-        #value = self.expr.eval(ctx)
-        child = greenlet.getcurrent()
-        child.parent.switch(value)
+        result = perform_value(self, ctx, value)
+        assert result is ()
     def repr(self, ctx):
         return 'yield %s' % self.expr.repr(ctx)
 
