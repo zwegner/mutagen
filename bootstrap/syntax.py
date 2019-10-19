@@ -88,16 +88,21 @@ class Context:
             result = self.callsite_ctx.get_stack_trace()
             if self.current_node:
                 info = self.current_node.info
-                result.append(' at %s in %s, line %s' % (self.name, info.filename,
+                result.append(' in %s in %s, line %s' % (self.name, info.filename,
                     info.lineno))
             return result
         else:
+            if self.current_node:
+                info = self.current_node.info
+                return ['in module %s in %s, line %s' % (self.name, info.filename,
+                    info.lineno)]
             return ['in module %s' % self.name]
 
 class ProgramError(Exception):
-    def __init__(self, stack_trace, msg):
-        self.stack_trace = stack_trace
+    def __init__(self, msg, info, stack_trace):
         self.msg = msg
+        self.info = info
+        self.stack_trace = stack_trace
 
 class Node:
     def copy(self):
@@ -107,10 +112,11 @@ class Node:
         return type(self)(self.items.copy(), info=self)
     def eval(self, ctx):
         return self
-    def error(self, msg, ctx=None):
+    def make_error(self, msg, ctx=None):
         stack_trace = ctx and ctx.get_stack_trace()
-        msg = '%s(%i): %s' % (self.info.filename, self.info.lineno, msg)
-        raise ProgramError(stack_trace, msg)
+        return ProgramError(msg, self.info, stack_trace)
+    def error(self, msg, ctx=None):
+        raise self.make_error(msg, ctx=ctx)
     def __ne__(self, other):
         return Boolean(not self.__eq__(other).value, info=self)
     def bool(self, ctx):

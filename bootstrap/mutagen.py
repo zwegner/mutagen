@@ -14,7 +14,7 @@ def eval_statement(stmt, ctx):
         if e.stack_trace:
             for line in e.stack_trace:
                 print(line, file=sys.stderr)
-        print(e.msg, file=sys.stderr)
+        print('%s(%i): %s' % (e.info.filename, e.info.lineno, e.msg), file=sys.stderr)
         return (None, True)
     except Exception as e:
         # All other exceptions shouldn't happen in theory, but they still do, so reconstruct
