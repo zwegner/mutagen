@@ -884,22 +884,25 @@ class Consume(Node):
 
         while True:
             try:
+                # Weird case: if pass_to_parent is True, we need to pass an effect up the chain to our
+                # parent block (if it exists). If/when a parent resumes the effect, it will jump directly into
+                # it (EFFECT_CHILD is still set, we only need to manually pass like this in one direction).
+                # So this switch() call will only return when the child performs its next effect or returns,
+                # and we act like the return value here is the same as in the pass_to_parent=False case.
                 if pass_to_parent:
-                    # Weird case: if pass_to_parent is True, we need to pass an effect up the chain to our
-                    # parent block (if it exists). If/when a parent resumes the effect, it will jump directly into
-                    # it (EFFECT_CHILD is still set, we only need to manually pass like this in one direction).
-                    # So this switch() call will only return when the child performs its next effect or returns,
-                    # and we act like the return value here is the same as in the pass_to_parent=False case.
+                    # No handler: raise an error, but in the child
                     if current is None:
-                        self.error('unhandled effect %s' % (effect.repr(ctx)), ctx=ctx)
-                    effect = current.parent.switch(effect)
+                        err = self.make_error('unhandled effect %s' % (effect.repr(ctx)), ctx=ctx)
+                        effect = EFFECT_CHILD.throw(err)
+                    else:
+                        effect = current.parent.switch(effect)
                 else:
                     # Get the next effect from the consumed block. If it's None, the block is done.
                     effect = EFFECT_CHILD.switch(*args)
             # Be sure to catch any exceptions that happen inside the consumed block, and reraise them
             # outside of the loop below. We have to properly clean up the greenlet state (i.e. by
             # resetting EFFECT_CHILD so we don't try to pass control back to the consumed block)
-            except (ReturnExc, BreakExc, ContinueExc) as e:
+            except Exception as e:
                 return_exc = e
                 break
 
@@ -952,6 +955,7 @@ class Consume(Node):
             else:
                 pass_to_parent = True
 
+        # Clean up the consumed greenlet: throw() just exits.
         EFFECT_CHILD.throw()
         EFFECT_CHILD = current
 
@@ -1000,15 +1004,18 @@ class Generator(Node):
         pass_to_parent = False
         while True:
             try:
+                # Weird case: if pass_to_parent is True, we need to pass an effect up the chain to our
+                # parent block (if it exists). If/when a parent resumes the effect, it will jump directly into
+                # it (EFFECT_CHILD is still set, we only need to manually pass like this in one direction).
+                # So this switch() call will only return when the child performs its next effect or returns,
+                # and we act like the return value here is the same as in the pass_to_parent=False case.
                 if pass_to_parent:
-                    # Weird case: if pass_to_parent is True, we need to pass an effect up the chain to our
-                    # parent block (if it exists). If/when a parent resumes the effect, it will jump directly into
-                    # it (EFFECT_CHILD is still set, we only need to manually pass like this in one direction).
-                    # So this switch() call will only return when the child performs its next effect or returns,
-                    # and we act like the return value here is the same as in the pass_to_parent=False case.
+                    # No handler: raise an error, but in the child
                     if current is None:
-                        self.error('unhandled effect %s' % (effect.repr(ctx)), ctx=ctx)
-                    effect = current.parent.switch(effect)
+                        err = self.make_error('unhandled effect %s' % (effect.repr(self.ctx)), ctx=self.ctx)
+                        effect = EFFECT_CHILD.throw(err)
+                    else:
+                        effect = current.parent.switch(effect)
                 else:
                     # Get the next effect from the consumed block. If it's None, the block is done.
                     effect = EFFECT_CHILD.switch()
@@ -1031,6 +1038,7 @@ class Generator(Node):
             else:
                 pass_to_parent = True
 
+        # Clean up the consumed greenlet: throw() just exits.
         EFFECT_CHILD.throw()
         EFFECT_CHILD = current
         self.exhausted = True
