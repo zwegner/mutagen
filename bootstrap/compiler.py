@@ -499,9 +499,8 @@ def generate_lir(first_block):
     return new_blocks
 
 def compile(path, print_program=False):
-    ctx = syntax.Context('__main__', None, None)
     try:
-        stmts = parse.parse(path, import_builtins=False, eval_ctx=ctx)
+        stmts = parse.parse(path, import_builtins=False)
     except libparse.ParseError as e:
         e.print()
         sys.exit(1)
@@ -512,6 +511,7 @@ def compile(path, print_program=False):
             for i, name in enumerate(parameters)]
     stmts = prelude + stmts
 
+    ctx = syntax.Context('__main__', None, None)
     block = syntax.Block(stmts, info=BI)
     block = parse.preprocess_program(ctx, block, include_io_handlers=False)
 

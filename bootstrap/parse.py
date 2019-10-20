@@ -354,7 +354,7 @@ def get_builtins_import():
     builtins_path = '%s/__builtins__.mg' % stdlib_dir
     return Scope(Import([], '__builtins__', [], builtins_path, True, info=BUILTIN_INFO))
 
-def handle_import(scope, parse_ctx, eval_ctx=None):
+def handle_import(scope, parse_ctx):
     imp = scope.expr
     # Explicit path: use that
     if imp.path:
@@ -371,8 +371,7 @@ def handle_import(scope, parse_ctx, eval_ctx=None):
         print('checking paths: %s' % import_paths, file=sys.stderr)
         raise Exception('could not find import in path: %s' % imp.name)
 
-    imp.stmts = parse(import_path, import_builtins=not imp.is_builtins,
-            eval_ctx=eval_ctx)
+    imp.stmts = parse(import_path, import_builtins=not imp.is_builtins)
 
 class ParseContext:
     def __init__(self, dirname=None):
@@ -381,7 +380,7 @@ class ParseContext:
         self.dirname = dirname
         self.all_imports = []
 
-def parse(path, import_builtins=True, eval_ctx=None):
+def parse(path, import_builtins=True):
     # Check if we've parsed this before. We do a check for recursive imports here too.
     if path in module_cache:
         if module_cache[path] is None:
@@ -403,7 +402,7 @@ def parse(path, import_builtins=True, eval_ctx=None):
 
     # Recursively parse imports
     for imp in parse_ctx.all_imports:
-        handle_import(imp, parse_ctx, eval_ctx=eval_ctx)
+        handle_import(imp, parse_ctx)
 
     # Be sure and return a duplicate of the list...
     module_cache[path] = block[:]
