@@ -57,9 +57,8 @@ def check_obj_type(info, msg_type, ctx, obj, type):
                 msg_type, get_class_name(ctx, type)), ctx=ctx)
 
 def analyze_scoping(ctx, stmt):
-    seen = set()
     # Analyze nested functions
-    for node in stmt.iterate_graph(seen, iterate_across_scopes=False):
+    for node in stmt.iterate_graph(blacklist=Scope):
         if isinstance(node, Scope):
             node.analyze_scoping(ctx)
 
@@ -231,13 +230,13 @@ def node(arg_spec='', compare=False, base_type=None, ops=[]):
 
         # Iterate through the entire DAG reachable from this node, not including
         # the node. 'seen' is used to track nodes reachable through multiple paths.
-        # 'iterate_across_scopes' is used to break iteration on Scope boundaries
-        def iterate_subgraph(self, seen=None, iterate_across_scopes=True):
+        # 'blacklist' is used to break iteration on certain node types. The argument
+        # should be a type or tuple of types, for input to isinstance.
+        def iterate_subgraph(self, seen=None, blacklist=()):
             for child in self.iterate_children():
-                yield from child.iterate_graph(seen,
-                        iterate_across_scopes=iterate_across_scopes)
+                yield from child.iterate_graph(seen, blacklist=blacklist)
 
-        def iterate_graph(self, seen=None, iterate_across_scopes=True):
+        def iterate_graph(self, seen=None, blacklist=()):
             seen = set() if seen is None else seen
             # XXX Ugh, we want to use the default hashing/equality for Python objects
             # for the 'seen' set, while keeping custom hashing/equality for purposes of
@@ -250,9 +249,8 @@ def node(arg_spec='', compare=False, base_type=None, ops=[]):
             if key not in seen:
                 seen.add(key)
                 yield self
-                if iterate_across_scopes or not isinstance(self, Scope):
-                    yield from self.iterate_subgraph(seen,
-                            iterate_across_scopes=iterate_across_scopes)
+                if not isinstance(self, blacklist):
+                    yield from self.iterate_subgraph(seen, blacklist=blacklist)
 
         # If the compare flag is set, we delegate the comparison to the
         # Python object in the 'value' attribute
@@ -1373,7 +1371,7 @@ class Scope(Node):
             stores = set()
         loads = set()
 
-        for node in self.iterate_subgraph(iterate_across_scopes=False):
+        for node in self.iterate_subgraph(blacklist=Scope):
             if isinstance(node, Target):
                 stores.update(node.get_stores())
             elif isinstance(node, Identifier):
@@ -1396,9 +1394,9 @@ class Function(Node):
         # Check if this is a generator and not a function
         self.is_generator = False
         if any(isinstance(node, Yield) for node in
-                self.iterate_subgraph(iterate_across_scopes=False)):
+                self.iterate_subgraph(blacklist=Scope)):
             if any(isinstance(node, Return) for node in
-                    self.iterate_subgraph(iterate_across_scopes=False)):
+                    self.iterate_subgraph(blacklist=Scope)):
                 self.error('Cannot use return in a generator')
             self.is_generator = True
     def specialize(self, parent_ctx, ctx):
