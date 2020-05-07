@@ -500,7 +500,7 @@ def generate_lir(first_block):
 
 def compile(path, print_program=False):
     try:
-        stmts = parse.parse(path, import_builtins=False)
+        stmts = parse.parse_file(path, import_builtins=False)
     except libparse.ParseError as e:
         e.print()
         sys.exit(1)

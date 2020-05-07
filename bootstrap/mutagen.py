@@ -44,7 +44,7 @@ def interpret(path):
     ctx = syntax.Context('__main__', None, None)
     ctx.fill_in_builtins()
     try:
-        stmts = parse.parse(path, eval_ctx=ctx)
+        stmts = parse.parse_file(path)
     except parse.libparse.ParseError as e:
         e.print()
         sys.exit(1)
@@ -59,13 +59,12 @@ def repl():
 
     eval_ctx = syntax.Context('__main__', None, None)
     eval_ctx.fill_in_builtins()
-    parse_ctx = parse.ParseContext()
 
-    # Add all the builtins from the __builtins__.mg file
-    imp = parse.get_builtins_import()
-    parse.handle_import(imp, parse_ctx)
-    imp = parse.preprocess_program(eval_ctx, imp)
-    imp.eval(eval_ctx)
+    dirname = '.'
+    block = parse.get_builtins_import()
+    parse.handle_import(block, dirname)
+    block = parse.preprocess_program(eval_ctx, block)
+    _ = eval_statement(block, eval_ctx)
 
     while True:
         # Read lines until the parser hits an error or has parsed a full statement
@@ -74,16 +73,14 @@ def repl():
             while True:
                 prompt = '>>> ' if not line else '... '
                 line = line + input(prompt) + '\n'
-                tokens = parse.tokenizer.input(line, filename='<stdin>', interactive=True)
+                if not line.strip():
+                    line = ''
+                    continue
+                lex_ctx = parse.tokenizer.input(line, filename='<stdin>', interactive=True)
 
-                parse_ctx.all_imports = []
-                stmt = parse.parser.parse(tokens, start='single_input', user_context=parse_ctx, lazy=True)
+                stmt = parse.parse(lex_ctx, dirname, start='single_input', lazy=True)
                 if stmt:
                     break
-
-            # Recursively parse imports. Do this here so we can catch ParseErrors
-            for imp in parse_ctx.all_imports:
-                parse.handle_import(imp, parse_ctx, eval_ctx=eval_ctx)
         except EOFError:
             print()
             break

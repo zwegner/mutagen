@@ -354,14 +354,14 @@ def get_builtins_import():
     builtins_path = '%s/__builtins__.mg' % stdlib_dir
     return Scope(Import([], '__builtins__', [], builtins_path, True, info=BUILTIN_INFO))
 
-def handle_import(scope, parse_ctx):
+def handle_import(scope, dirname):
     imp = scope.expr
     # Explicit path: use that
     if imp.path:
-        import_paths = [imp.path, '%s/%s' % (parse_ctx.dirname, imp.path)]
+        import_paths = [imp.path, '%s/%s' % (dirname, imp.path)]
     else:
         import_paths = ['%s/%s.mg' % (cd, imp.name)
-            for cd in [parse_ctx.dirname, stdlib_dir]]
+            for cd in [dirname, stdlib_dir]]
     # Normal import: find the file first in
     # the current directory, then stdlib
     for import_path in import_paths:
@@ -371,28 +371,19 @@ def handle_import(scope, parse_ctx):
         print('checking paths: %s' % import_paths, file=sys.stderr)
         raise Exception('could not find import in path: %s' % imp.name)
 
-    imp.stmts = parse(import_path, import_builtins=not imp.is_builtins)
+    imp.stmts = parse_file(import_path, import_builtins=not imp.is_builtins)
 
+# ParseContext is passed through as sprdpl's user_context object. It holds all
+# metadata collected during parsing, which right now is just a list of imports
 class ParseContext:
-    def __init__(self, dirname=None):
-        if not dirname:
-            dirname = '.'
-        self.dirname = dirname
+    def __init__(self):
         self.all_imports = []
 
-def parse(path, import_builtins=True):
-    # Check if we've parsed this before. We do a check for recursive imports here too.
-    if path in module_cache:
-        if module_cache[path] is None:
-            raise Exception('recursive import detected for %s' % path)
-        return module_cache[path]
-    # Set a sentinel for the recursive import check
-    module_cache[path] = None
-
-    # Parse the file
-    parse_ctx = ParseContext(dirname=os.path.dirname(path))
-    with open(path) as f:
-        block = parser.parse(tokenizer.input(f.read(), filename=path), user_context=parse_ctx)
+def parse(lex_ctx, dirname='.', import_builtins=False, **kwargs):
+    parse_ctx = ParseContext()
+    block = parser.parse(lex_ctx, user_context=parse_ctx, **kwargs)
+    if block is None:
+        return None
 
     # Do some post-processing, starting with adding builtins
     if import_builtins:
@@ -402,7 +393,24 @@ def parse(path, import_builtins=True):
 
     # Recursively parse imports
     for imp in parse_ctx.all_imports:
-        handle_import(imp, parse_ctx)
+        handle_import(imp, dirname)
+
+    return block
+
+def parse_file(path, import_builtins=True):
+    # Check if we've parsed this before. We do a check for recursive imports here too.
+    if path in module_cache:
+        if module_cache[path] is None:
+            raise Exception('recursive import detected for %s' % path)
+        return module_cache[path]
+    # Set a sentinel for the recursive import check
+    module_cache[path] = None
+
+    # Parse the file
+    with open(path) as f:
+        lex_ctx = tokenizer.input(f.read(), filename=path)
+    block = parse(lex_ctx, dirname=os.path.dirname(path) or '.',
+            import_builtins=import_builtins)
 
     # Be sure and return a duplicate of the list...
     module_cache[path] = block[:]
