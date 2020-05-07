@@ -8,21 +8,21 @@ class RegSet:
     def __init__(self, *items):
         if len(items) == 1 and isinstance(items[0], collections.Iterable):
             items = items[0]
-        self.items = [i.index if isinstance(i, asm.Register) else i for i in items]
+        self.items = [i.index if isinstance(i, asm.GPReg) else i for i in items]
     def add(self, item):
-        if isinstance(item, asm.Register):
+        if isinstance(item, asm.GPReg):
             item = item.index
         if item not in self.items:
             self.items.insert(0, item)
     def pop(self):
         index = self.items.pop(0)
-        return asm.Register(index)
+        return asm.GPReg(index)
     def copy(self):
         return RegSet(self.items)
     def __getitem__(self, index):
-        return asm.Register(self.items[index])
+        return asm.GPReg(self.items[index])
     def __contains__(self, item):
-        if isinstance(item, asm.Register):
+        if isinstance(item, asm.GPReg):
             item = item.index
         return item in self.items
     def __len__(self):
@@ -36,7 +36,7 @@ RETURN_REGS = RegSet(0) # rax
 CALLEE_SAVE = RegSet(3, 5, 12, 13, 14, 15) # rbx, rbp, r12, r13, r14, r15
 CALLER_SAVE = RegSet(i for i in ALL_REGISTERS if i not in CALLEE_SAVE)
 
-[RSP, RBP] = [asm.Register(4), asm.Register(5)]
+[RSP, RBP] = [asm.GPReg(4), asm.GPReg(5)]
 
 def log(*args, **kwargs):
     if 0:
@@ -200,7 +200,7 @@ def get_block_dominance(start, preds, succs):
     return doms
 
 def is_register(reg):
-    return (isinstance(reg, asm.Register) or isinstance(reg, VirtualRegister))
+    return (isinstance(reg, asm.GPReg) or isinstance(reg, VirtualRegister))
 
 def get_arg_reg(arg, reg_assns, clobbered_regs, phi_slot_assns, insts, free_regs,
         force_move=False, assign=False, can_handle_labels=False):
@@ -217,7 +217,7 @@ def get_arg_reg(arg, reg_assns, clobbered_regs, phi_slot_assns, insts, free_regs
         # we don't need to lea it
         if isinstance(arg, asm.ExternLabel) and can_handle_labels:
             return arg
-        if isinstance(arg, asm.Register) and not force_move:
+        if isinstance(arg, asm.GPReg) and not force_move:
             return arg
         reg = free_regs.pop()
         if assign:
@@ -238,7 +238,7 @@ def update_free_regs(node, free_regs, reg_assns, live_set):
         log('not in regs:', node)
         return
     reg = reg_assns[node]
-    log('checking', node, reg.to_str(64) if is_register(reg) else reg,
+    log('checking', hex(id(node)), node, reg,
             is_register(reg) and node not in live_set)
     if is_register(reg) and node not in live_set:
         free_regs.add(reg)

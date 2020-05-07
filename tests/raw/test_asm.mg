@@ -7,7 +7,7 @@ def rand_select(l):
     r = (perform random.GetRandomInt64Effect())
     return l[r % len(l)]
 
-regs = [asm.Register(i) for i in range(16)]
+regs = list(range(16))
 bases = list(range(-1, 16))
 scales = [0, 1, 2, 4, 8]
 indices = list(range(4)) + list(range(5, 16)) # index can't be RSP
@@ -28,9 +28,14 @@ def gen_random_insts():
         inst_spec = rand_select(inst_specs)
         args = []
         for arg_spec in inst_spec[1:]:
-            arg_type = rand_select(arg_spec)
+            arg = rand_select(arg_spec)
+            if isinstance(arg, asm.GPReg):
+                args = args + [arg]
+                continue
+            [arg_type, size] = arg
             if arg_type == 'r':
                 arg = rand_select(regs)
+                arg = asm.GPReg(arg, size=size)
             elif arg_type == 'a':
                 base = rand_select(bases)
                 if base == -1:

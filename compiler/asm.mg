@@ -20,18 +20,18 @@ class ExternLabel(name): pass
 class Relocation(label, size: int):
     pass
 
-class Register(index: int):
-    def to_str(self, size):
+class GPReg(index: int, size: int=64):
+    def __str__(self):
         names = ['ip', 'ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di']
         [prefix, suffix] = {
             8: ['', 'b'],
             16: ['', 'w'],
             32: ['e', 'd'],
             64: ['r', ''],
-        }[size]
+        }[self.size]
         if self.index >= 8:
             return 'r{}{}'.format(self.index, suffix)
-        elif size == 8:
+        elif self.size == 8:
             if self.index & 4:
                 return names[self.index + 1] + 'l'
             return names[self.index + 1][0] + 'l'
@@ -44,9 +44,9 @@ class Address(base: int, scale: int, index: int, disp: int):
             size_str = size_str + ' PTR '
         else:
             size_str = ''
-        parts = [Register(self.base).to_str(64)]
+        parts = [GPReg(self.base, size=64)]
         if self.scale:
-            parts = parts + ['{}*{}'.format(Register(self.index).to_str(64),
+            parts = parts + ['{}*{}'.format(GPReg(self.index, size=64),
                 self.scale)]
         if self.disp:
             parts = parts + [self.disp]
@@ -74,11 +74,11 @@ def choose_8_or_32_bit(imm: int, op8, op32):
     return [pack32(imm), op32]
 
 def mod_rm_sib(reg, rm):
-    if isinstance(reg, Register):
+    if isinstance(reg, GPReg):
         reg = reg.index
     sib_bytes = []
     disp_bytes = []
-    if isinstance(rm, Register):
+    if isinstance(rm, GPReg):
         mod = 3
         base = rm.index
     else:
@@ -114,11 +114,11 @@ def ex_transform(r, addr):
     else:
         [x, b] = [0, addr]
 
-    if isinstance(r, Register):
+    if isinstance(r, GPReg):
         r = r.index
-    if isinstance(x, Register):
+    if isinstance(x, GPReg):
         x = x.index
-    if isinstance(b, Register):
+    if isinstance(b, GPReg):
         b = b.index
 
     return [r, x, b]
@@ -132,7 +132,7 @@ def rex(w, r, addr, force=0):
 
 def vex(w, r, addr, m, v, l, p):
     [r, x, b] = ex_transform(r, addr)
-    if isinstance(v, Register):
+    if isinstance(v, GPReg):
         v = v.index
     base = (~v & 15) << 3 | l << 2 | p
     if w or r or x or m != 1:
@@ -263,7 +263,7 @@ class Instruction(opcode: str, size: int, *args):
         elif self.opcode in arg1_table:
             opcode = arg1_table[self.opcode]
             [src] = self.args
-            assert isinstance(src, Register) or isinstance(src, Address)
+            assert isinstance(src, GPReg) or isinstance(src, Address)
             return rex(w, 0, src) + [0xF7] + mod_rm_sib(opcode, src)
         elif self.opcode in arg2_table:
             opcode = arg2_table[self.opcode]
@@ -271,7 +271,7 @@ class Instruction(opcode: str, size: int, *args):
 
             # Immediates have separate opcodes, so handle them specially here.
             if isinstance(src, int):
-                assert isinstance(dst, Register)
+                assert isinstance(dst, GPReg)
                 if self.opcode == 'mov':
                     if w:
                         imm_bytes = pack64(src)
@@ -295,7 +295,7 @@ class Instruction(opcode: str, size: int, *args):
                 opcode = opcode | 0x2
                 [src, dst] = [dst, src]
 
-            assert isinstance(src, Register)
+            assert isinstance(src, GPReg)
             return rex(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
         elif self.opcode in shift_table:
             sub_opcode = shift_table[self.opcode]
@@ -308,7 +308,7 @@ class Instruction(opcode: str, size: int, *args):
                     opcode = 0xC1
                     suffix = pack8(src & 63)
             else:
-                assert isinstance(src, Register)
+                assert isinstance(src, GPReg)
                 # Only CL
                 assert src.index == 1
                 opcode = 0xD3
@@ -318,26 +318,26 @@ class Instruction(opcode: str, size: int, *args):
             if isinstance(src, int):
                 [imm_bytes, opcode] = choose_8_or_32_bit(src, 0x6A, 0x68)
                 return [opcode] + imm_bytes
-            assert isinstance(src, Register)
+            assert isinstance(src, GPReg)
             return rex(0, 0, src) + [0x50 | (src.index & 7)]
         elif self.opcode == 'pop':
             [dst] = self.args
-            assert isinstance(dst, Register)
+            assert isinstance(dst, GPReg)
             return rex(0, 0, dst) + [0x58 | (dst.index & 7)]
         elif self.opcode == 'imul':
             # XXX only 2-operand version for now
             [dst, src] = self.args
-            assert isinstance(src, Register) or isinstance(src, Address)
-            assert isinstance(dst, Register)
+            assert isinstance(src, GPReg) or isinstance(src, Address)
+            assert isinstance(dst, GPReg)
             return rex(w, dst, src) + [0x0F, 0xAF] + mod_rm_sib(dst, src)
         elif self.opcode == 'xchg':
             [dst, src] = self.args
-            assert isinstance(src, Register)
-            assert isinstance(dst, Register) or isinstance(dst, Address)
+            assert isinstance(src, GPReg)
+            assert isinstance(dst, GPReg) or isinstance(dst, Address)
             return rex(w, src, dst) + [0x87] + mod_rm_sib(src, dst)
         elif self.opcode == 'lea':
             [dst, src] = self.args
-            assert isinstance(dst, Register) and isinstance(src, Address)
+            assert isinstance(dst, GPReg) and isinstance(src, Address)
             return rex(w, dst, src) + [0x8D] + mod_rm_sib(dst, src)
         elif self.opcode == 'test':
             # Test has backwards arguments, weird
@@ -371,7 +371,7 @@ class Instruction(opcode: str, size: int, *args):
             opcode = setcc_table[self.opcode]
             [dst] = self.args
             # Force REX since ah/bh etc. are used instead of sil etc. without it
-            force = isinstance(dst, Register) and dst.index & 0xC == 4
+            force = isinstance(dst, GPReg) and dst.index & 0xC == 4
             return rex(0, 0, dst, force=force) + [0x0F, opcode] + mod_rm_sib(0, dst)
         assert False
 
@@ -379,8 +379,8 @@ class Instruction(opcode: str, size: int, *args):
         if self.args:
             args = []
             for arg in self.args:
-                if isinstance(arg, Register):
-                    args = args + [arg.to_str(self.size)]
+                if isinstance(arg, GPReg):
+                    args = args + [str(arg)]
                 elif isinstance(arg, Address):
                     # lea doesn't need a size since it's only the address...
                     use_size_prefix = self.opcode != 'lea'
@@ -453,47 +453,59 @@ def build(insts):
 
 # Create a big list of possible instructions with possible operands
 def get_inst_specs():
+    def create_spec(inst, *args, size=None):
+        new_args = []
+        for arg in args:
+            new_args = new_args + [[t if isinstance(t, GPReg) else [t, size]
+                for t in arg]]
+        inst = '{}{}'.format(inst, size) if size else inst
+        return [inst] + new_args
+
     for inst in Instruction.arg0_table.keys():
         yield [inst]
 
     for size in [32, 64]:
+        # Lambda to pass size
+        sspec = lambda(*args, size=size): create_spec(*args, size=size)
+
         for inst in Instruction.arg1_table.keys():
-            yield ['{}{}'.format(inst, size), 'ra']
+            yield sspec(inst, 'ra')
 
         for inst in Instruction.arg2_table.keys():
-            yield ['{}{}'.format(inst, size), 'r', 'rai']
-            yield ['{}{}'.format(inst, size), 'a', 'r']
+            yield sspec(inst, 'r', 'rai')
+            yield sspec(inst, 'a', 'r')
 
         for inst in Instruction.shift_table.keys():
-            yield ['{}{}'.format(inst, size), 'ra', 'i']
-            # Printing shifts by CL is a pain in the ass, since it can
-            # use two different register sizes
-            # yield ['{}{}'.format(inst, size), 'ra', Register(1)]
+            yield sspec(inst, 'ra', 'i')
+            # Printing shifts by CL is special, since it uses two different
+            # register sizes
+            yield sspec(inst, 'ra', [GPReg(1, size=8)])
 
         for inst in Instruction.bmi_arg2_table.keys():
-            yield ['{}{}'.format(inst, size), 'r', 'ra']
+            yield sspec(inst, 'r', 'ra')
 
         for inst in Instruction.bmi_arg3_table.keys():
             [src1, src2] = ['ra', 'r']
             if inst in Instruction.bmi_arg3_reversed:
                 [src2, src1] = [src1, src2]
-            yield ['{}{}'.format(inst, size), 'r', src1, src2]
+            yield sspec(inst, 'r', src1, src2)
 
-        yield ['imul{}'.format(size), 'r', 'ra']
-        yield ['xchg{}'.format(size), 'ra', 'r']
-        yield ['lea{}'.format(size), 'r', 'a']
-        yield ['test{}'.format(size), 'ra', 'r']
+        yield sspec('imul', 'r', 'ra')
+        yield sspec('xchg', 'ra', 'r')
+        yield sspec('lea', 'r', 'a')
+        yield sspec('test', 'ra', 'r')
 
     # Push/pop don't have a 32-bit operand encoding in 64-bit mode...
-    yield ['push', 'ri']
-    yield ['pop', 'r']
+    yield create_spec('push', 'ri', size=64)
+    yield create_spec('pop', 'r', size=64)
 
     # Make sure all of the condition codes are tested, to test canonicalization
     for [cond, code] in Instruction.jump_table:
-        yield [cond, 'l']
+        yield create_spec(cond, 'l', size=None)
 
     for [cond, code] in Instruction.setcc_table:
-        yield [cond + '8', 'ra']
+        yield create_spec(cond, 'ra', size=8)
 
     for inst in ['jmp', 'call']:
-        yield [inst, 'rl']
+        yield create_spec(inst, 'r', size=64)
+        yield create_spec(inst, 'l', size=None)
