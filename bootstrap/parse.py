@@ -203,11 +203,11 @@ rule_table += [
 
     ['break', ('BREAK', lambda p: Break(info=p.get_info(0)))],
     ['continue', ('CONTINUE', lambda p: Continue(info=p.get_info(0)))],
-    ['return', ('RETURN test', lambda p: Return(p[1]))],
-    ['yield', ('YIELD test', lambda p: Yield(p[1]))],
-    ['perform_expr', ('PERFORM test', lambda p: Perform(p[1]))],
-    ['resume', ('RESUME test', lambda p: Resume(p[1]))],
-    ['assert', ('ASSERT test', lambda p: Assert(p[1]))],
+    ['return', ('RETURN test', lambda p: Return(p[1], info=p.get_info(0)))],
+    ['yield', ('YIELD test', lambda p: Yield(p[1], info=p.get_info(0)))],
+    ['perform_expr', ('PERFORM test', lambda p: Perform(p[1], info=p.get_info(0)))],
+    ['resume', ('RESUME test', lambda p: Resume(p[1], info=p.get_info(0)))],
+    ['assert', ('ASSERT test', lambda p: Assert(p[1], info=p.get_info(0)))],
 ]
 
 @libparse.rule_fn(rule_table, 'expr_stmt', 'test (EQUALS test)*')
@@ -384,6 +384,12 @@ def parse(lex_ctx, dirname='.', import_builtins=False, **kwargs):
     block = parser.parse(lex_ctx, user_context=parse_ctx, **kwargs)
     if block is None:
         return None
+
+    # Check control flow constructs. We do this here so we can use lex_ctx
+    # to raise nice errors.
+    stmts = block if isinstance(block, list) else [block]
+    for stmt in stmts:
+        check_control_flow(stmt, lex_ctx=lex_ctx)
 
     # Do some post-processing, starting with adding builtins
     if import_builtins:

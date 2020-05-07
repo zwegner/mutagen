@@ -4,6 +4,7 @@ import enum
 
 import greenlet
 
+import sprdpl.parse
 import sprdpl.lex
 
 # XXX HACK?
@@ -61,6 +62,50 @@ def analyze_scoping(ctx, stmt):
     for node in stmt.iterate_graph(blacklist=Scope):
         if isinstance(node, Scope):
             node.analyze_scoping(ctx)
+
+# Check that control flow statements (yield/break/continue/return) are
+# used properly within functions/loops
+def check_control_flow(stmt, current_fn=None, in_loop=False, lex_ctx=None):
+    def parse_error(msg):
+        raise sprdpl.parse.ParseError(lex_ctx, msg, info=node.info)
+
+    for node in stmt.iterate_graph(blacklist=(Scope, Function, For, While)):
+        # Scope boundary: reset markers
+        if isinstance(node, Scope):
+            check_control_flow(node.expr, current_fn=None, in_loop=False,
+                    lex_ctx=lex_ctx)
+        # Functions: check for yield/return to decide whether this is a generator
+        elif isinstance(node, Function):
+            node.has_yields = False
+            node.has_returns = False
+            check_control_flow(node.block, current_fn=node, in_loop=False,
+                    lex_ctx=lex_ctx)
+            node.is_generator = node.has_yields
+            # Weird case: we need to check parameters specially, which are below
+            # this function in the AST, but are not part of the function for
+            # control flow
+            check_control_flow(node.params, current_fn=current_fn, in_loop=in_loop,
+                    lex_ctx=lex_ctx)
+        elif isinstance(node, (For, While)):
+            check_control_flow(node.block, current_fn=current_fn, in_loop=True,
+                    lex_ctx=lex_ctx)
+
+        elif isinstance(node, Break):
+            if not in_loop:
+                parse_error('cannot use break outside a loop')
+        elif isinstance(node, Continue):
+            if not in_loop:
+                parse_error('cannot use continue outside a loop')
+        elif isinstance(node, Yield):
+            if not current_fn or current_fn.has_returns:
+                parse_error('cannot use yield outside a generator')
+            current_fn.has_yields = True
+        elif isinstance(node, Return):
+            if not current_fn:
+                parse_error('cannot use return outside a function')
+            if current_fn.has_yields:
+                parse_error('cannot use return inside a generator')
+            current_fn.has_returns = True
 
 class Context:
     def __init__(self, name, parent_ctx, callsite_ctx):
@@ -1390,15 +1435,6 @@ class Scope(Node):
 
 @node('name, &params, ?return_type, &block')
 class Function(Node):
-    def setup(self):
-        # Check if this is a generator and not a function
-        self.is_generator = False
-        if any(isinstance(node, Yield) for node in
-                self.iterate_subgraph(blacklist=Scope)):
-            if any(isinstance(node, Return) for node in
-                    self.iterate_subgraph(blacklist=Scope)):
-                self.error('Cannot use return in a generator')
-            self.is_generator = True
     def specialize(self, parent_ctx, ctx):
         # Be sure to evaluate the parameter and return type expressions in
         # the context of the function declaration, and only once
