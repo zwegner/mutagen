@@ -45,7 +45,8 @@ scales = [0, 1, 2, 4, 8]
 indices = list(range(4)) + list(range(5, 16)) # index can't be RSP
 # Our IR can't properly print unsigned integers without a bunch of work,
 # as they appear in the objdump output. So no negative numbers for now.
-imms = [0, 1, 7, 37, 0xFF, 0x100, 0xFFFFFF]
+imm_bytes = [0, 1, 7, 37]
+imms = imm_bytes + [0xFF, 0x100, 0xFFFFFF]
 
 labels = [asm.LocalLabel(l) for l in ['_start', '_end']]
 
@@ -79,6 +80,9 @@ for i in range(500):
             arg = asm.Address(base, scale, index, disp)
         elif arg_type == 'i':
             arg = rand_select(imms)
+            arg = asm.Immediate(arg, size=size)
+        elif arg_type == 'b':
+            arg = rand_select(imm_bytes)
             arg = asm.Immediate(arg, size=size)
         elif arg_type == 'l':
             arg = rand_select(labels)

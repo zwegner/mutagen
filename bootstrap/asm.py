@@ -213,6 +213,12 @@ shift_table = {
     'shr': 5,
     'sar': 7,
 }
+bt_table = {
+    'bt':  4,
+    'bts': 5,
+    'btr': 6,
+    'btc': 7,
+}
 
 bmi_arg2_table = {
     'lzcnt': 0xBD,
@@ -254,13 +260,14 @@ cond_table = {cond: i for [i, conds] in enumerate(all_conds) for cond in conds}
 
 jump_table = {'j' + cond: 0x80 | code for [cond, code] in cond_table.items()}
 setcc_table = {'set' + cond: 0x90 | code for [cond, code] in cond_table.items()}
+cmov_table = {'cmov' + cond: 0x40 | code for [cond, code] in cond_table.items()}
 
 cond_canon = {cond: conds[0] for conds in all_conds for cond in conds}
 canon_table = {prefix + cond: prefix + canon for [cond, canon] in cond_canon.items()
-        for prefix in ['j', 'set']}
+        for prefix in ['j', 'set', 'cmov']}
 
-destructive_ops = set(list(arg2_table.keys()) + list(shift_table.keys()) +
-        list(setcc_table.keys()) + ['imul', 'lea', 'pop']) - {'cmp'}
+destructive_ops = {*arg2_table.keys(), *shift_table.keys(), *setcc_table.keys(),
+        *cmov_table.keys(), 'imul', 'lea', 'pop'} - {'cmp'}
 no_reg_ops = {'cmp', 'test'}
 
 jump_ops = set(list(jump_table.keys()) + ['jmp'])
@@ -363,6 +370,18 @@ class Instruction(ASMObj):
                 assert src.index == 1
                 opcode = 0xD3
             return rex(w, 0, dst) + [opcode] + mod_rm_sib(sub_opcode, dst) + suffix
+        elif self.opcode in bt_table:
+            sub_opcode = bt_table[self.opcode]
+            [src, bit] = self.args
+            assert isinstance(bit, Immediate)
+            imm = pack8(bit.value)
+            return rex(w, 0, src) + [0x0F, 0xBA] + mod_rm_sib(sub_opcode, src) + imm
+        elif self.opcode in cmov_table:
+            opcode = cmov_table[self.opcode]
+            [dst, src] = self.args
+            assert isinstance(dst, GPReg)
+            assert isinstance(src, (GPReg, Address))
+            return rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
         elif self.opcode == 'push':
             [src] = self.args
             if isinstance(src, Immediate):
@@ -517,7 +536,7 @@ def get_inst_specs():
         yield [inst]
 
     for size in [32, 64]:
-        # Lambda to pass size
+        # Lambda to pass the local 'size' variable
         sspec = lambda *args, size=size: create_spec(*args, size=size)
 
         for inst in arg1_table.keys():
@@ -533,14 +552,11 @@ def get_inst_specs():
             # register sizes
             yield sspec(inst, 'ra', [GPReg(1, size=8)])
 
-        for inst in bmi_arg2_table.keys():
-            yield sspec(inst, 'r', 'ra')
+        for inst in bt_table.keys():
+            yield sspec(inst, 'ra', 'b')
 
-        for inst in bmi_arg3_table.keys():
-            [src1, src2] = ['ra', 'r']
-            if inst in bmi_arg3_reversed:
-                [src2, src1] = [src1, src2]
-            yield sspec(inst, 'r', src1, src2)
+        for [cond, code] in cmov_table.items():
+            yield sspec(cond, 'r', 'ra')
 
         yield sspec('imul', 'r', 'ra')
         yield sspec('xchg', 'ra', 'r')
@@ -561,3 +577,16 @@ def get_inst_specs():
     for inst in ['jmp', 'call']:
         yield create_spec(inst, 'r', size=64)
         yield create_spec(inst, 'l', size=None)
+
+    for size in [32, 64]:
+        # Lambda to pass the local 'size' variable
+        sspec = lambda *args, size=size: create_spec(*args, size=size)
+
+        for inst in bmi_arg2_table.keys():
+            yield sspec(inst, 'r', 'ra')
+
+        for inst in bmi_arg3_table.keys():
+            [src1, src2] = ['ra', 'r']
+            if inst in bmi_arg3_reversed:
+                [src2, src1] = [src1, src2]
+            yield sspec(inst, 'r', src1, src2)
