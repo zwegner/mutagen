@@ -28,6 +28,8 @@ class Immediate(ASMObj):
     def __init__(self, value: int, size: int=None):
         self.value = value
         self.size = size
+    def get_size(self):
+        return self.size
     def __str__(self):
         return str(self.value)
 
@@ -295,13 +297,13 @@ class Instruction(ASMObj):
         elif opcode.endswith('64'):
             size = 64
         else:
-            sizes = {arg.get_size() for arg in args if isinstance(arg, ASMObj)}
+            sizes = {arg.get_size() for arg in args if isinstance(arg, ASMObj)} - {None}
             if not sizes:
                 # XXX default size--this might need more logic later
                 size = 64
             else:
                 # Mismatched size arguments not supported yet
-                assert len(sizes) == 1
+                assert len(sizes) == 1, sizes
                 [size] = sizes
 
         self.opcode = normalize_opcode(opcode)
