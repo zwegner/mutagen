@@ -179,10 +179,13 @@ def vex(w, r, addr, m, v, l, p):
     if isinstance(v, GPReg):
         v = v.index
     base = (~v & 15) << 3 | l << 2 | p
-    if w or r or x or m != 1:
-        return [0xC4, (~r & 8) << 4 | (~x & 8) << 3 | (~b & 8) << 2 | m,
+    r &= 8
+    x &= 8
+    b &= 8
+    if w or x or b or m != 1:
+        return [0xC4, (r ^ 8) << 4 | (x ^ 8) << 3 | (b ^ 8) << 2 | m,
                 w << 7 | base]
-    return [0xC5, (~r & 8) << 4 | base]
+    return [0xC5, (r ^ 8) << 4 | base]
 
 arg0_table = {
     'ret': [0xC3],
