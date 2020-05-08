@@ -33,8 +33,11 @@ class Immediate(ASMObj):
     def __str__(self):
         return str(self.value)
 
+# Dummy abstract base class
+class Register(ASMObj): pass
+
 # General-purpose register
-class GPReg(ASMObj):
+class GPReg(Register):
     def __init__(self, index: int, size: int=None):
         self.index = index
         self.size = size or 64 # XXX default of 64
@@ -57,6 +60,29 @@ class GPReg(ASMObj):
                 return names[self.index + 1] + 'l'
             return names[self.index + 1][0] + 'l'
         return prefix + names[self.index + 1]
+
+# Vector registers
+class XMMReg(Register):
+    def __init__(self, index: int):
+        self.index = index
+    def get_size(self):
+        return 128
+    def __str__(self):
+        return 'xmm{}'.format(self.index)
+class YMMReg(Register):
+    def __init__(self, index: int):
+        self.index = index
+    def get_size(self):
+        return 256
+    def __str__(self):
+        return 'ymm{}'.format(self.index)
+class ZMMReg(Register):
+    def __init__(self, index: int):
+        self.index = index
+    def get_size(self):
+        return 512
+    def __str__(self):
+        return 'zmm{}'.format(self.index)
 
 class Address(ASMObj):
     def __init__(self, base: int, scale: int, index: int, disp: int, size: int=None):
@@ -112,11 +138,11 @@ def choose_8_or_32_bit(imm, op8, op32):
     return [pack32(imm), op32]
 
 def mod_rm_sib(reg, rm):
-    if isinstance(reg, GPReg):
+    if isinstance(reg, Register):
         reg = reg.index
     sib_bytes = []
     disp_bytes = []
-    if isinstance(rm, GPReg):
+    if isinstance(rm, Register):
         mod = 3
         base = rm.index
     elif isinstance(rm, Label):
@@ -158,11 +184,11 @@ def ex_transform(r, addr):
     else:
         [x, b] = [0, addr]
 
-    if isinstance(r, GPReg):
+    if isinstance(r, Register):
         r = r.index
-    if isinstance(x, GPReg):
+    if isinstance(x, Register):
         x = x.index
-    if isinstance(b, GPReg):
+    if isinstance(b, Register):
         b = b.index
 
     return [r, x, b]
@@ -176,7 +202,7 @@ def rex(w, r, addr, force=False):
 
 def vex(w, r, addr, m, v, l, p):
     [r, x, b] = ex_transform(r, addr)
-    if isinstance(v, GPReg):
+    if isinstance(v, Register):
         v = v.index
     base = (~v & 15) << 3 | l << 2 | p
     r &= 8
@@ -453,7 +479,7 @@ class Instruction(ASMObj):
         if self.args:
             args = []
             for arg in self.args:
-                if isinstance(arg, GPReg):
+                if isinstance(arg, Register):
                     args = args + [str(arg)]
                 elif isinstance(arg, Address):
                     # lea doesn't need a size since it's only the address...
