@@ -1,3 +1,4 @@
+import enum
 import struct
 
 # Dummy abstract base class
@@ -204,6 +205,8 @@ def vex(w, r, addr, m, v, l, p):
     [r, x, b] = ex_transform(r, addr)
     if isinstance(v, Register):
         v = v.index
+    assert isinstance(m, OPF)
+    assert isinstance(p, SPF)
     base = (~v & 15) << 3 | l << 2 | p
     r &= 8
     x &= 8
@@ -213,6 +216,7 @@ def vex(w, r, addr, m, v, l, p):
                 w << 7 | base]
     return [0xC5, (r ^ 8) << 4 | base]
 
+# Basic x86 ops
 arg0_table = {
     'ret': [0xC3],
     'nop': [0x90],
@@ -251,21 +255,49 @@ bt_table = {
     'btc': 7,
 }
 
+# Opcode extension prefix--these generate extra opcode bytes with SSE, or get packed
+# into bitfields of the VEX/EVEX prefixes
+OPF = enum.IntEnum('OPF', 'x0F x0Fx38 x0Fx3A', start=1)
+OPCODE_PREFIX_BYTES = {OPF.x0F: [0x0F], OPF.x0Fx38: [0x0F, 0x38], OPF.x0Fx3A: [0x0F, 0x3A]}
+
+# Size prefix enum, same deal as opcode prefixes
+SPF = enum.IntEnum('SPF', 'none x66 xF3 xF2', start=0)
+SIZE_PREFIX_BYTES = {SPF.none: [], SPF.x66: [0x66], SPF.xF3: [0xF3], SPF.xF2: [0xF2]}
+
+# SSE instructions
+sse_table = {
+    # Shifts (immediate)
+    'psrlw':    [SPF.x66,  OPF.x0F,    0x71, 2],
+    'psraw':    [SPF.x66,  OPF.x0F,    0x71, 4],
+    'psllw':    [SPF.x66,  OPF.x0F,    0x71, 6],
+    'psrld':    [SPF.x66,  OPF.x0F,    0x72, 2],
+    'psrad':    [SPF.x66,  OPF.x0F,    0x72, 4],
+    'pslld':    [SPF.x66,  OPF.x0F,    0x72, 6],
+    'psrlq':    [SPF.x66,  OPF.x0F,    0x73, 2],
+    'psrldq':   [SPF.x66,  OPF.x0F,    0x73, 3],
+    'psllq':    [SPF.x66,  OPF.x0F,    0x73, 6],
+    'pslldq':   [SPF.x66,  OPF.x0F,    0x73, 7],
+}
+
+# AVX 1/2 instructions: these are (so far) just straightforward extensions of SSE
+avx_table = {'v' + opcode: value for [opcode, value] in sse_table.items()}
+
+# BMI instructions
 bmi_arg2_table = {
     'lzcnt': 0xBD,
     'popcnt': 0xB8,
     'tzcnt': 0xBC,
 }
 bmi_arg3_table = {
-    'andn':  [2, 0, 0xF2],
-    'bextr': [2, 0, 0xF7],
-    'bzhi':  [2, 0, 0xF5],
-    'mulx':  [2, 3, 0xF6],
-    'pdep':  [2, 3, 0xF5],
-    'pext':  [2, 2, 0xF5],
-    'sarx':  [2, 2, 0xF7],
-    'shlx':  [2, 1, 0xF7],
-    'shrx':  [2, 3, 0xF7],
+    'andn':  [SPF.none, OPF.x0Fx38, 0xF2],
+    'bextr': [SPF.none, OPF.x0Fx38, 0xF7],
+    'bzhi':  [SPF.none, OPF.x0Fx38, 0xF5],
+    'mulx':  [SPF.xF2,  OPF.x0Fx38, 0xF6],
+    'pdep':  [SPF.xF2,  OPF.x0Fx38, 0xF5],
+    'pext':  [SPF.xF3,  OPF.x0Fx38, 0xF5],
+    'sarx':  [SPF.xF3,  OPF.x0Fx38, 0xF7],
+    'shlx':  [SPF.x66,  OPF.x0Fx38, 0xF7],
+    'shrx':  [SPF.xF2,  OPF.x0Fx38, 0xF7],
 }
 bmi_arg3_reversed = ['andn', 'mulx', 'pdep', 'pext']
 
@@ -443,16 +475,32 @@ class Instruction(ASMObj):
             # Test has backwards arguments, weird
             [src2, src1] = self.args
             return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
+
+        elif self.opcode in sse_table:
+            [spf, opf, opcode, sub_opcode] = sse_table[self.opcode]
+            [dst, shift] = self.args
+            assert isinstance(shift, Immediate)
+            imm = pack8(shift.value)
+            spf = SIZE_PREFIX_BYTES[spf]
+            opf = OPCODE_PREFIX_BYTES[opf]
+            return spf + rex(w, 0, dst) + opf + [opcode] + mod_rm_sib(sub_opcode, dst) + imm
+
+        elif self.opcode in avx_table:
+            [spf, opf, opcode, sub_opcode] = avx_table[self.opcode]
+            [dst, src, shift] = self.args
+            assert isinstance(shift, Immediate)
+            imm = pack8(shift.value)
+            return vex(w, 0, src, OPF.x0F, dst, 1, SPF.x66) + [opcode] + mod_rm_sib(sub_opcode, src) + imm
         elif self.opcode in bmi_arg2_table:
             opcode = bmi_arg2_table[self.opcode]
             [dst, src] = self.args
             return [0xF3] + rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
         elif self.opcode in bmi_arg3_table:
-            [m, p, opcode] = bmi_arg3_table[self.opcode]
+            [spf, opf, opcode] = bmi_arg3_table[self.opcode]
             [dst, src1, src2] = self.args
             if self.opcode in bmi_arg3_reversed:
                 [src2, src1] = [src1, src2]
-            return vex(w, dst, src1, m, src2, 0, p) + [opcode] + mod_rm_sib(dst, src1)
+            return vex(w, dst, src1, opf, src2, 0, spf) + [opcode] + mod_rm_sib(dst, src1)
         elif self.opcode in jump_table:
             opcode = jump_table[self.opcode]
             [src] = self.args
@@ -608,6 +656,12 @@ def get_inst_specs():
     for inst in ['jmp', 'call']:
         yield create_spec(inst, 'r', size=64)
         yield create_spec(inst, 'l', size=None)
+
+    for inst in sse_table.keys():
+        yield create_spec(inst, 'x', 'b')
+
+    for inst in avx_table.keys():
+        yield create_spec(inst, 'y', 'y', 'b')
 
     for size in [32, 64]:
         # Lambda to pass the local 'size' variable
