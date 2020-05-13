@@ -264,23 +264,159 @@ OPCODE_PREFIX_BYTES = {OPF.x0F: [0x0F], OPF.x0Fx38: [0x0F, 0x38], OPF.x0Fx3A: [0
 SPF = enum.IntEnum('SPF', 'none x66 xF3 xF2', start=0)
 SIZE_PREFIX_BYTES = {SPF.none: [], SPF.x66: [0x66], SPF.xF3: [0xF3], SPF.xF2: [0xF2]}
 
+# Flags for instruction form
+FLAG_3OP = 1
+FLAG_IMM = 2
+
 # SSE instructions
 sse_table = {
-    # Shifts (immediate)
-    'psrlw':    [SPF.x66,  OPF.x0F,    0x71, 2],
-    'psraw':    [SPF.x66,  OPF.x0F,    0x71, 4],
-    'psllw':    [SPF.x66,  OPF.x0F,    0x71, 6],
-    'psrld':    [SPF.x66,  OPF.x0F,    0x72, 2],
-    'psrad':    [SPF.x66,  OPF.x0F,    0x72, 4],
-    'pslld':    [SPF.x66,  OPF.x0F,    0x72, 6],
-    'psrlq':    [SPF.x66,  OPF.x0F,    0x73, 2],
-    'psrldq':   [SPF.x66,  OPF.x0F,    0x73, 3],
-    'psllq':    [SPF.x66,  OPF.x0F,    0x73, 6],
-    'pslldq':   [SPF.x66,  OPF.x0F,    0x73, 7],
+    'addpd':        [1, SPF.x66,  OPF.x0F,    0x58],
+    'addps':        [1, SPF.none, OPF.x0F,    0x58],
+    'addsubpd':     [1, SPF.x66,  OPF.x0F,    0xD0],
+    'addsubps':     [1, SPF.xF2,  OPF.x0F,    0xD0],
+    'blendpd':      [3, SPF.x66,  OPF.x0Fx3A, 0x0D],
+    'blendps':      [3, SPF.x66,  OPF.x0Fx3A, 0x0C],
+    'divpd':        [1, SPF.x66,  OPF.x0F,    0x5E],
+    'divps':        [1, SPF.none, OPF.x0F,    0x5E],
+    'haddpd':       [1, SPF.x66,  OPF.x0F,    0x7C],
+    'haddps':       [1, SPF.xF2,  OPF.x0F,    0x7C],
+    'hsubpd':       [1, SPF.x66,  OPF.x0F,    0x7D],
+    'hsubps':       [1, SPF.xF2,  OPF.x0F,    0x7D],
+    'maxpd':        [1, SPF.x66,  OPF.x0F,    0x5F],
+    'maxps':        [1, SPF.none, OPF.x0F,    0x5F],
+    'minpd':        [1, SPF.x66,  OPF.x0F,    0x5D],
+    'minps':        [1, SPF.none, OPF.x0F,    0x5D],
+    'mpsadbw':      [3, SPF.x66,  OPF.x0Fx3A, 0x42],
+    'mulpd':        [1, SPF.x66,  OPF.x0F,    0x59],
+    'mulps':        [1, SPF.none, OPF.x0F,    0x59],
+    'pabsb':        [0, SPF.x66,  OPF.x0Fx38, 0x1C],
+    'pabsd':        [0, SPF.x66,  OPF.x0Fx38, 0x1E],
+    'pabsw':        [0, SPF.x66,  OPF.x0Fx38, 0x1D],
+    'packssdw':     [1, SPF.x66,  OPF.x0F,    0x6B],
+    'packsswb':     [1, SPF.x66,  OPF.x0F,    0x63],
+    'packusdw':     [1, SPF.x66,  OPF.x0Fx38, 0x2B],
+    'packuswb':     [1, SPF.x66,  OPF.x0F,    0x67],
+    'paddb':        [1, SPF.x66,  OPF.x0F,    0xFC],
+    'paddd':        [1, SPF.x66,  OPF.x0F,    0xFE],
+    'paddq':        [1, SPF.x66,  OPF.x0F,    0xD4],
+    'paddsb':       [1, SPF.x66,  OPF.x0F,    0xEC],
+    'paddsw':       [1, SPF.x66,  OPF.x0F,    0xED],
+    'paddusb':      [1, SPF.x66,  OPF.x0F,    0xDC],
+    'paddusw':      [1, SPF.x66,  OPF.x0F,    0xDD],
+    'paddw':        [1, SPF.x66,  OPF.x0F,    0xFD],
+    'palignr':      [3, SPF.x66,  OPF.x0Fx3A, 0x0F],
+    'pavgb':        [1, SPF.x66,  OPF.x0F,    0xE0],
+    'pavgw':        [1, SPF.x66,  OPF.x0F,    0xE3],
+    'pblendw':      [3, SPF.x66,  OPF.x0Fx3A, 0x0E],
+    'pcmpeqb':      [1, SPF.x66,  OPF.x0F,    0x74],
+    'pcmpeqd':      [1, SPF.x66,  OPF.x0F,    0x76],
+    'pcmpeqq':      [1, SPF.x66,  OPF.x0Fx38, 0x29],
+    'pcmpeqw':      [1, SPF.x66,  OPF.x0F,    0x75],
+    'pcmpgtb':      [1, SPF.x66,  OPF.x0F,    0x64],
+    'pcmpgtd':      [1, SPF.x66,  OPF.x0F,    0x66],
+    'pcmpgtw':      [1, SPF.x66,  OPF.x0F,    0x65],
+    'phaddd':       [1, SPF.x66,  OPF.x0Fx38, 0x02],
+    'phaddsw':      [1, SPF.x66,  OPF.x0Fx38, 0x03],
+    'phaddw':       [1, SPF.x66,  OPF.x0Fx38, 0x01],
+    'phminposuw':   [0, SPF.x66,  OPF.x0Fx38, 0x41],
+    'phsubd':       [1, SPF.x66,  OPF.x0Fx38, 0x06],
+    'phsubsw':      [1, SPF.x66,  OPF.x0Fx38, 0x07],
+    'phsubw':       [1, SPF.x66,  OPF.x0Fx38, 0x05],
+    'pmaddubsw':    [1, SPF.x66,  OPF.x0Fx38, 0x04],
+    'pmaddwd':      [1, SPF.x66,  OPF.x0F,    0xF5],
+    'pmaxsb':       [1, SPF.x66,  OPF.x0Fx38, 0x3C],
+    'pmaxsd':       [1, SPF.x66,  OPF.x0Fx38, 0x3D],
+    'pmaxsw':       [1, SPF.x66,  OPF.x0F,    0xEE],
+    'pmaxub':       [1, SPF.x66,  OPF.x0F,    0xDE],
+    'pmaxud':       [1, SPF.x66,  OPF.x0Fx38, 0x3F],
+    'pmaxuw':       [1, SPF.x66,  OPF.x0Fx38, 0x3E],
+    'pminsb':       [1, SPF.x66,  OPF.x0Fx38, 0x38],
+    'pminsd':       [1, SPF.x66,  OPF.x0Fx38, 0x39],
+    'pminsw':       [1, SPF.x66,  OPF.x0F,    0xEA],
+    'pminub':       [1, SPF.x66,  OPF.x0F,    0xDA],
+    'pminud':       [1, SPF.x66,  OPF.x0Fx38, 0x3B],
+    'pminuw':       [1, SPF.x66,  OPF.x0Fx38, 0x3A],
+    'pmuldq':       [1, SPF.x66,  OPF.x0Fx38, 0x28],
+    'pmulhrsw':     [1, SPF.x66,  OPF.x0Fx38, 0x0B],
+    'pmulhuw':      [1, SPF.x66,  OPF.x0F,    0xE4],
+    'pmulhw':       [1, SPF.x66,  OPF.x0F,    0xE5],
+    'pmulld':       [1, SPF.x66,  OPF.x0Fx38, 0x40],
+    'pmullw':       [1, SPF.x66,  OPF.x0F,    0xD5],
+    'pmuludq':      [1, SPF.x66,  OPF.x0F,    0xF4],
+    'psadbw':       [1, SPF.x66,  OPF.x0F,    0xF6],
+    'pshufb':       [1, SPF.x66,  OPF.x0Fx38, 0x00],
+    'pshufd':       [2, SPF.x66,  OPF.x0F,    0x70],
+    'pshufhw':      [2, SPF.xF3,  OPF.x0F,    0x70],
+    'pshuflw':      [2, SPF.xF2,  OPF.x0F,    0x70],
+    'psignb':       [1, SPF.x66,  OPF.x0Fx38, 0x08],
+    'psignd':       [1, SPF.x66,  OPF.x0Fx38, 0x0A],
+    'psignw':       [1, SPF.x66,  OPF.x0Fx38, 0x09],
+    'psubb':        [1, SPF.x66,  OPF.x0F,    0xF8],
+    'psubd':        [1, SPF.x66,  OPF.x0F,    0xFA],
+    'psubq':        [1, SPF.x66,  OPF.x0F,    0xFB],
+    'psubsb':       [1, SPF.x66,  OPF.x0F,    0xE8],
+    'psubsw':       [1, SPF.x66,  OPF.x0F,    0xE9],
+    'psubusb':      [1, SPF.x66,  OPF.x0F,    0xD8],
+    'psubusw':      [1, SPF.x66,  OPF.x0F,    0xD9],
+    'psubw':        [1, SPF.x66,  OPF.x0F,    0xF9],
+    'rcpps':        [0, SPF.none, OPF.x0F,    0x53],
+    'roundpd':      [2, SPF.x66,  OPF.x0Fx3A, 0x09],
+    'roundps':      [2, SPF.x66,  OPF.x0Fx3A, 0x08],
+    'rsqrtps':      [0, SPF.none, OPF.x0F,    0x52],
+    'shufpd':       [3, SPF.x66,  OPF.x0F,    0xC6],
+    'shufps':       [3, SPF.none, OPF.x0F,    0xC6],
+    'sqrtpd':       [0, SPF.x66,  OPF.x0F,    0x51],
+    'sqrtps':       [0, SPF.none, OPF.x0F,    0x51],
+    'subpd':        [1, SPF.x66,  OPF.x0F,    0x5C],
+    'subps':        [1, SPF.none, OPF.x0F,    0x5C],
+    'unpckhps':     [1, SPF.none, OPF.x0F,    0x15],
 }
 
-# AVX 1/2 instructions: these are (so far) just straightforward extensions of SSE
-avx_table = {'v' + opcode: value for [opcode, value] in sse_table.items()}
+# SSE sub instructions: these have in immediate and are encoded differently
+sse_sub_table = {
+    'pslld':   [0x72, 6],
+    'pslldq':  [0x73, 7],
+    'psllq':   [0x73, 6],
+    'psllw':   [0x71, 6],
+    'psrad':   [0x72, 4],
+    'psraw':   [0x71, 4],
+    'psrld':   [0x72, 2],
+    'psrldq':  [0x73, 3],
+    'psrlq':   [0x73, 2],
+    'psrlw':   [0x71, 2],
+}
+
+# AVX only instructions (VEX-encoded SSE instructions are added below)
+avx_table = {
+    'vpblendd':     [3, SPF.x66,  OPF.x0Fx3A, 0x02, ('w', 0)],
+    'vpcmpgtq':     [1, SPF.x66,  OPF.x0Fx38, 0x37],
+    'vperm2f128':   [3, SPF.x66,  OPF.x0Fx3A, 0x06, ('w', 0)],
+    'vperm2i128':   [3, SPF.x66,  OPF.x0Fx3A, 0x46, ('w', 0)],
+    'vpermd':       [1, SPF.x66,  OPF.x0Fx38, 0x36, ('w', 0)],
+    'vpermpd':      [2, SPF.x66,  OPF.x0Fx3A, 0x01, ('w', 1)],
+    'vpermps':      [1, SPF.x66,  OPF.x0Fx38, 0x16, ('w', 0)],
+    'vpermq':       [2, SPF.x66,  OPF.x0Fx3A, 0x00, ('w', 1)],
+    'vpsllvd':      [1, SPF.x66,  OPF.x0Fx38, 0x47, ('w', 0)],
+    'vpsllvq':      [1, SPF.x66,  OPF.x0Fx38, 0x47, ('w', 1)],
+    'vpsravd':      [1, SPF.x66,  OPF.x0Fx38, 0x46, ('w', 0)],
+    'vpsrlvd':      [1, SPF.x66,  OPF.x0Fx38, 0x45, ('w', 0)],
+    'vpsrlvq':      [1, SPF.x66,  OPF.x0Fx38, 0x45, ('w', 1)],
+}
+
+# AVX 128-bit only instructions
+avx_blacklist = {
+    'phminposuw',
+}
+
+# Convert flags varargs in SSE/AVX tables to dicts
+for table in [sse_table, avx_table]:
+    for [inst, [form, spf, opf, opcode, *flags]] in table.items():
+        table[inst] = [form, spf, opf, opcode, dict(flags)]
+
+# Add VEX extensions of SSE instructions
+for [opcode, value] in sse_table.items():
+    if opcode not in avx_blacklist:
+        avx_table['v' + opcode] = value
 
 # BMI instructions
 bmi_arg2_table = {
@@ -477,20 +613,53 @@ class Instruction(ASMObj):
             return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
 
         elif self.opcode in sse_table:
-            [spf, opf, opcode, sub_opcode] = sse_table[self.opcode]
-            [dst, shift] = self.args
-            assert isinstance(shift, Immediate)
-            imm = pack8(shift.value)
+            [form, spf, opf, opcode, flags] = sse_table[self.opcode]
+            # Check instruction flags for w override
+            if 'w' in flags:
+                w = flags['w']
+
+            # Convert size/opcode prefix enums to prefix bytes
             spf = SIZE_PREFIX_BYTES[spf]
             opf = OPCODE_PREFIX_BYTES[opf]
-            return spf + rex(w, 0, dst) + opf + [opcode] + mod_rm_sib(sub_opcode, dst) + imm
 
+            # Parse immediate
+            args = self.args.copy()
+            imm = []
+            if form & FLAG_IMM:
+                imm = args.pop()
+                assert isinstance(imm, Immediate), imm
+                imm = pack8(imm.value)
+
+            assert len(args) == 2, self
+            [dst, src] = args
+            assert isinstance(src, (XMMReg, Address)), self
+            return spf + rex(w, dst, src) + opf + [opcode] + mod_rm_sib(dst, src) + imm
         elif self.opcode in avx_table:
-            [spf, opf, opcode, sub_opcode] = avx_table[self.opcode]
-            [dst, src, shift] = self.args
-            assert isinstance(shift, Immediate)
-            imm = pack8(shift.value)
-            return vex(w, 0, src, OPF.x0F, dst, 1, SPF.x66) + [opcode] + mod_rm_sib(sub_opcode, src) + imm
+            [form, spf, opf, opcode, flags] = avx_table[self.opcode]
+            # Check instruction flags for w override
+            if 'w' in flags:
+                w = flags['w']
+
+            # Parse immediate
+            args = self.args.copy()
+            imm = []
+            if form & FLAG_IMM:
+                imm = args.pop()
+                assert isinstance(imm, Immediate), imm
+                imm = pack8(imm.value)
+
+            # Encode either 2-op or 3-op instruction
+            if form & FLAG_3OP:
+                assert len(args) == 3, (self, args)
+                [dst, src1, src2] = args
+                assert isinstance(src1, (YMMReg, Address)), self
+                assert isinstance(src2, (YMMReg, Address)), self
+                return vex(w, dst, src2, opf, src1, 1, spf) + [opcode] + mod_rm_sib(dst, src2) + imm
+            else:
+                assert len(args) == 2, self
+                [dst, src] = args
+                assert isinstance(src, (YMMReg, Address)), self
+                return vex(w, dst, src, opf, 0, 1, spf) + [opcode] + mod_rm_sib(dst, src) + imm
         elif self.opcode in bmi_arg2_table:
             opcode = bmi_arg2_table[self.opcode]
             [dst, src] = self.args
