@@ -54,10 +54,10 @@ labels = [asm.LocalLabel(l) for l in ['_start', '_end']]
 # instruction somehow (random.shuffle?). This is also a good case for figuring
 # out some way to thread a stream of random numbers through for every place
 # that needs one.
-inst_specs = list(asm.get_inst_specs())
+inst_specs = asm.get_inst_specs()
 insts = [asm.GlobalLabel('_start')]
 
-for i in range(500):
+for i in range(8000):
     inst_spec = rand_select(inst_specs)
     args = []
     for arg_spec in inst_spec[1:]:
@@ -66,10 +66,10 @@ for i in range(500):
             args.append(arg)
             continue
         [arg_type, size] = arg
-        if arg_type == 'r':
+        if arg_type in {'q', 'd', 'w', 'b'}:
             arg = rand_select(regs)
             arg = asm.GPReg(arg, size=size)
-        elif arg_type == 'a':
+        elif arg_type in {'Q', 'D', 'W', 'B'}:
             base = rand_select(bases)
             if base == -1:
                 [scale, index] = [0, 0]
@@ -77,17 +77,23 @@ for i in range(500):
                 scale = rand_select(scales)
                 index = rand_select(indices) if scale else 0
             disp = rand_select(imms)
-            arg = asm.Address(base, scale, index, disp)
-        elif arg_type == 'i':
+            arg = asm.Address(base, scale, index, disp, size=size)
+        elif arg_type == 'I':
             arg = rand_select(imms)
             arg = asm.Immediate(arg, size=size)
-        elif arg_type == 'b':
+        elif arg_type == 'i':
             arg = rand_select(imm_bytes)
             arg = asm.Immediate(arg, size=size)
         elif arg_type == 'l':
             arg = rand_select(labels)
+        elif arg_type == 'x':
+            arg = rand_select(regs)
+            arg = asm.XMMReg(arg)
+        elif arg_type == 'y':
+            arg = rand_select(regs)
+            arg = asm.YMMReg(arg)
         else:
-            assert False
+            assert False, arg
         args = args + [arg]
     insts = insts + [asm.Instruction(inst_spec[0], *args)]
 

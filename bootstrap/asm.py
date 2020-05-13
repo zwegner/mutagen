@@ -96,9 +96,9 @@ class Address(ASMObj):
     def get_size(self):
         return self.size
 
-    def to_str(self, use_size_prefix: bool, size: int):
+    def to_str(self, use_size_prefix: bool):
         if use_size_prefix:
-            size_str = {8: 'BYTE', 16: 'WORD', 32: 'DWORD', 64: 'QWORD'}[size]
+            size_str = {8: 'BYTE', 16: 'WORD', 32: 'DWORD', 64: 'QWORD'}[self.size]
             size_str = size_str + ' PTR '
         else:
             size_str = ''
@@ -472,9 +472,6 @@ no_reg_ops = {'cmp', 'test'}
 jump_ops = set(list(jump_table.keys()) + ['jmp'])
 
 def normalize_opcode(opcode):
-    opcode = opcode.replace('8', '').replace('16', '')
-    opcode = opcode.replace('32', '').replace('64', '')
-
     # Canonicalize instruction names that have multiple names
     if opcode in canon_table:
         opcode = canon_table[opcode]
@@ -483,32 +480,24 @@ def normalize_opcode(opcode):
 
 class Instruction(ASMObj):
     def __init__(self, opcode: str, *args):
-        # Handle 32/64 bit instruction size. This info is stuck in the opcode
-        # name for now since not all instructions need it.
-        if opcode.endswith('8'):
-            size = 8
-        elif opcode.endswith('16'):
-            size = 16
-        elif opcode.endswith('32'):
-            size = 32
-        elif opcode.endswith('64'):
-            size = 64
-        else:
-            sizes = {arg.get_size() for arg in args if isinstance(arg, ASMObj)} - {None}
-            if not sizes:
-                # XXX default size--this might need more logic later
-                size = 64
-            else:
-                # Mismatched size arguments not supported yet
-                assert len(sizes) == 1, sizes
-                [size] = sizes
-
         self.opcode = normalize_opcode(opcode)
-        self.size = size
         self.args = [Immediate(arg) if isinstance(arg, int) else arg for arg in args]
 
     def to_bytes(self):
-        w = int(self.size == 64)
+        # Compute default w value for REX prefix. This isn't always needed, and it's a
+        # tad messy, but it's used a bunch of times below, so get it now
+        sizes = {arg.get_size() for arg in self.args if isinstance(arg, ASMObj)} - {None}
+        size = None
+        if not sizes:
+            # XXX default size--this might need more logic later
+            size = 64
+        elif len(sizes) == 1:
+            [size] = sizes
+        else:
+            # Mismatched size arguments--what to do?
+            size = self.args[0].get_size()
+
+        w = int(size == 64)
 
         if self.opcode in arg0_table:
             assert not self.args
@@ -701,7 +690,7 @@ class Instruction(ASMObj):
                 elif isinstance(arg, Address):
                     # lea doesn't need a size since it's only the address...
                     use_size_prefix = self.opcode != 'lea'
-                    args = args + [arg.to_str(use_size_prefix, self.size)]
+                    args = args + [arg.to_str(use_size_prefix)]
                 else:
                     assert isinstance(arg, (Immediate, Label)), arg
                     #arg = arg.value
@@ -772,75 +761,108 @@ def build(insts):
 
 # Create a big list of possible instructions with possible operands
 def get_inst_specs():
-    def create_spec(inst, *args, size=None):
+    SIZE_TABLE = {
+        # GP regs
+        'q': 64,
+        'd': 32,
+        'w': 16,
+        'b': 8,
+        # V regs
+        'x': 128,
+        'y': 256,
+        'z': 512,
+        # Address, label
+        'Q': 64,
+        'D': 32,
+        'W': 16,
+        'B': 8,
+        'l': None,
+        # Immediates
+        'i': 8,
+        'I': 32,
+    }
+
+    inst_list = []
+    def add(inst, *args):
+        nonlocal inst_list
         new_args = []
         for arg in args:
-            new_args.append([t if isinstance(t, ASMObj) else (t, size)
+            new_args.append([t if isinstance(t, ASMObj) else (t, SIZE_TABLE[t])
                 for t in arg])
-        inst = '{}{}'.format(inst, size) if size else inst
-        return [inst, *new_args]
+        #inst = '{}{}'.format(inst, size) if size else inst
+        inst_list.append((inst, *new_args))
+
+    def add_32_64(inst, *args):
+        add(inst, *args)
+        add(inst, *(a.replace('q', 'd').replace('Q', 'D')
+                if isinstance(a, str) else a for a in args))
 
     for inst in arg0_table.keys():
-        yield [inst]
+        add(inst)
 
-    for size in [32, 64]:
-        # Lambda to pass the local 'size' variable
-        sspec = lambda *args, size=size: create_spec(*args, size=size)
+    for inst in arg1_table.keys():
+        add_32_64(inst, 'qQ')
 
-        for inst in arg1_table.keys():
-            yield sspec(inst, 'ra')
+    for inst in arg2_table.keys():
+        add_32_64(inst, 'q', 'qQi')
+        add_32_64(inst, 'Q', 'q')
 
-        for inst in arg2_table.keys():
-            yield sspec(inst, 'r', 'rai')
-            yield sspec(inst, 'a', 'r')
+    for inst in shift_table.keys():
+        add_32_64(inst, 'qQ', 'i')
+        # Shifts by CL is special, only one register allowed
+        add_32_64(inst, 'qQ', [GPReg(1, size=8)])
 
-        for inst in shift_table.keys():
-            yield sspec(inst, 'ra', 'i')
-            # Printing shifts by CL is special, since it uses two different
-            # register sizes
-            yield sspec(inst, 'ra', [GPReg(1, size=8)])
+    for inst in bt_table.keys():
+        add_32_64(inst, 'qQ', 'i')
 
-        for inst in bt_table.keys():
-            yield sspec(inst, 'ra', 'b')
+    for [cond, code] in cmov_table.items():
+        add_32_64(cond, 'q', 'qQ')
 
-        for [cond, code] in cmov_table.items():
-            yield sspec(cond, 'r', 'ra')
-
-        yield sspec('imul', 'r', 'ra')
-        yield sspec('xchg', 'ra', 'r')
-        yield sspec('lea', 'r', 'a')
-        yield sspec('test', 'ra', 'r')
+    add_32_64('imul', 'q', 'qQ')
+    add_32_64('xchg', 'qQ', 'q')
+    add_32_64('lea', 'q', 'Q')
+    add_32_64('test', 'qQ', 'q')
 
     # Push/pop don't have a 32-bit operand encoding in 64-bit mode...
-    yield create_spec('push', 'ri', size=64)
-    yield create_spec('pop', 'r', size=64)
+    add('push', 'qi')
+    add('pop', 'q')
 
     # Make sure all of the condition codes are tested, to test canonicalization
     for [cond, code] in jump_table.items():
-        yield create_spec(cond, 'l', size=None)
+        add(cond, 'l')
 
     for [cond, code] in setcc_table.items():
-        yield create_spec(cond, 'ra', size=8)
+        add(cond, 'bB')
 
     for inst in ['jmp', 'call']:
-        yield create_spec(inst, 'r', size=64)
-        yield create_spec(inst, 'l', size=None)
+        add(inst, 'q')
+        add(inst, 'l')
 
-    for inst in sse_table.keys():
-        yield create_spec(inst, 'x', 'b')
+    # SSE
 
-    for inst in avx_table.keys():
-        yield create_spec(inst, 'y', 'y', 'b')
+    for [inst, [form, *_]] in sse_table.items():
+        args = ['x', 'x']
+        if form & FLAG_IMM:
+            args.append('i')
+        add(inst, *args)
 
-    for size in [32, 64]:
-        # Lambda to pass the local 'size' variable
-        sspec = lambda *args, size=size: create_spec(*args, size=size)
+    # AVX
 
-        for inst in bmi_arg2_table.keys():
-            yield sspec(inst, 'r', 'ra')
+    for [inst, [form, *_]] in avx_table.items():
+        args = ['y', 'y']
+        if form & FLAG_3OP:
+            args.append('y')
+        if form & FLAG_IMM:
+            args.append('i')
+        add(inst, *args)
 
-        for inst in bmi_arg3_table.keys():
-            [src1, src2] = ['ra', 'r']
-            if inst in bmi_arg3_reversed:
-                [src2, src1] = [src1, src2]
-            yield sspec(inst, 'r', src1, src2)
+    for inst in bmi_arg2_table.keys():
+        add_32_64(inst, 'q', 'qQ')
+
+    for inst in bmi_arg3_table.keys():
+        [src1, src2] = ['qQ', 'q']
+        if inst in bmi_arg3_reversed:
+            [src2, src1] = [src1, src2]
+        add_32_64(inst, 'q', src1, src2)
+
+    return inst_list
