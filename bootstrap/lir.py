@@ -40,20 +40,20 @@ class BasicBlock:
 def literal(a): return Inst('literal', a)
 
 # Instruction wrappers
-def test64(a, b): return Inst('test64', a, b)
+def test(a, b): return Inst('test', a, b)
 def jz(a): return Inst('jz', a)
 def jnz(a): return Inst('jnz', a)
 def jmp(a): return Inst('jmp', a)
 def ret(a): return Inst('ret', a)
 
-def mov64(a): return Inst('mov64', a)
-def add64(a, b): return Inst('add64', a, b)
-def sub64(a, b): return Inst('sub64', a, b)
-def mul64(a, b): return Inst('imul64', a, b)
-def and64(a, b): return Inst('and64', a, b)
-def or64(a, b): return Inst('or64', a, b)
+def mov(a): return Inst('mov', a)
+def add(a, b): return Inst('add', a, b)
+def sub(a, b): return Inst('sub', a, b)
+def mul(a, b): return Inst('imul', a, b)
+def band(a, b): return Inst('and', a, b)
+def bor(a, b): return Inst('or', a, b)
 
-def cmp64(a, b): return Inst('cmp64', a, b)
+def cmp(a, b): return Inst('cmp', a, b)
 
 def call(fn, *args): return Inst('call', fn, *args)
 

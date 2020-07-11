@@ -225,9 +225,9 @@ def get_arg_reg(arg, reg_assns, clobbered_regs, phi_slot_assns, insts, free_regs
             clobbered_regs.add(reg)
         # Need special handling for labels--use lea of the RIP-relative address, provided by a relocation later
         if isinstance(arg, asm.ExternLabel):
-            insts.append(asm.Instruction('lea64', reg, arg))
+            insts.append(asm.Instruction('lea', reg, arg))
         else:
-            insts.append(asm.Instruction('mov64', reg, arg))
+            insts.append(asm.Instruction('mov', reg, arg))
         log('instantiate', insts[-1], free_regs.items)
         return reg
     else:
@@ -364,7 +364,7 @@ def allocate_registers(fn):
                     # This also needs to interact with coalescing, when we have that.
                     if inst.args[0] in live_set:
                         reg = free_regs.pop()
-                        insts.append(asm.Instruction('mov64', reg, arg_regs[0]))
+                        insts.append(asm.Instruction('mov', reg, arg_regs[0]))
                         log('destr copy', insts[-1], free_regs.items)
                         arg_regs[0] = reg
                     else:
@@ -410,20 +410,21 @@ def allocate_registers(fn):
     restore_insts = []
     for reg in clobbered_regs:
         if reg in CALLEE_SAVE:
-            save_insts.append(asm.Instruction('push64', reg))
-            restore_insts.append(asm.Instruction('pop64', reg))
-    # Now that we know the total amount of stack space allocated, add a preamble and postamble
+            save_insts.append(asm.Instruction('push', reg))
+            restore_insts.append(asm.Instruction('pop', reg))
+    # Now that we know the total amount of stack space allocated, add a
+    # prologue and epilogue
     insts = [
         asm.GlobalLabel(fn.name),
-        asm.Instruction('push64', RBP),
-        asm.Instruction('mov64', RBP, RSP),
-        asm.Instruction('sub64', RSP, stack_size),
+        asm.Instruction('push', RBP),
+        asm.Instruction('mov', RBP, RSP),
+        asm.Instruction('sub', RSP, stack_size),
         *save_insts,
         *insts,
         asm.LocalLabel('exit'),
         *restore_insts,
-        asm.Instruction('add64', RSP, stack_size),
-        asm.Instruction('pop64', RBP),
+        asm.Instruction('add', RSP, stack_size),
+        asm.Instruction('pop', RBP),
         asm.Instruction('ret')
     ]
 

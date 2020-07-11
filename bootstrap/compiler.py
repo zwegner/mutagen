@@ -411,11 +411,11 @@ def simplify_blocks(first_block):
                 append_to_edge_list(block, 'stmts', stmt)
 
 BINOP_TABLE = {
-    '+': lir.add64,
-    '-': lir.sub64,
-    '*': lir.mul64,
-    '&': lir.and64,
-    '|': lir.or64,
+    '+': lir.add,
+    '-': lir.sub,
+    '*': lir.mul,
+    '&': lir.band,
+    '|': lir.bor,
 }
 CMP_TABLE = {
     '<': 'l',
@@ -434,7 +434,7 @@ def gen_lir_for_node(node, node_map):
             return fn(node_map[node.lhs], node_map[node.rhs])
         elif node.type in CMP_TABLE:
             cc = CMP_TABLE[node.type]
-            return [lir.cmp64(node_map[node.lhs], node_map[node.rhs]), lir.Inst('set' + cc)]
+            return [lir.cmp(node_map[node.lhs], node_map[node.rhs]), lir.Inst('set' + cc)]
     elif isinstance(node, syntax.Parameter):
         return lir.parameter(node.index)
     elif isinstance(node, syntax.ExternSymbol):
@@ -477,7 +477,7 @@ def generate_lir(first_block):
 
         test = None
         if block.test:
-            test = lir.test64(node_map[block.test], node_map[block.test])
+            test = lir.test(node_map[block.test], node_map[block.test])
             instructions.append(test)
 
         b = lir.BasicBlock(block_name(block), phis, instructions, test, block.preds, block.succs)
