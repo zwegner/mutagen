@@ -20,6 +20,57 @@ def add_to(cls):
         return fn
     return deco
 
+# Some extra syntax node types, basically wrappers for LIR type stuff
+
+@syntax.node('index')
+class Parameter(syntax.Node):
+    def repr(self, ctx):
+        return 'Param(%s)' % self.index
+
+@syntax.node('name')
+class ExternSymbol(syntax.Node):
+    def repr(self, ctx):
+        return 'ExternSymbol(%s)' % self.name
+
+@syntax.node('name, simplify_fn')
+class Intrinsic(syntax.Node):
+    def repr(self, ctx):
+        return '<intrinsic-fn %s>' % self.name
+
+@syntax.node('opcode, *args')
+class Instruction(syntax.Node):
+    def repr(self, ctx):
+        return '<instruction %s>(%s)' % (self.opcode, self.args)
+
+BLOCK_ID = 0
+@syntax.node('*stmts, *preds, ?test, *succs, #live_ins, #exit_states')
+class BasicBlock(syntax.Node):
+    def setup(self):
+        global BLOCK_ID
+        self.block_id = BLOCK_ID
+        BLOCK_ID += 1
+
+# Just a dumb helper because our @node() decorator doesn't support keyword
+# args or defaults
+def basic_block(stmts=None, preds=None, test=None, succs=None,
+        live_ins=None, exit_states=None):
+    return BasicBlock(stmts or [], preds or [], test, succs or [],
+            live_ins or {}, exit_states or {}, info=BI)
+
+@syntax.node('#args')
+class PhiR(syntax.Node):
+    def repr(self, ctx):
+        return '<PhiR %s>' % self.args
+
+@syntax.node('name')
+class PhiSelect(syntax.Node):
+    def repr(self, ctx):
+        return '<PhiSelect %s>' % self.name
+
+################################################################################
+## Graph stuff #################################################################
+################################################################################
+
 # Here we have a dumb custom dict class to be able to hash nodes based on just
 # their identity and not use the regular __hash__/__eq__ machinery (which works
 # with Mutagen semantics, possibly calling user code, since we need a fast dict
@@ -151,7 +202,7 @@ def transform_to_graph(block):
         add_node_usages(node)
 
 ################################################################################
-## INTRINSICS ##################################################################
+## Intrinsics ##################################################################
 ################################################################################
 
 INTRINSICS = {}
@@ -183,7 +234,7 @@ def create_intrinsic(name, fn, arg_types):
             return True
         return False
 
-    INTRINSICS[name] = syntax.Intrinsic(name, simplify, info=BI)
+    INTRINSICS[name] = Intrinsic(name, simplify, info=BI)
 
 def mg_intrinsic(arg_types):
     def decorate(fn):
@@ -194,7 +245,7 @@ def mg_intrinsic(arg_types):
 
 @mg_intrinsic([syntax.String])
 def mgi__extern_label(node, label):
-    return syntax.ExternSymbol('_' + label.value, info=node)
+    return ExternSymbol('_' + label.value, info=node)
 
 # Instruction wrappers
 inst_specs = {
@@ -207,9 +258,9 @@ inst_specs = {
 
 def add_inst_instrinsic(opcode, n_args):
     if n_args == 1:
-        fn = lambda node, a: syntax.Instruction(opcode, [a], info=node)
+        fn = lambda node, a: Instruction(opcode, [a], info=node)
     elif n_args == 2:
-        fn = lambda node, a, b: syntax.Instruction(opcode, [a, b], info=node)
+        fn = lambda node, a, b: Instruction(opcode, [a, b], info=node)
     else:
         assert False
     create_intrinsic('_builtin_' + opcode, fn, [None] * n_args)
@@ -220,31 +271,6 @@ for inst, n_args in inst_specs.items():
 ################################################################################
 ## CFG stuff ###################################################################
 ################################################################################
-
-BLOCK_ID = 0
-@syntax.node('*stmts, *preds, ?test, *succs, #live_ins, #exit_states')
-class BasicBlock(syntax.Node):
-    def setup(self):
-        global BLOCK_ID
-        self.block_id = BLOCK_ID
-        BLOCK_ID += 1
-
-# Just a dumb helper because our @node() decorator doesn't support keyword
-# args or defaults
-def basic_block(stmts=None, preds=None, test=None, succs=None,
-        live_ins=None, exit_states=None):
-    return BasicBlock(stmts or [], preds or [], test, succs or [],
-            live_ins or {}, exit_states or {}, info=BI)
-
-@syntax.node('#args')
-class PhiR(syntax.Node):
-    def repr(self, ctx):
-        return '<PhiR %s>' % self.args
-
-@syntax.node('name')
-class PhiSelect(syntax.Node):
-    def repr(self, ctx):
-        return '<PhiSelect %s>' % self.name
 
 def link_blocks(pred, succ):
     pred.succs.append(succ)
@@ -410,9 +436,13 @@ def gen_ssa(block):
 
     return first_block
 
+################################################################################
+## Optimization stuff ##########################################################
+################################################################################
+
 def can_dce(expr):
     return isinstance(expr, (syntax.BinaryOp, syntax.Integer, syntax.String,
-            syntax.ExternSymbol))
+            ExternSymbol))
 
 def simplify_blocks(first_block):
     # Basic simplification pass. Right now, since we don't simplify
@@ -435,7 +465,7 @@ def simplify_blocks(first_block):
 
             # Simplify intrinsic calls
             elif isinstance(stmt, syntax.Call):
-                if isinstance(stmt.fn, syntax.Intrinsic):
+                if isinstance(stmt.fn, Intrinsic):
                     stmt.fn.simplify_fn(stmt, stmt.args)
 
     # Run DCE
@@ -457,6 +487,10 @@ def simplify_blocks(first_block):
             block.stmts = []
             for stmt in statements:
                 append_to_edge_list(block, 'stmts', stmt)
+
+################################################################################
+## LIR conversion stuff ########################################################
+################################################################################
 
 BINOP_TABLE = {
     '+': lir.add,
@@ -481,9 +515,9 @@ def gen_lir_for_node(block, node, block_map, node_map):
         elif node.type in CMP_TABLE:
             cc = CMP_TABLE[node.type]
             return [lir.cmp(node_map[node.lhs], node_map[node.rhs]), lir.Inst('set' + cc)]
-    elif isinstance(node, syntax.Parameter):
+    elif isinstance(node, Parameter):
         return lir.parameter(node.index)
-    elif isinstance(node, syntax.ExternSymbol):
+    elif isinstance(node, ExternSymbol):
         return lir.literal(asm.ExternLabel(node.name))
     elif isinstance(node, syntax.Integer):
         return lir.literal(node.value)
@@ -491,7 +525,7 @@ def gen_lir_for_node(block, node, block_map, node_map):
         return lir.call(node_map[node.fn], *[node_map[arg] for arg in node.args])
     elif isinstance(node, syntax.Return):
         return lir.ret(node_map[node.expr])
-    elif isinstance(node, syntax.Instruction):
+    elif isinstance(node, Instruction):
         return lir.Inst(node.opcode, *[node_map[arg] for arg in node.args])
     assert False, str(node)
 

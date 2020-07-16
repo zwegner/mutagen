@@ -279,23 +279,26 @@ def node(arg_spec='', compare=False, base_type=None, ops=[]):
                         yield k
                         yield v
 
-        # Iterate through the entire DAG reachable from this node, not including
-        # the node. 'seen' is used to track nodes reachable through multiple paths.
-        # 'blacklist' is used to break iteration on certain node types. The argument
-        # should be a type or tuple of types, for input to isinstance.
+        # Iterate through the entire DAG reachable from this node, not
+        # including the node. 'seen' is used to track nodes reachable through
+        # multiple paths. 'blacklist' is used to break iteration on certain
+        # node types. The argument should be a type or tuple of types, for
+        # input to isinstance.
         def iterate_subgraph(self, seen=None, blacklist=()):
             for child in self.iterate_children():
                 yield from child.iterate_graph(seen, blacklist=blacklist)
 
         def iterate_graph(self, seen=None, blacklist=()):
             seen = set() if seen is None else seen
-            # XXX Ugh, we want to use the default hashing/equality for Python objects
-            # for the 'seen' set, while keeping custom hashing/equality for purposes of
-            # implementing dicts/etc. in the interpreter. Since it's hard to override the way
-            # hashing works on a case-by-case basis, hack around it and just use the object
-            # pointer as the hash key here. We don't have to worry about the GC (which could
-            # in theory cause two objects to share the same address, and hence collide) since
-            # 'self' is referenced here for the whole traversal of the graph below this node...
+            # XXX Ugh, we want to use the default hashing/equality for Python
+            # objects for the 'seen' set, while keeping custom hashing/equality
+            # for purposes of implementing dicts/etc. in the interpreter. Since
+            # it's hard to override the way hashing works on a case-by-case
+            # basis, hack around it and just use the object pointer as the hash
+            # key here. We don't have to worry about the GC (which could in
+            # theory cause two objects to share the same address, and hence
+            # collide) since 'self' is referenced here for the whole traversal
+            # of the graph below this node...
             key = id(self)
             if key not in seen:
                 seen.add(key)
@@ -372,30 +375,6 @@ class None_(Node):
 # Construct the None singleton, and then make sure we can't make any others
 NONE = None_(info=BUILTIN_INFO)
 None_.__init__ = None
-
-# Just a proxy for an ABI function argument, used in the compiler
-@node('index')
-class Parameter(Node):
-    def repr(self, ctx):
-        return 'Param(%s)' % self.index
-
-# Same for external symbols
-@node('name')
-class ExternSymbol(Node):
-    def repr(self, ctx):
-        return 'ExternSymbol(%s)' % self.name
-
-# Placeholder for intrinsic functions
-@node('name, simplify_fn')
-class Intrinsic(Node):
-    def repr(self, ctx):
-        return '<intrinsic-fn %s>' % self.name
-
-# Wrapper for raw instructions
-@node('opcode, *args')
-class Instruction(Node):
-    def repr(self, ctx):
-        return '<instruction %s>(%s)' % (self.opcode, self.args)
 
 @node('name')
 class Identifier(Node):
