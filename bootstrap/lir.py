@@ -6,14 +6,49 @@ import syntax
 
 # ABC for Inst/Phi for easy type checking
 class Node:
-    pass
+    def __repr__(self):
+        return '<{} at {}>'.format(self.opcode, hex(id(self)))
 
-class Phi(Node):
-    def __init__(self, name, args):
-        self.name = name
+# Phis are split into read/write phases, as in the TΦ transform from section
+# 2.3.1 of "Register Allocation for Programs in SSA Form", Sebastian Hack 2006.
+# This properly expresses the parallel-copy nature of phis, while keeping
+# the semantics a bit simpler than the magic of normal phis. Note that this
+# representation is basically the same as the "function call" formulation of SSA
+# (which itself is like CPS without the passing). Each predecessor block in the
+# CFG ends with a PhiR that reads all the live outs of the block, and each
+# successor block starts with a PhiW that writes the live ins. In a
+# sea-of-nodes IR like ours, we can't easily handle writing multiple values at
+# the same time, so a PhiW is followed by some number of PhiSelects, that just
+# select a single variable from the PhiW.
+
+class PhiR(Node):
+    def __init__(self, args: dict):
+        self.opcode = 'PhiR'
+        self.args = args
+        self.regs = None
+    def __str__(self):
+        return 'PhiR({})'.format(', '.join('%s=%r' % (k, v)
+                for [k, v] in sorted(self.args.items())))
+    def __iter__(self):
+        yield from sorted(self.args.items())
+
+class PhiW(Node):
+    def __init__(self, phi_reads, args: dict):
+        self.opcode = 'PhiW'
+        self.phi_reads = phi_reads
         self.args = args
     def __str__(self):
-        return 'Phi({}, {})'.format(self.name, ', '.join(map(repr, self.args)))
+        return 'PhiW([{}], {})'.format(', '.join(map(repr, self.phi_reads)),
+                ', '.join(self.args))
+
+class PhiSelect(Node):
+    def __init__(self, phi_write, name):
+        self.opcode = 'PhiSelect'
+        self.phi_write = phi_write
+        self.name = name
+        self.args = [phi_write]
+    def __repr__(self):
+        return 'PhiSelect({}, {})'.format(hex(id(self.phi_write)), self.name)
 
 class Inst(Node):
     def __init__(self, opcode, *args):
@@ -29,11 +64,14 @@ class Function:
         self.blocks = blocks
 
 class BasicBlock:
-    def __init__(self, name, phis, insts, test, preds, succs):
+    def __init__(self, name, phi_write, phi_selects, insts, test, phi_read,
+            preds, succs):
         self.name = name
-        self.phis = phis
+        self.phi_write = phi_write
+        self.phi_selects = phi_selects
         self.insts = insts
         self.test = test
+        self.phi_read = phi_read
         self.preds = preds
         self.succs = succs
 

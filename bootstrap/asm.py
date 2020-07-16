@@ -46,7 +46,7 @@ class GPReg(Register):
     def get_size(self):
         return self.size
 
-    def __str__(self):
+    def __repr__(self):
         names = ['ip', 'ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di']
         [prefix, suffix] = {
             8: ['', 'b'],
@@ -61,6 +61,13 @@ class GPReg(Register):
                 return names[self.index + 1] + 'l'
             return names[self.index + 1][0] + 'l'
         return prefix + names[self.index + 1]
+
+    def _key(self):
+        return (type(self), self.index, self.size)
+    def __hash__(self):
+        return hash(self._key())
+    def __eq__(self, other):
+        return self._key() == other._key()
 
 # Vector registers
 class XMMReg(Register):
