@@ -147,6 +147,12 @@ class ProgramError(Exception):
         self.msg = msg
         self.info = info
         self.stack_trace = stack_trace
+    def print(self):
+        if self.stack_trace:
+            for line in self.stack_trace:
+                print(line, file=sys.stderr)
+        print('%s(%i): %s' % (self.info.filename, self.info.lineno, self.msg),
+                file=sys.stderr)
 
 class Node:
     def copy(self):

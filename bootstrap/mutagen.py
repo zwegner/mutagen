@@ -11,10 +11,7 @@ def eval_statement(stmt, ctx):
         result = stmt.eval(ctx)
         return (result, False)
     except syntax.ProgramError as e:
-        if e.stack_trace:
-            for line in e.stack_trace:
-                print(line, file=sys.stderr)
-        print('%s(%i): %s' % (e.info.filename, e.info.lineno, e.msg), file=sys.stderr)
+        e.print()
         return (None, True)
     except Exception as e:
         # All other exceptions shouldn't happen in theory, but they still do, so reconstruct
