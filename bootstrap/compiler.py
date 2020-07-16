@@ -20,6 +20,9 @@ def add_to(cls):
         return fn
     return deco
 
+def gen_assign(name, expr, info):
+    return syntax.Assignment(syntax.Target([name], info=info), expr, info=info)
+
 # Some extra syntax node types, basically wrappers for LIR type stuff
 
 @syntax.node('index')
@@ -196,10 +199,20 @@ def add_node_usages(node):
             for [index, item] in children:
                 add_use(Usage(node, arg_name, arg_type, index=index), item)
 
-def transform_to_graph(block):
+# Transform a node and its subtree into a neat graph. This doesn't traverse
+# scopes, but returns a list of the scoped expressions it reached.
+def transform_to_graph(node):
+    functions = []
     # Iterate the graph in reverse depth-first order to get a topological ordering
-    for node in reversed(list(block.iterate_graph())):
+    for node in reversed(list(node.iterate_graph(blacklist=syntax.Scope))):
         add_node_usages(node)
+        if isinstance(node, syntax.Scope):
+            # Only functions for now, no classes/comprehensions
+            assert isinstance(node.expr, syntax.Function)
+            functions.append(node.expr)
+
+    # Un-reverse the functions before returning
+    return functions[::-1]
 
 ################################################################################
 ## Intrinsics ##################################################################
@@ -301,28 +314,41 @@ def print_blocks(block):
         print('  outs:', ' '.join(sorted(block.exit_states)))
 
 @add_to(syntax.Node)
-def gen_blocks(self, current):
+def gen_blocks(self, current, exit_block):
     for child in self.iterate_children():
-        if child:
-            current = child.gen_blocks(current)
+        if child and not isinstance(child, syntax.Scope):
+            current = child.gen_blocks(current, exit_block)
     return current
 
 @add_to(syntax.Block)
-def gen_blocks(self, current):
+def gen_blocks(self, current, exit_block):
     for stmt in self.stmts:
-        current = stmt.gen_blocks(current)
+        current = stmt.gen_blocks(current, exit_block)
         # Hacky way to check for default implementation
         if type(stmt).gen_blocks is syntax.Node.gen_blocks:
             append_to_edge_list(current, 'stmts', stmt)
     return current
 
+@add_to(syntax.Return)
+def gen_blocks(self, current, exit_block):
+    # Self expression is an essential aspect of the human experience
+    if self.expr:
+        assign = gen_assign('$return_value', self.expr, self)
+        add_use(Usage(assign, 'rhs', ArgType.EDGE), self.expr)
+        append_to_edge_list(current, 'stmts', assign)
+    link_blocks(current, exit_block)
+    # XXX what to do here? This just starts a fresh basic block with
+    # all the dead shit that might be after the return
+    current = basic_block()
+    return current
+
 @add_to(syntax.While)
-def gen_blocks(self, current):
+def gen_blocks(self, current, exit_block):
     first = basic_block()
-    last = self.block.gen_blocks(first)
+    last = self.block.gen_blocks(first, exit_block)
 
     test_block = basic_block()
-    test_block_last = self.expr.gen_blocks(test_block)
+    test_block_last = self.expr.gen_blocks(test_block, exit_block)
     set_edge(test_block_last, 'test', self.expr)
 
     exit_block = basic_block()
@@ -333,14 +359,14 @@ def gen_blocks(self, current):
     return exit_block
 
 @add_to(syntax.IfElse)
-def gen_blocks(self, current):
-    current = self.expr.gen_blocks(current)
+def gen_blocks(self, current, exit_block):
+    current = self.expr.gen_blocks(current, exit_block)
     assert not current.test
     set_edge(current, 'test', self.expr)
     if_first = basic_block()
-    if_last = self.if_block.gen_blocks(if_first)
+    if_last = self.if_block.gen_blocks(if_first, exit_block)
     else_first = basic_block()
-    else_last = self.else_block.gen_blocks(else_first)
+    else_last = self.else_block.gen_blocks(else_first, exit_block)
     exit_block = basic_block()
     link_blocks(current, if_first)
     link_blocks(current, else_first)
@@ -353,8 +379,8 @@ def gen_blocks(self, current):
 # graph representation, we can generate the CFG for the IfElse, and forward the
 # variable, and thus forget about this CondExpr.
 @add_to(syntax.CondExpr)
-def gen_blocks(self, current):
-    current = self.if_else.gen_blocks(current)
+def gen_blocks(self, current, exit_block):
+    current = self.if_else.gen_blocks(current, exit_block)
     self.forward(self.result)
     return current
 
@@ -372,7 +398,7 @@ def add_phi(block, statements, name, info=None):
     return value
 
 def gen_ssa_for_stmt(block, statements, stmt):
-    for node in reversed(list(stmt.iterate_graph())):
+    for node in reversed(list(stmt.iterate_graph(blacklist=syntax.Scope))):
         # Handle loads
         if isinstance(node, syntax.Identifier):
             if node.name in block.exit_states:
@@ -392,13 +418,31 @@ def gen_ssa_for_stmt(block, statements, stmt):
             remove_use(Usage(node, 'rhs', ArgType.EDGE))
         elif isinstance(node, syntax.Target):
             pass
+        elif isinstance(node, syntax.Scope):
+            assert not node.extra_args
+            # Only functions for now, no classes/comprehensions
+            assert isinstance(node.expr, syntax.Function)
+            # XXX need to make sure this name is unique
+            label = ExternSymbol(node.expr.name, info=node)
+            node.forward(label)
+            statements.append(label)
         else:
             statements.append(node)
 
-def gen_ssa(block):
+def gen_ssa(fn):
+    # First off, generate a CFG
+    assert isinstance(fn, syntax.Function)
     first_block = basic_block()
-    last = block.gen_blocks(first_block)
+    exit_block = basic_block()
+    # Add a return in the exit block of the special variable $return_value.
+    # This is the only return that doesn't get handled by gen_blocks().
+    # Other returns set this variable and jump to the exit block.
+    ret = syntax.Return(syntax.Identifier('$return_value', info=fn))
+    add_use(Usage(ret, 'expr', ArgType.EDGE), ret.expr)
+    append_to_edge_list(exit_block, 'stmts', ret)
+    last = fn.block.gen_blocks(first_block, exit_block)
 
+    # Generate SSA for all normal nodes
     for block in walk_blocks(first_block):
         statements = []
         for [i, stmt] in enumerate(block.stmts):
@@ -524,7 +568,7 @@ def gen_lir_for_node(block, node, block_map, node_map):
     elif isinstance(node, syntax.Call):
         return lir.call(node_map[node.fn], *[node_map[arg] for arg in node.args])
     elif isinstance(node, syntax.Return):
-        return lir.ret(node_map[node.expr])
+        return lir.Return(node_map[node.expr])
     elif isinstance(node, Instruction):
         return lir.Inst(node.opcode, *[node_map[arg] for arg in node.args])
     assert False, str(node)
@@ -562,7 +606,7 @@ def generate_lir(first_block):
     for block in walk_blocks(first_block):
         lir_block = block_map[block]
         for stmt in block.stmts:
-            assert stmt not in node_map
+            assert stmt not in node_map, stmt
             insts = gen_lir_for_node(block, stmt, block_map, node_map)
             if not isinstance(insts, list):
                 insts = [insts]
@@ -591,29 +635,46 @@ def generate_lir(first_block):
 
     return new_blocks
 
-def compile_stmts(stmts):
-    # Create a prelude with the standard C main parameters
-    parameters = ['argc', 'argv']
-    prelude = [syntax.Assignment(syntax.Target([name], info=BI), syntax.Parameter(i, info=BI), info=BI)
-            for i, name in enumerate(parameters)]
-    stmts = prelude + stmts
+################################################################################
+## Compilation mgmt stuff ######################################################
+################################################################################
 
-    ctx = syntax.Context('__main__', None, None)
-    block = syntax.Block(stmts, info=BI)
-    block = parse.preprocess_program(ctx, block, include_io_handlers=False)
+def compile_fn(fn):
+    # Create argument bindings
+    assert not fn.params.var_params
+    assert not fn.params.kw_params
+    assert not fn.params.kw_var_params
+    prologue = []
+    for [i, name] in enumerate(fn.params.params):
+        prologue.append(gen_assign(name, Parameter(i, info=fn), fn))
+    fn.block.stmts = prologue + fn.block.stmts
 
-    transform_to_graph(block)
+    # Convert to graph representation, collecting nested functions
+    extra_functions = transform_to_graph(fn)
 
-    first_block = gen_ssa(block)
+    # Recursively compile any nested functions first
+    for extra_fn in extra_functions:
+        yield from compile_fn(extra_fn)
+
+    first_block = gen_ssa(fn)
 
     simplify_blocks(first_block)
 
     lir_blocks = generate_lir(first_block)
 
-    # Create a main function with all the code in it (no user-defined functions for now)
-    fn = lir.Function('_main', parameters, lir_blocks)
+    # Add the final LIR function to the main list of functions
+    yield lir.Function(fn.name, fn.params.params, lir_blocks)
 
-    return [fn]
+def compile_stmts(stmts):
+    # Wrap top-level statements in a main function
+    block = syntax.Block(stmts, info=BI)
+    main_params = syntax.Params(['argc', 'argv'], [], None, [], None, info=BI)
+    main_fn = syntax.Function('_main', main_params, None, block)
+
+    ctx = syntax.Context('__main__', None, None)
+    main_fn = parse.preprocess_program(ctx, main_fn, include_io_handlers=False)
+
+    return list(compile_fn(main_fn))
 
 def compile_file(path):
     try:

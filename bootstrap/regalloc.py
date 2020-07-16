@@ -191,6 +191,17 @@ def get_block_dominance(start, preds, succs):
 def is_register(reg):
     return (isinstance(reg, asm.GPReg) or isinstance(reg, VirtualRegister))
 
+def instantiate_reg(node, free_regs, clobbered_regs, insts):
+    reg = free_regs.pop()
+    clobbered_regs.add(reg)
+    # Need special handling for labels--use lea of the RIP-relative
+    # address, provided by a relocation later
+    if isinstance(node, asm.ExternLabel):
+        insts.append(asm.Instruction('lea', reg, node))
+    else:
+        insts.append(asm.Instruction('mov', reg, node))
+    return reg
+
 def get_arg_reg(arg, reg_assns, stack_assns, free_regs, clobbered_regs, insts,
         force_move=False, assign=False, can_handle_labels=False):
     is_lir_node = isinstance(arg, lir.Node)
@@ -209,16 +220,11 @@ def get_arg_reg(arg, reg_assns, stack_assns, free_regs, clobbered_regs, insts,
             return arg
         if isinstance(arg, asm.GPReg) and not force_move:
             return arg
-        reg = free_regs.pop()
+
+        reg = instantiate_reg(arg, free_regs, clobbered_regs, insts)
         if assign:
             reg_assns[orig_arg] = reg
-        clobbered_regs.add(reg)
-        # Need special handling for labels--use lea of the RIP-relative
-        # address, provided by a relocation later
-        if isinstance(arg, asm.ExternLabel):
-            insts.append(asm.Instruction('lea', reg, arg))
-        else:
-            insts.append(asm.Instruction('mov', reg, arg))
+
         log('instantiate', insts[-1], free_regs)
         return reg
     else:
@@ -375,7 +381,16 @@ def allocate_registers(fn):
 
         # Allocate registers for the phi write. We'll make sure elsewhere that
         # the arguments are moved to the right registers
-        regs = {name: free_regs.pop() for name in sorted(block.phi_write.args)}
+        if block.succs:
+            regs = {name: free_regs.pop() for name in sorted(block.phi_write.args)}
+        # For the exit block, we should only have at most one live value, the
+        # return value (which is stored in a special variable). Assign it to
+        # the ABI's return register.
+        else:
+            regs = {}
+            if block.phi_write.args:
+                assert list(block.phi_write.args.keys()) == ['$return_value']
+                regs['$return_value'] = RETURN_REGS[0]
         phi_assns[block.phi_write] = regs
 
         # Now make a run through the instructions. Since we're assuming
@@ -386,24 +401,25 @@ def allocate_registers(fn):
                 reg_assns[inst] = reg
                 log('phi assign', hex(id(inst)), inst, reg, free_regs)
 
+            # Returns are sorta pseudo-ops that get eliminated. Basically
+            # they're only there to the SSA machinery sees the $return_value
+            # special variable as a live in to the exit block.
+            elif inst.opcode == 'return':
+                pass
+
             # Instantiate parameters/literals into registers. This is usually
             # a waste but right now needed for correctness
-            elif inst.opcode in {'parameter', 'literal'}:
-                if inst.opcode == 'parameter':
-                    src = PARAM_REGS[inst.args[0]]
-                elif inst.opcode == 'literal':
-                    src = inst.args[0]
-                else:
-                    assert False
-
-                reg = free_regs.pop()
+            elif inst.opcode == 'parameter':
+                [index] = inst.args
+                src = PARAM_REGS[index]
+                reg = instantiate_reg(src, free_regs, clobbered_regs, insts)
                 reg_assns[inst] = reg
-                clobbered_regs.add(reg)
-                if isinstance(src, asm.ExternLabel):
-                    insts.append(asm.Instruction('lea', reg, src))
-                else:
-                    insts.append(asm.Instruction('mov', reg, src))
+                log('param', inst, src, block.phi_read.args.get(inst))
 
+            elif inst.opcode == 'literal':
+                [src] = inst.args
+                reg = instantiate_reg(src, free_regs, clobbered_regs, insts)
+                reg_assns[inst] = reg
                 log('lit', inst, src, block.phi_read.args.get(inst))
 
             elif inst.opcode == 'call':
@@ -433,8 +449,11 @@ def allocate_registers(fn):
                 update_free_regs(called_fn, free_regs, reg_assns, live_set)
 
                 # Use the ABI-specified register for pulling out the return
-                # value from the call
-                reg = RETURN_REGS[0]
+                # value from the call. Move it to a fresh register so we can
+                # keep it alive
+                reg = instantiate_reg(RETURN_REGS[0], free_regs, clobbered_regs, insts)
+                reg_assns[inst] = reg
+
             # Regular ops
             else:
                 reg = None

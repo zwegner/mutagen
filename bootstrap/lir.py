@@ -57,6 +57,14 @@ class Inst(Node):
     def __str__(self):
         return '{}({})'.format(self.opcode, ', '.join(map(repr, self.args)))
 
+# Returns don't directly generate ret instructions, but are instead pseudo-ops
+# that use the $return_value special variable... kinda icky but it works, since
+# we want to use all the juicy SSA goodness
+class Return(Node):
+    def __init__(self, *args):
+        self.opcode = 'return'
+        self.args = args
+
 class Function:
     def __init__(self, name, parameters, blocks):
         self.name = name
