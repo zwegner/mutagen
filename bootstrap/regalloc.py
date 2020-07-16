@@ -435,7 +435,8 @@ def allocate_registers(fn):
                         free_regs, clobbered_regs, insts, can_handle_labels=True)
 
                 [save_insts, restore_insts] = gen_save_insts(
-                        [reg for reg in reg_assns.values() if reg in CALLER_SAVE])
+                        [reg_assns[n] for n in live_set if n in reg_assns and
+                            reg_assns[n] in CALLER_SAVE])
 
                 call = asm.Instruction(inst.opcode, called_fn_arg)
 
