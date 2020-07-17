@@ -124,7 +124,7 @@ def finalize_cfg(fn):
 
 # Get the jump instructions to the proper successors at the end of a block,
 # based on the physical block layout
-def get_jumps(block, exit_phys_idx):
+def get_jumps(block, exit_phys_idx, exit_label):
     next_phys = block.phys_idx + 1
     # Add a conditional jump if needed
     if block.test:
@@ -146,7 +146,7 @@ def get_jumps(block, exit_phys_idx):
         assert not block.succs
         # Add a jump to the exit block, if the exit block isn't the last
         if next_phys != exit_phys_idx:
-            yield lir.jmp(asm.LocalLabel('exit'))
+            yield lir.jmp(exit_label)
 
 def postorder_traverse(succs, start, used=None):
     if used is None:
@@ -547,6 +547,12 @@ def allocate_registers(fn):
             else:
                 block_insts[succ][:0] = insts
 
+    # Kind of a hack: create an exit label just for this function. Labels need
+    # to be unique in the ELF file we generate, so all the jumps get patched
+    # properly. OK, so that's cool. We only need to do this for the exit block
+    # because every other block gets a globally unique name like block$7
+    exit_label = asm.LocalLabel('%s$exit' % fn.name)
+
     # Choose a physical layout of basic blocks, and collect all instructions
     # from each basic block with any jumps needed for the chosen layout
     exit_phys_idx = finalize_cfg(fn)
@@ -556,7 +562,7 @@ def allocate_registers(fn):
         insts.extend(block_insts[block])
 
         # Add jump instructions
-        for jmp in get_jumps(block, exit_phys_idx):
+        for jmp in get_jumps(block, exit_phys_idx, exit_label):
             assert asm.is_jump_op(jmp.opcode)
             insts.append(asm.Instruction(jmp.opcode, *jmp.args))
 
@@ -574,7 +580,7 @@ def allocate_registers(fn):
         asm.Instruction('mov', RBP, RSP),
         *save_insts,
         *insts,
-        asm.LocalLabel('exit'),
+        exit_label,
         *restore_insts,
         asm.Instruction('pop', RBP),
         asm.Instruction('ret')
