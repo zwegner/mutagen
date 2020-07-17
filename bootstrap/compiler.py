@@ -324,7 +324,8 @@ def gen_blocks(self, current, exit_block):
 def gen_blocks(self, current, exit_block):
     for stmt in self.stmts:
         current = stmt.gen_blocks(current, exit_block)
-        # Hacky way to check for default implementation
+        # Hacky way to check for default implementation... Any node that doesn't
+        # override gen_blocks() is a "normal" node as far as the CFG is concerned
         if type(stmt).gen_blocks is syntax.Node.gen_blocks:
             append_to_edge_list(current, 'stmts', stmt)
     return current
@@ -337,10 +338,11 @@ def gen_blocks(self, current, exit_block):
         add_use(Usage(assign, 'rhs', ArgType.EDGE), self.expr)
         append_to_edge_list(current, 'stmts', assign)
     link_blocks(current, exit_block)
-    # XXX what to do here? This just starts a fresh basic block with
-    # all the dead shit that might be after the return
-    current = basic_block()
-    return current
+    # XXX what to do here? Execution will never continue past a return, so we
+    # can't have any sane CFG structure here. We return None for now, and try
+    # to handle that properly anywhere downstream (if we don't, we get a weird
+    # exception from trying to use None like a block)
+    return None
 
 @add_to(syntax.While)
 def gen_blocks(self, current, exit_block):
@@ -355,7 +357,8 @@ def gen_blocks(self, current, exit_block):
     link_blocks(current, test_block)
     link_blocks(test_block_last, first)
     link_blocks(test_block_last, exit_block)
-    link_blocks(last, test_block)
+    if last:
+        link_blocks(last, test_block)
     return exit_block
 
 @add_to(syntax.IfElse)
@@ -367,12 +370,16 @@ def gen_blocks(self, current, exit_block):
     if_last = self.if_block.gen_blocks(if_first, exit_block)
     else_first = basic_block()
     else_last = self.else_block.gen_blocks(else_first, exit_block)
-    exit_block = basic_block()
     link_blocks(current, if_first)
     link_blocks(current, else_first)
-    link_blocks(if_last, exit_block)
-    link_blocks(else_last, exit_block)
-    return exit_block
+    if if_last or else_last:
+        exit_block = basic_block()
+        if if_last:
+            link_blocks(if_last, exit_block)
+        if else_last:
+            link_blocks(else_last, exit_block)
+        return exit_block
+    return None
 
 # Conditional expressions are, up until this point, a wrapper around IfElse
 # that evaluates to a a variable set in each branch. Now that we're using a
