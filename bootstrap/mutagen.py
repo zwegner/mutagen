@@ -24,7 +24,7 @@ def eval_statement(stmt, ctx):
             # XXX this is pretty hacky--detect function calls by inspecting locals on the stack
             self = frame.f_locals.get('self', None)
             child_ctx = frame.f_locals.get('ctx', None)
-            if isinstance(self, Call) and child_ctx:
+            if isinstance(self, syntax.Call) and child_ctx:
                 print('File "%s", line %s, in %s' % (self.info.filename, self.info.lineno, child_ctx.name))
                 last_index = i
         # Below the part of the stack corresponding to the last Mutagen function call, print out
