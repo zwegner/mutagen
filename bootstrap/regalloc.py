@@ -305,23 +305,21 @@ def move_phi_args(phi_read, phi_write, free_regs):
             [phi_write[k] for k in keys], free_regs)
 
 def gen_save_insts(regs, extra_stack=0):
-    save_insts = []
-    restore_insts = []
-    for reg in regs:
-        save_insts.append(asm.Instruction('push', reg))
-        restore_insts.append(asm.Instruction('pop', reg))
+    [save_insts, restore_insts] = [[asm.Instruction(op, reg)
+            for reg in regs] for op in ['push', 'pop']]
+    restore_insts = restore_insts[::-1]
 
     # Round up to a multiple of 16
     stack_size = len(save_insts) * 8
     stack_adj = ((stack_size + extra_stack + 15) & ~15) - stack_size
 
     if not stack_adj:
-        return [[], []]
+        return [save_insts, restore_insts]
 
     # Now that we know the total amount of stack space allocated, add a
     # prologue and epilogue
     save_insts = [asm.Instruction('sub', RSP, stack_adj), *save_insts]
-    restore_insts = [*reversed(restore_insts), asm.Instruction('add', RSP, stack_adj)]
+    restore_insts = [*restore_insts, asm.Instruction('add', RSP, stack_adj)]
 
     return [save_insts, restore_insts]
 
