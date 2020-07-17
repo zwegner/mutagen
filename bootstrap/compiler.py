@@ -443,7 +443,7 @@ def gen_ssa_for_stmt(block, statements, stmt):
             # Only functions for now, no classes/comprehensions
             assert isinstance(node.expr, syntax.Function)
             # XXX need to make sure this name is unique
-            label = ExternSymbol(node.expr.name, info=node)
+            label = ExternSymbol('_' + node.expr.name, info=node)
 
             # Create a partial application if there are variables used from
             # an outer scope
@@ -704,13 +704,13 @@ def compile_fn(fn):
     lir_blocks = generate_lir(first_block)
 
     # Add the final LIR function to the main list of functions
-    yield lir.Function(fn.name, fn.params.params, lir_blocks)
+    yield lir.Function('_' + fn.name, fn.params.params, lir_blocks)
 
 def compile_stmts(stmts):
     # Wrap top-level statements in a main function
     block = syntax.Block(stmts, info=BI)
     main_params = syntax.Params(['argc', 'argv'], [], None, [], None, info=BI)
-    main_fn = syntax.Function('_main', main_params, None, block)
+    main_fn = syntax.Function('main', main_params, None, block)
 
     ctx = syntax.Context('__main__', None, None)
     main_fn = parse.preprocess_program(ctx, main_fn, include_io_handlers=False)
