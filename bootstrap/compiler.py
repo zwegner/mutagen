@@ -395,7 +395,7 @@ def gen_blocks(self, current, exit_block):
 ## SSA stuff ###################################################################
 ################################################################################
 
-def add_phi(block, statements, name, info=None):
+def add_phi(block, name, info=None):
     if name in block.live_ins:
         value = block.live_ins[name]
     else:
@@ -404,16 +404,22 @@ def add_phi(block, statements, name, info=None):
         set_edge_key(block, 'exit_states', name, value)
     return value
 
+# Look up the current value of a name, or create a phi
+def load_name(block, name, info=None):
+    if name in block.exit_states:
+        value = block.exit_states[name]
+    # XXX can't reassign intrinsics unless in the same block?!
+    elif name in INTRINSICS:
+        value = INTRINSICS[name]
+    else:
+        value = add_phi(block, name, info=info)
+    return value
+
 def gen_ssa_for_stmt(block, statements, stmt):
     for node in reversed(list(stmt.iterate_graph(blacklist=syntax.Scope))):
         # Handle loads
         if isinstance(node, syntax.Identifier):
-            if node.name in block.exit_states:
-                value = block.exit_states[node.name]
-            elif node.name in INTRINSICS:
-                value = INTRINSICS[node.name]
-            else:
-                value = add_phi(block, statements, node.name, info=node)
+            value = load_name(block, node.name, info=node)
             node.forward(value)
         # Handle stores
         elif isinstance(node, syntax.Assignment):
@@ -469,7 +475,7 @@ def gen_ssa(fn):
     def propagate_phi(block, name):
         for pred in block.preds:
             if name not in pred.exit_states:
-                value = add_phi(pred, block.stmts, name, info=BI)
+                value = add_phi(pred, name, info=BI)
                 propagate_phi(pred, name)
 
     for block in walk_blocks(first_block):
