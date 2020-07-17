@@ -616,12 +616,12 @@ class Object(Node):
                 '%s unimplemented for %s' % (attr, self.obj_class.repr(ctx)), ctx=ctx)
 
 @node('&fn, *args')
-class BoundFunction(Node):
+class PartialFunction(Node):
     def eval_call(self, ctx, args, kwargs):
         args = self.args + list(args)
         return self.fn.eval_call(ctx, args, kwargs)
     def repr(self, ctx):
-        return '<bound-fn %s(%s, ...)>' % (self.fn.repr(ctx),
+        return '<partial-fn %s(%s, ...)>' % (self.fn.repr(ctx),
                 ', '.join(a.repr(ctx) for a in self.args))
 
 @node('type, &rhs')
@@ -703,7 +703,7 @@ def get_attr(ctx, obj, attr, info=None, raise_errors=True):
     if item is None:
         method = obj.get_obj_class().get_attr(ctx, attr)
         if method is not None and isinstance(method, (Function, BuiltinFunction)):
-            return BoundFunction(method, [obj])
+            return PartialFunction(method, [obj])
         if raise_errors:
             info.error("object of type '%s' has no attribute '%s'" %
                     (get_type_name(ctx, obj), attr), ctx=ctx)
