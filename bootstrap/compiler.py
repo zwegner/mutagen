@@ -268,6 +268,8 @@ def mgi__extern_label(node, label):
 
 # Instruction wrappers
 inst_specs = {
+    'bsf': 1,
+    'bsr': 1,
     'lzcnt': 1,
     'popcnt': 1,
     'tzcnt': 1,

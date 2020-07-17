@@ -261,6 +261,10 @@ bt_table = {
     'btr': 6,
     'btc': 7,
 }
+bs_table = {
+    'bsf': 0xBC,
+    'bsr': 0xBD,
+}
 
 # Opcode extension prefix--these generate extra opcode bytes with SSE, or get packed
 # into bitfields of the VEX/EVEX prefixes
@@ -571,6 +575,11 @@ class Instruction(ASMObj):
             assert isinstance(bit, Immediate)
             imm = pack8(bit.value)
             return rex(w, 0, src) + [0x0F, 0xBA] + mod_rm_sib(sub_opcode, src) + imm
+        elif self.opcode in bs_table:
+            opcode = bs_table[self.opcode]
+            [dst, src] = self.args
+            assert isinstance(src, (GPReg, Address))
+            return rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
         elif self.opcode in cmov_table:
             opcode = cmov_table[self.opcode]
             [dst, src] = self.args
@@ -821,6 +830,9 @@ def get_inst_specs():
 
     for inst in bt_table.keys():
         add_32_64(inst, 'qQ', 'i')
+
+    for inst in bs_table.keys():
+        add_32_64(inst, 'q', 'qQ')
 
     for [cond, code] in cmov_table.items():
         add_32_64(cond, 'q', 'qQ')
