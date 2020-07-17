@@ -348,7 +348,8 @@ def allocate_registers(fn):
 
     # A few dicts for keeping track of per-basic-block info that needs to
     # be accessed elsewhere
-    block_free_regs = {b: FREE_REGS.copy() for b in fn.blocks}
+    block_free_regs_in = {}
+    block_free_regs_out = {}
     block_reg_assns = {b: {} for b in fn.blocks} # ok, only accessed for logging...
     block_insts = {b: [] for b in fn.blocks}
 
@@ -374,7 +375,7 @@ def allocate_registers(fn):
                                 l.opcode not in {'parameter'} for l in live_set)
             assert pressure <= len(FREE_REGS), 'Not enough registers'
 
-        free_regs = block_free_regs[block]
+        free_regs = FREE_REGS.copy()
         reg_assns = block_reg_assns[block]
 
         # Allocate registers for the phi write. We'll make sure elsewhere that
@@ -390,6 +391,8 @@ def allocate_registers(fn):
                 assert list(block.phi_write.args.keys()) == ['$return_value']
                 regs['$return_value'] = RETURN_REGS[0]
         phi_assns[block.phi_write] = regs
+
+        block_free_regs_in[block] = free_regs.copy()
 
         # Now make a run through the instructions. Since we're assuming
         # spill/fill has been taken care of already, this can be done linearly.
@@ -516,6 +519,8 @@ def allocate_registers(fn):
                 sorted(block.phi_read.args.items())}
         phi_assns[block.phi_read] = regs
 
+        block_free_regs_out[block] = free_regs.copy()
+
     for block in fn.blocks:
         log('assns for', block.name, block_reg_assns[block])
 
@@ -533,7 +538,7 @@ def allocate_registers(fn):
         first = len(block.succs) == 1
         for succ in block.succs:
             phi_w = phi_assns[succ.phi_write]
-            free_regs = block_free_regs[block] if first else block_free_regs[succ]
+            free_regs = block_free_regs_out[block] if first else block_free_regs_in[succ]
             insts = []
             for [inst, dst, src] in move_phi_args(phi_r, phi_w, free_regs):
                 if inst == 'mov':
