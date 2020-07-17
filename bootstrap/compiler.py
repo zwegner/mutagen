@@ -210,6 +210,12 @@ def transform_to_graph(node):
             # Only functions for now, no classes/comprehensions
             assert isinstance(node.expr, syntax.Function)
             functions.append(node.expr)
+            # Ugh: move the extra args from outside the function's scope into the
+            # function itself. We started from a tree so this should always be
+            # fine (only one scope per function). These extra args are added to
+            # the beginning of the parameter list when compiling the function.
+            assert not hasattr(node.expr, 'extra_args')
+            node.expr.extra_args = node.extra_args
 
     # Un-reverse the functions before returning
     return functions[::-1]
@@ -432,13 +438,24 @@ def gen_ssa_for_stmt(block, statements, stmt):
         elif isinstance(node, syntax.Target):
             pass
         elif isinstance(node, syntax.Scope):
-            assert not node.extra_args
             # Only functions for now, no classes/comprehensions
             assert isinstance(node.expr, syntax.Function)
             # XXX need to make sure this name is unique
             label = ExternSymbol(node.expr.name, info=node)
-            node.forward(label)
-            statements.append(label)
+
+            # Create a partial application if there are variables used from
+            # an outer scope
+            if node.extra_args:
+                statements.append(label)
+                fn = syntax.PartialFunction(label, [])
+                add_use(Usage(fn, 'fn', ArgType.EDGE), label)
+                for arg in node.extra_args:
+                    append_to_edge_list(fn, 'args', load_name(block, arg, info=node))
+            else:
+                fn = label
+
+            node.forward(fn)
+            statements.append(fn)
         else:
             statements.append(node)
 
@@ -499,7 +516,7 @@ def gen_ssa(fn):
 
 def can_dce(expr):
     return isinstance(expr, (syntax.BinaryOp, syntax.Integer, syntax.String,
-            ExternSymbol))
+            ExternSymbol, syntax.PartialFunction))
 
 def simplify_blocks(first_block):
     # Basic simplification pass. Right now, since we don't simplify
@@ -520,10 +537,16 @@ def simplify_blocks(first_block):
                 remove_use(Usage(stmt, 'lhs', ArgType.EDGE))
                 remove_use(Usage(stmt, 'rhs', ArgType.EDGE))
 
-            # Simplify intrinsic calls
             elif isinstance(stmt, syntax.Call):
+                # Simplify intrinsic calls
                 if isinstance(stmt.fn, Intrinsic):
                     stmt.fn.simplify_fn(stmt, stmt.args)
+
+                # Simplify partial functions
+                if isinstance(stmt.fn, syntax.PartialFunction):
+                    call = syntax.Call(stmt.fn.fn, stmt.fn.args + stmt.args)
+                    remove_use(Usage(stmt, 'fn', ArgType.EDGE))
+                    stmt.forward(call)
 
     # Run DCE
     any_removed = True
@@ -658,7 +681,10 @@ def compile_fn(fn):
     assert not fn.params.kw_params
     assert not fn.params.kw_var_params
     prologue = []
-    for [i, name] in enumerate(fn.params.params):
+    params = fn.params.params
+    if hasattr(fn, 'extra_args'):
+        params = fn.extra_args + params
+    for [i, name] in enumerate(params):
         prologue.append(gen_assign(name, Parameter(i, info=fn), fn))
     fn.block.stmts = prologue + fn.block.stmts
 
