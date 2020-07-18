@@ -185,57 +185,87 @@ def get_block_dominance(start, preds, succs):
 def is_register(reg):
     return isinstance(reg, asm.GPReg)
 
-def instantiate_reg(node, free_regs, clobbered_regs, insts):
-    reg = free_regs.pop()
-    clobbered_regs.add(reg)
-    # Need special handling for labels--use lea of the RIP-relative
-    # address, provided by a relocation later
-    if isinstance(node, asm.ExternLabel):
-        insts.append(asm.Instruction('lea', reg, node))
-    else:
-        insts.append(asm.Instruction('mov', reg, node))
-    return reg
+class RegAllocContext:
+    def __init__(self, fn):
+        self.fn = fn
+        self.block_insts = {b: [] for b in fn.blocks}
+        self.free_regs = None
+        self.free_regs_in = {}
+        self.free_regs_out = {}
+        self.block_reg_assns = {b: {} for b in fn.blocks}
+        self.current_block = None
+        # All registers touched by the function, that need to be saved/restored
+        self.clobbered_regs = RegSet()
+        # Stack slots for spill/fill etc. Not used right now
+        self.stack_assns = {}
 
-def get_arg_reg(arg, reg_assns, stack_assns, free_regs, clobbered_regs, insts,
-        force_move=False, assign=False, can_handle_labels=False):
-    is_lir_node = isinstance(arg, lir.Node)
-    if is_lir_node or force_move:
-        orig_arg = arg
-        # Anything that isn't a LIR node, we assume is a literal that asm.py
-        # can handle
-        if is_lir_node:
-            if arg in reg_assns:
-                arg = reg_assns[arg]
-            else:
-                arg = stack_assns[arg]
-        # Minor optimization: if the instruction can directly handle labels
-        # (jmp/call etc), we don't need to lea it
-        if isinstance(arg, asm.ExternLabel) and can_handle_labels:
-            return arg
-        if isinstance(arg, asm.GPReg) and not force_move:
-            return arg
+    def start_block(self, block, free_regs):
+        self.current_block = block
+        self.insts = self.block_insts[block]
+        self.free_regs = free_regs
+        self.free_regs_in[block] = free_regs.copy()
+        self.reg_assns = self.block_reg_assns[block]
 
-        reg = instantiate_reg(arg, free_regs, clobbered_regs, insts)
-        if assign:
-            reg_assns[orig_arg] = reg
+    def end_block(self, block):
+        self.free_regs_out[block] = self.free_regs.copy()
+        self.current_block = None
+        self.reg_assns = None
+        self.free_regs = None
+        self.insts = None
 
-        log('instantiate', insts[-1], free_regs)
+    def instantiate_reg(self, node, free_regs=None):
+        if free_regs is None:
+            free_regs = self.free_regs
+        reg = free_regs.pop()
+        self.clobbered_regs.add(reg)
+        # Need special handling for labels--use lea of the RIP-relative
+        # address, provided by a relocation later
+        if isinstance(node, asm.ExternLabel):
+            self.insts.append(asm.Instruction('lea', reg, node))
+        else:
+            self.insts.append(asm.Instruction('mov', reg, node))
         return reg
-    else:
-        return arg
 
-def update_free_regs(node, free_regs, reg_assns, live_set):
-    if node not in reg_assns:
-        log('not in regs:', node)
-        return
-    reg = reg_assns[node]
-    log('checking', hex(id(node)), node, reg,
-            is_register(reg) and node not in live_set)
-    log('   live', live_set)
-    if is_register(reg) and node not in live_set:
-        free_regs.add(reg)
-        del reg_assns[node]
-    log('   free', free_regs)
+    def get_arg_reg(self, arg, free_regs=None, force_move=False, assign=False,
+            can_handle_labels=False):
+        is_lir_node = isinstance(arg, lir.Node)
+        if is_lir_node or force_move:
+            orig_arg = arg
+            # Anything that isn't a LIR node, we assume is a literal that asm.py
+            # can handle
+            if is_lir_node:
+                if arg in self.reg_assns:
+                    arg = self.reg_assns[arg]
+                else:
+                    arg = self.stack_assns[arg]
+            # Minor optimization: if the instruction can directly handle labels
+            # (jmp/call etc), we don't need to lea it
+            if isinstance(arg, asm.ExternLabel) and can_handle_labels:
+                return arg
+            if isinstance(arg, asm.GPReg) and not force_move:
+                return arg
+
+            reg = self.instantiate_reg(arg, free_regs=free_regs)
+            if assign:
+                self.reg_assns[orig_arg] = reg
+
+            log('instantiate', self.insts[-1], free_regs)
+            return reg
+        else:
+            return arg
+
+    def update_free_regs(self, node, live_set):
+        if node not in self.reg_assns:
+            log('not in regs:', node)
+            return
+        reg = self.reg_assns[node]
+        log('checking', hex(id(node)), node, reg,
+                is_register(reg) and node not in live_set)
+        log('   live', live_set)
+        if is_register(reg) and node not in live_set:
+            self.free_regs.add(reg)
+            del self.reg_assns[node]
+        log('   free', self.free_regs)
 
 # Algorithm from Section 4.4, Implementing Φ-operations, "Register Allocation
 # for Programs in SSA Form", Sebastian Hack 2006.
@@ -326,22 +356,10 @@ def allocate_registers(fn):
 
         log('  r', hex(id(block.phi_read)), block.phi_read)
 
-    # Stack slots for spill/fill etc. Not used right now
-    stack_assns = {}
-
     # Registers assigned to all arguments to each phi read or write
     phi_assns = {}
 
-    # All registers touched by the function, that need to be saved/restored
-    # XXX should track this in an easier/more robust way
-    clobbered_regs = RegSet()
-
-    # A few dicts for keeping track of per-basic-block info that needs to
-    # be accessed elsewhere
-    block_free_regs_in = {}
-    block_free_regs_out = {}
-    block_reg_assns = {b: {} for b in fn.blocks} # ok, only accessed for logging...
-    block_insts = {b: [] for b in fn.blocks}
+    ctx = RegAllocContext(fn)
 
     for block in fn.blocks:
         log('{}:'.format(block.name))
@@ -350,8 +368,6 @@ def allocate_registers(fn):
             log('  i', i, hex(id(inst)), inst)
 
     for block in fn.blocks:
-        insts = block_insts[block]
-
         last_uses = get_last_uses(block, block.phi_read.args)
         live_set_iter = list(get_live_sets(block, last_uses))
 
@@ -366,7 +382,7 @@ def allocate_registers(fn):
             assert pressure <= len(FREE_REGS), 'Not enough registers'
 
         free_regs = FREE_REGS.copy()
-        reg_assns = block_reg_assns[block]
+        reg_assns = ctx.block_reg_assns[block]
 
         # Allocate registers for the phi write. We'll make sure elsewhere that
         # the arguments are moved to the right registers
@@ -382,7 +398,7 @@ def allocate_registers(fn):
                 regs['$return_value'] = RETURN_REGS[0]
         phi_assns[block.phi_write] = regs
 
-        block_free_regs_in[block] = free_regs.copy()
+        ctx.start_block(block, free_regs)
 
         # Now make a run through the instructions. Since we're assuming
         # spill/fill has been taken care of already, this can be done linearly.
@@ -403,13 +419,13 @@ def allocate_registers(fn):
             elif inst.opcode == 'parameter':
                 [index] = inst.args
                 src = PARAM_REGS[index]
-                reg = instantiate_reg(src, free_regs, clobbered_regs, insts)
+                reg = ctx.instantiate_reg(src)
                 reg_assns[inst] = reg
                 log('param', inst, src, block.phi_read.args.get(inst))
 
             elif inst.opcode == 'literal':
                 [src] = inst.args
-                reg = instantiate_reg(src, free_regs, clobbered_regs, insts)
+                reg = ctx.instantiate_reg(src)
                 reg_assns[inst] = reg
                 log('lit', inst, src, block.phi_read.args.get(inst))
 
@@ -419,11 +435,9 @@ def allocate_registers(fn):
                 assert len(args) <= len(PARAM_REGS)
                 call_regs = PARAM_REGS.copy()
                 for arg in args:
-                    _ = get_arg_reg(arg, reg_assns, stack_assns, call_regs,
-                            clobbered_regs, insts, force_move=True)
+                    _ = ctx.get_arg_reg(arg, free_regs=call_regs, force_move=True)
 
-                called_fn_arg = get_arg_reg(called_fn, reg_assns, stack_assns,
-                        free_regs, clobbered_regs, insts, can_handle_labels=True)
+                called_fn_arg = ctx.get_arg_reg(called_fn, can_handle_labels=True)
 
                 [save_insts, restore_insts] = gen_save_insts(
                         [reg_assns[n] for n in live_set if n in reg_assns and
@@ -431,27 +445,26 @@ def allocate_registers(fn):
 
                 call = asm.Instruction(inst.opcode, called_fn_arg)
 
-                insts += [*save_insts, call, *restore_insts]
+                ctx.insts += [*save_insts, call, *restore_insts]
 
                 log(call, free_regs)
 
                 # Return any now-unused sources to the free set.
                 for arg in args:
-                    update_free_regs(arg, free_regs, reg_assns, live_set)
-                update_free_regs(called_fn, free_regs, reg_assns, live_set)
+                    ctx.update_free_regs(arg, live_set)
+                ctx.update_free_regs(called_fn, live_set)
 
                 # Use the ABI-specified register for pulling out the return
                 # value from the call. Move it to a fresh register so we can
                 # keep it alive
-                reg = instantiate_reg(RETURN_REGS[0], free_regs, clobbered_regs, insts)
+                reg = ctx.instantiate_reg(RETURN_REGS[0])
                 reg_assns[inst] = reg
 
             # Regular ops
             else:
                 reg = None
 
-                arg_regs = [get_arg_reg(arg, reg_assns, stack_assns, free_regs,
-                        clobbered_regs, insts, assign=True) for arg in inst.args]
+                arg_regs = [ctx.get_arg_reg(arg, assign=True) for arg in inst.args]
 
                 # Handle destructive ops first, which might need a move into
                 # a new register. Do this before we return any registers to the
@@ -467,9 +480,8 @@ def allocate_registers(fn):
                     # should probably be done during scheduling with spill/fill.
                     # This also needs to interact with coalescing, when we have that.
                     if inst.args[0] in live_set:
-                        reg = instantiate_reg(arg_regs[0], free_regs,
-                                clobbered_regs, insts)
-                        log('destr copy', insts[-1], free_regs)
+                        reg = ctx.instantiate_reg(arg_regs[0])
+                        log('destr copy', ctx.insts[-1], free_regs)
                         arg_regs[0] = reg
                     else:
                         reg = arg_regs[0]
@@ -480,13 +492,13 @@ def allocate_registers(fn):
 
                 # Return any now-unused sources to the free set.
                 for arg in inst.args:
-                    update_free_regs(arg, free_regs, reg_assns, live_set)
+                    ctx.update_free_regs(arg, live_set)
 
                 # Non-destructive ops need a register assignment for their
                 # implicit destination
                 if not destructive and asm.needs_register(inst.opcode):
                     reg = free_regs.pop()
-                    clobbered_regs.add(reg)
+                    ctx.clobbered_regs.add(reg)
                     arg_regs = [reg] + arg_regs
                     log('nondestr assign', reg, free_regs)
 
@@ -499,19 +511,19 @@ def allocate_registers(fn):
                     log('free inst', inst, arg_regs[0])
                     free_regs.add(arg_regs[0])
 
-                insts.append(asm.Instruction(inst.opcode, *arg_regs))
+                ctx.insts.append(asm.Instruction(inst.opcode, *arg_regs))
 
-                log('main', insts[-1], free_regs)
+                log('main', ctx.insts[-1], free_regs)
 
         # Remember allocated registers for the phi read
         regs = {name: reg_assns[inst] for [name, inst] in
                 sorted(block.phi_read.args.items())}
         phi_assns[block.phi_read] = regs
 
-        block_free_regs_out[block] = free_regs.copy()
+        ctx.end_block(block)
 
     for block in fn.blocks:
-        log('assns for', block.name, block_reg_assns[block])
+        log('assns for', block.name, ctx.block_reg_assns[block])
 
     # Undefined variable check, should have a real message
     assert not fn.blocks[0].phi_write.args, fn.blocks[0].phi_write.args
@@ -527,7 +539,8 @@ def allocate_registers(fn):
         first = len(block.succs) == 1
         for succ in block.succs:
             phi_w = phi_assns[succ.phi_write]
-            free_regs = block_free_regs_out[block] if first else block_free_regs_in[succ]
+            free_regs = ctx.free_regs_out[block] if first else ctx.free_regs_in[succ]
+
             insts = []
             for [inst, dst, src] in move_phi_args(phi_r, phi_w, free_regs):
                 if inst == 'mov':
@@ -537,9 +550,9 @@ def allocate_registers(fn):
                     insts.append(asm.Instruction('xchg', src, dst))
 
             if first:
-                block_insts[block].extend(insts)
+                ctx.block_insts[block].extend(insts)
             else:
-                block_insts[succ][:0] = insts
+                ctx.block_insts[succ][:0] = insts
 
     # Kind of a hack: create an exit label just for this function. Labels need
     # to be unique in the ELF file we generate, so all the jumps get patched
@@ -553,7 +566,7 @@ def allocate_registers(fn):
     insts = []
     for block in fn.blocks:
         insts.append(asm.LocalLabel(block.name))
-        insts.extend(block_insts[block])
+        insts.extend(ctx.block_insts[block])
 
         # Add jump instructions
         for jmp in get_jumps(block, exit_phys_idx, exit_label):
@@ -563,8 +576,8 @@ def allocate_registers(fn):
     # Generate push/pop instructions for callee-save instructions, and
     # adjust the stack for phi
     [save_insts, restore_insts] = gen_save_insts(
-            [reg for reg in clobbered_regs if reg in CALLEE_SAVE],
-            extra_stack=len(stack_assns)*8)
+            [reg for reg in ctx.clobbered_regs if reg in CALLEE_SAVE],
+            extra_stack=len(ctx.stack_assns)*8)
 
     # Now that we know the total amount of stack space allocated, add a
     # prologue and epilogue
