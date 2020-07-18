@@ -66,12 +66,6 @@ def get_last_uses(block, outs):
 
     return last_uses
 
-class VirtualRegister:
-    def __init__(self, index):
-        self.index = index
-    def __str__(self):
-        return 'VReg({})'.format(self.index)
-
 def block_label(block):
     return asm.LocalLabel(block.name)
 
@@ -189,7 +183,7 @@ def get_block_dominance(start, preds, succs):
     return doms
 
 def is_register(reg):
-    return (isinstance(reg, asm.GPReg) or isinstance(reg, VirtualRegister))
+    return isinstance(reg, asm.GPReg)
 
 def instantiate_reg(node, free_regs, clobbered_regs, insts):
     reg = free_regs.pop()
@@ -313,13 +307,9 @@ def gen_save_insts(regs, extra_stack=0):
     stack_size = len(save_insts) * 8
     stack_adj = ((stack_size + extra_stack + 15) & ~15) - stack_size
 
-    if not stack_adj:
-        return [save_insts, restore_insts]
-
-    # Now that we know the total amount of stack space allocated, add a
-    # prologue and epilogue
-    save_insts = [asm.Instruction('sub', RSP, stack_adj), *save_insts]
-    restore_insts = [*restore_insts, asm.Instruction('add', RSP, stack_adj)]
+    if stack_adj:
+        save_insts = [asm.Instruction('sub', RSP, stack_adj)] + save_insts
+        restore_insts += [asm.Instruction('add', RSP, stack_adj)]
 
     return [save_insts, restore_insts]
 
@@ -477,9 +467,8 @@ def allocate_registers(fn):
                     # should probably be done during scheduling with spill/fill.
                     # This also needs to interact with coalescing, when we have that.
                     if inst.args[0] in live_set:
-                        reg = free_regs.pop()
-                        clobbered_regs.add(reg)
-                        insts.append(asm.Instruction('mov', reg, arg_regs[0]))
+                        reg = instantiate_reg(arg_regs[0], free_regs,
+                                clobbered_regs, insts)
                         log('destr copy', insts[-1], free_regs)
                         arg_regs[0] = reg
                     else:
