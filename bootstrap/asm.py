@@ -743,15 +743,17 @@ def build(insts):
         else:
             for byte in inst.to_bytes():
                 if isinstance(byte, Relocation):
-                    # If the relocation is to a an external symbol, pass it on
+                    # If the relocation is to an external symbol, pass it on
                     if isinstance(byte.label, ExternLabel):
                         assert byte.size == 4
-                        extern_labels = extern_labels + [[byte.label.name, len(bytes)]]
-                        # HACKish: assume the relocation is at the end of an instruction.
-                        # Since the PC will be 4 bytes after the end of this value when the
-                        # instruction executes, and the linker will calculate the offset from
-                        # the beginning of the value, put an offset of -4 here that the linker
-                        # will add in.
+                        extern_labels = extern_labels + [[byte.label.name,
+                                len(bytes)]]
+                        # HACKish: assume the relocation is at the end of an
+                        # instruction. Since the PC will be 4 bytes after the
+                        # end of this value when the instruction executes, and
+                        # the linker will calculate the offset from the
+                        # beginning of the value, put an offset of -4 here that
+                        # the linker will add in.
                         bytes = bytes + pack32(-4)
                     else:
                         relocations = relocations + [[byte, len(bytes)]]
@@ -805,7 +807,6 @@ def get_inst_specs():
         for arg in args:
             new_args.append([t if isinstance(t, ASMObj) else (t, SIZE_TABLE[t])
                 for t in arg])
-        #inst = '{}{}'.format(inst, size) if size else inst
         inst_list.append((inst, *new_args))
 
     def add_32_64(inst, *args):
