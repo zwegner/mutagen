@@ -86,12 +86,9 @@ for i in range(8000):
             arg = asm.Immediate(arg, size=size)
         elif arg_type == 'l':
             arg = rand_select(labels)
-        elif arg_type == 'x':
+        elif arg_type in {'x', 'y'}:
             arg = rand_select(regs)
-            arg = asm.XMMReg(arg)
-        elif arg_type == 'y':
-            arg = rand_select(regs)
-            arg = asm.YMMReg(arg)
+            arg = asm.VecReg(arg, size=size)
         else:
             assert False, arg
         args = args + [arg]

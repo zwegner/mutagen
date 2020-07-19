@@ -70,27 +70,15 @@ class GPReg(Register):
         return self._key() == other._key()
 
 # Vector registers
-class XMMReg(Register):
-    def __init__(self, index: int):
+class VecReg(Register):
+    def __init__(self, index: int, size: int=None):
         self.index = index
+        self.size = size
     def get_size(self):
-        return 128
+        return self.size
     def __str__(self):
-        return 'xmm{}'.format(self.index)
-class YMMReg(Register):
-    def __init__(self, index: int):
-        self.index = index
-    def get_size(self):
-        return 256
-    def __str__(self):
-        return 'ymm{}'.format(self.index)
-class ZMMReg(Register):
-    def __init__(self, index: int):
-        self.index = index
-    def get_size(self):
-        return 512
-    def __str__(self):
-        return 'zmm{}'.format(self.index)
+        prefix = {128: 'x', 256: 'y', 512: 'z'}
+        return '{}mm{}'.format(prefix[self.size], self.index)
 
 class Address(ASMObj):
     def __init__(self, base: int, scale: int, index: int, disp: int, size: int=None):
