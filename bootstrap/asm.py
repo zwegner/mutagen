@@ -1,4 +1,5 @@
 import enum
+import itertools
 import struct
 
 # Dummy abstract base class
@@ -267,6 +268,31 @@ SIZE_PREFIX_BYTES = {SPF.none: [], SPF.x66: [0x66], SPF.xF3: [0xF3], SPF.xF2: [0
 FLAG_3OP = 1
 FLAG_IMM = 2
 
+# One-char shortcut table for specifying operand type/size
+ARG_TYPE_TABLE = {
+    # GP regs
+    'b': (GPReg, 8),
+    'w': (GPReg, 16),
+    'd': (GPReg, 32),
+    'q': (GPReg, 64),
+    # V regs
+    'x': (VecReg, 128),
+    'y': (VecReg, 256),
+    'z': (VecReg, 512),
+    # Address, label
+    'B': (Address, 8),
+    'W': (Address, 16),
+    'D': (Address, 32),
+    'Q': (Address, 64),
+    'X': (Address, 128),
+    'Y': (Address, 256),
+    'Z': (Address, 512),
+    'l': (Label, None),
+    # Immediates
+    'i': (Immediate, 8),
+    'I': (Immediate, 32),
+}
+
 # SSE instructions
 sse_table = {
     'addpd':        [1, SPF.x66,  OPF.x0F,    0x58],
@@ -277,14 +303,22 @@ sse_table = {
     'blendps':      [3, SPF.x66,  OPF.x0Fx3A, 0x0C],
     'divpd':        [1, SPF.x66,  OPF.x0F,    0x5E],
     'divps':        [1, SPF.none, OPF.x0F,    0x5E],
+    'dppd':         [3, SPF.x66,  OPF.x0Fx3A, 0x41, ('vlen', 128)],
+    'dpps':         [3, SPF.x66,  OPF.x0Fx3A, 0x40],
+    'extractps':    [2, SPF.x66,  OPF.x0Fx3A, 0x17, ('vlen', 128),
+            ('reverse', True), ('arg_types', ('d', None)), ('addr_size', 32)],
     'haddpd':       [1, SPF.x66,  OPF.x0F,    0x7C],
     'haddps':       [1, SPF.xF2,  OPF.x0F,    0x7C],
     'hsubpd':       [1, SPF.x66,  OPF.x0F,    0x7D],
     'hsubps':       [1, SPF.xF2,  OPF.x0F,    0x7D],
+    'insertps':     [3, SPF.x66,  OPF.x0Fx3A, 0x21, ('vlen', 128),
+            ('addr_size', 32)],
     'maxpd':        [1, SPF.x66,  OPF.x0F,    0x5F],
     'maxps':        [1, SPF.none, OPF.x0F,    0x5F],
     'minpd':        [1, SPF.x66,  OPF.x0F,    0x5D],
     'minps':        [1, SPF.none, OPF.x0F,    0x5D],
+    'movdqa':       [0, SPF.x66,  OPF.x0F,    0x6F, ('reverse_opcode', 0x7F)],
+    'movdqu':       [0, SPF.xF3,  OPF.x0F,    0x6F, ('reverse_opcode', 0x7F)],
     'mpsadbw':      [3, SPF.x66,  OPF.x0Fx3A, 0x42],
     'mulpd':        [1, SPF.x66,  OPF.x0F,    0x59],
     'mulps':        [1, SPF.none, OPF.x0F,    0x59],
@@ -314,13 +348,29 @@ sse_table = {
     'pcmpgtb':      [1, SPF.x66,  OPF.x0F,    0x64],
     'pcmpgtd':      [1, SPF.x66,  OPF.x0F,    0x66],
     'pcmpgtw':      [1, SPF.x66,  OPF.x0F,    0x65],
+    'pextrb':       [2, SPF.x66,  OPF.x0Fx3A, 0x14, ('vlen', 128),
+            ('reverse', True), ('arg_types', ('d', None)), ('addr_size', 8)],
+    'pextrd':       [2, SPF.x66,  OPF.x0Fx3A, 0x16, ('w', 0), ('vlen', 128),
+            ('reverse', True), ('arg_types', ('d', None)), ('addr_size', 32)],
+    'pextrq':       [2, SPF.x66,  OPF.x0Fx3A, 0x16, ('w', 1), ('vlen', 128),
+            ('reverse', True), ('arg_types', ('q', None)), ('addr_size', 64)],
+    'pextrw':       [2, SPF.x66,  OPF.x0Fx3A, 0x15, ('vlen', 128),
+            ('reverse', True), ('arg_types', ('d', None)), ('addr_size', 16)],
     'phaddd':       [1, SPF.x66,  OPF.x0Fx38, 0x02],
     'phaddsw':      [1, SPF.x66,  OPF.x0Fx38, 0x03],
     'phaddw':       [1, SPF.x66,  OPF.x0Fx38, 0x01],
-    'phminposuw':   [0, SPF.x66,  OPF.x0Fx38, 0x41],
+    'phminposuw':   [0, SPF.x66,  OPF.x0Fx38, 0x41, ('vlen', 128)],
     'phsubd':       [1, SPF.x66,  OPF.x0Fx38, 0x06],
     'phsubsw':      [1, SPF.x66,  OPF.x0Fx38, 0x07],
     'phsubw':       [1, SPF.x66,  OPF.x0Fx38, 0x05],
+    'pinsrb':       [3, SPF.x66,  OPF.x0Fx3A, 0x20, ('vlen', 128),
+            ('arg_types', (None, None, 'd')), ('addr_size', 8)],
+    'pinsrd':       [3, SPF.x66,  OPF.x0Fx3A, 0x22, ('w', 0), ('vlen', 128),
+            ('arg_types', (None, None, 'd')), ('addr_size', 32)],
+    'pinsrq':       [3, SPF.x66,  OPF.x0Fx3A, 0x22, ('w', 1), ('vlen', 128),
+            ('arg_types', (None, None, 'q')), ('addr_size', 64)],
+    'pinsrw':       [3, SPF.x66,  OPF.x0F,    0xC4, ('vlen', 128),
+            ('arg_types', (None, None, 'd')), ('addr_size', 16)],
     'pmaddubsw':    [1, SPF.x66,  OPF.x0Fx38, 0x04],
     'pmaddwd':      [1, SPF.x66,  OPF.x0F,    0xF5],
     'pmaxsb':       [1, SPF.x66,  OPF.x0Fx38, 0x3C],
@@ -335,6 +385,8 @@ sse_table = {
     'pminub':       [1, SPF.x66,  OPF.x0F,    0xDA],
     'pminud':       [1, SPF.x66,  OPF.x0Fx38, 0x3B],
     'pminuw':       [1, SPF.x66,  OPF.x0Fx38, 0x3A],
+    'pmovmskb':     [0, SPF.x66,  OPF.x0F,    0xD7,
+            ('arg_types', ('d', None)), ('reg_only', True)],
     'pmuldq':       [1, SPF.x66,  OPF.x0Fx38, 0x28],
     'pmulhrsw':     [1, SPF.x66,  OPF.x0Fx38, 0x0B],
     'pmulhuw':      [1, SPF.x66,  OPF.x0F,    0xE4],
@@ -350,6 +402,26 @@ sse_table = {
     'psignb':       [1, SPF.x66,  OPF.x0Fx38, 0x08],
     'psignd':       [1, SPF.x66,  OPF.x0Fx38, 0x0A],
     'psignw':       [1, SPF.x66,  OPF.x0Fx38, 0x09],
+    'pslld':        [1, SPF.x66,  OPF.x0F,    0xF2, ('sub_opcode', (0x72, 6)),
+            ('arg_types', (None, None, 'x')), ('addr_size', 128)],
+    'pslldq':       [1, SPF.x66,  OPF.x0F,    0x73, ('sub_opcode', (0x73, 7)),
+            ('imm_only', True)],
+    'psllq':        [1, SPF.x66,  OPF.x0F,    0xF3, ('sub_opcode', (0x73, 6)),
+            ('arg_types', (None, None, 'x')), ('addr_size', 128)],
+    'psllw':        [1, SPF.x66,  OPF.x0F,    0xF1, ('sub_opcode', (0x71, 6)),
+            ('arg_types', (None, None, 'x')), ('addr_size', 128)],
+    'psrad':        [1, SPF.x66,  OPF.x0F,    0xE2, ('sub_opcode', (0x72, 4)),
+            ('arg_types', (None, None, 'x')), ('addr_size', 128)],
+    'psraw':        [1, SPF.x66,  OPF.x0F,    0xE1, ('sub_opcode', (0x71, 4)),
+            ('arg_types', (None, None, 'x')), ('addr_size', 128)],
+    'psrld':        [1, SPF.x66,  OPF.x0F,    0xD2, ('sub_opcode', (0x72, 2)),
+            ('arg_types', (None, None, 'x')), ('addr_size', 128)],
+    'psrldq':       [1, SPF.x66,  OPF.x0F,    0x73, ('sub_opcode', (0x73, 3)),
+            ('imm_only', True)],
+    'psrlq':        [1, SPF.x66,  OPF.x0F,    0xD3, ('sub_opcode', (0x73, 2)),
+            ('arg_types', (None, None, 'x')), ('addr_size', 128)],
+    'psrlw':        [1, SPF.x66,  OPF.x0F,    0xD1, ('sub_opcode', (0x71, 2)),
+            ('arg_types', (None, None, 'x')), ('addr_size', 128)],
     'psubb':        [1, SPF.x66,  OPF.x0F,    0xF8],
     'psubd':        [1, SPF.x66,  OPF.x0F,    0xFA],
     'psubq':        [1, SPF.x66,  OPF.x0F,    0xFB],
@@ -358,6 +430,14 @@ sse_table = {
     'psubusb':      [1, SPF.x66,  OPF.x0F,    0xD8],
     'psubusw':      [1, SPF.x66,  OPF.x0F,    0xD9],
     'psubw':        [1, SPF.x66,  OPF.x0F,    0xF9],
+    'punpckhbw':    [1, SPF.x66,  OPF.x0F,    0x68],
+    'punpckhdq':    [1, SPF.x66,  OPF.x0F,    0x6A],
+    'punpckhqdq':   [1, SPF.x66,  OPF.x0F,    0x6D],
+    'punpckhwd':    [1, SPF.x66,  OPF.x0F,    0x69],
+    'punpcklbw':    [1, SPF.x66,  OPF.x0F,    0x60],
+    'punpckldq':    [1, SPF.x66,  OPF.x0F,    0x62],
+    'punpcklqdq':   [1, SPF.x66,  OPF.x0F,    0x6C],
+    'punpcklwd':    [1, SPF.x66,  OPF.x0F,    0x61],
     'rcpps':        [0, SPF.none, OPF.x0F,    0x53],
     'roundpd':      [2, SPF.x66,  OPF.x0Fx3A, 0x09],
     'roundps':      [2, SPF.x66,  OPF.x0Fx3A, 0x08],
@@ -368,26 +448,33 @@ sse_table = {
     'sqrtps':       [0, SPF.none, OPF.x0F,    0x51],
     'subpd':        [1, SPF.x66,  OPF.x0F,    0x5C],
     'subps':        [1, SPF.none, OPF.x0F,    0x5C],
+    'unpckhpd':     [1, SPF.x66,  OPF.x0F,    0x15],
     'unpckhps':     [1, SPF.none, OPF.x0F,    0x15],
-}
-
-# SSE sub instructions: these have in immediate and are encoded differently
-sse_sub_table = {
-    'pslld':   [0x72, 6],
-    'pslldq':  [0x73, 7],
-    'psllq':   [0x73, 6],
-    'psllw':   [0x71, 6],
-    'psrad':   [0x72, 4],
-    'psraw':   [0x71, 4],
-    'psrld':   [0x72, 2],
-    'psrldq':  [0x73, 3],
-    'psrlq':   [0x73, 2],
-    'psrlw':   [0x71, 2],
+    'unpcklpd':     [1, SPF.x66,  OPF.x0F,    0x14],
+    'unpcklps':     [1, SPF.none, OPF.x0F,    0x14],
 }
 
 # AVX only instructions (VEX-encoded SSE instructions are added below)
 avx_table = {
+    'vbroadcastsd': [0, SPF.x66,  OPF.x0Fx38, 0x19, ('w', 0),
+            ('arg_types', (None, 'x')), ('addr_size', 64)],
+    'vbroadcastss': [0, SPF.x66,  OPF.x0Fx38, 0x18, ('w', 0),
+            ('arg_types', (None, 'x')), ('addr_size', 32)],
+    'vextracti128': [2, SPF.x66,  OPF.x0Fx3A, 0x39, ('w', 0),
+            ('reverse', True), ('arg_types', ('x', None)), ('addr_size', 128)],
+    'vinsertf128':  [3, SPF.x66,  OPF.x0Fx3A, 0x18, ('w', 0),
+            ('arg_types', (None, None, 'x')), ('addr_size', 128)],
+    'vinserti128':  [3, SPF.x66,  OPF.x0Fx3A, 0x38, ('w', 0),
+            ('arg_types', (None, None, 'x')), ('addr_size', 128)],
     'vpblendd':     [3, SPF.x66,  OPF.x0Fx3A, 0x02, ('w', 0)],
+    'vpbroadcastb': [0, SPF.x66,  OPF.x0Fx38, 0x78, ('w', 0),
+            ('arg_types', (None, 'x')), ('addr_size', 8)],
+    'vpbroadcastd': [0, SPF.x66,  OPF.x0Fx38, 0x58, ('w', 0),
+            ('arg_types', (None, 'x')), ('addr_size', 32)],
+    'vpbroadcastq': [0, SPF.x66,  OPF.x0Fx38, 0x59, ('w', 0),
+            ('arg_types', (None, 'x')), ('addr_size', 64)],
+    'vpbroadcastw': [0, SPF.x66,  OPF.x0Fx38, 0x79, ('w', 0),
+            ('arg_types', (None, 'x')), ('addr_size', 16)],
     'vpcmpgtq':     [1, SPF.x66,  OPF.x0Fx38, 0x37],
     'vperm2f128':   [3, SPF.x66,  OPF.x0Fx3A, 0x06, ('w', 0)],
     'vperm2i128':   [3, SPF.x66,  OPF.x0Fx3A, 0x46, ('w', 0)],
@@ -402,20 +489,76 @@ avx_table = {
     'vpsrlvq':      [1, SPF.x66,  OPF.x0Fx38, 0x45, ('w', 1)],
 }
 
-# AVX 128-bit only instructions
-avx_blacklist = {
-    'phminposuw',
-}
-
-# Convert flags varargs in SSE/AVX tables to dicts
-for table in [sse_table, avx_table]:
-    for [inst, [form, spf, opf, opcode, *flags]] in table.items():
-        table[inst] = [form, spf, opf, opcode, dict(flags)]
-
 # Add VEX extensions of SSE instructions
 for [opcode, value] in sse_table.items():
-    if opcode not in avx_blacklist:
-        avx_table['v' + opcode] = value
+    avx_table['v' + opcode] = value
+
+# Process various flags in the above SSE/AVX tables, to get valid instruction forms
+for table in [sse_table, avx_table]:
+    for [inst, [form, spf, opf, opcode, *flag_args]] in table.items():
+        flags = dict(flag_args)
+
+        # Get extension-specific values
+        is_sse = (table is sse_table)
+        vlen = 128 if is_sse else 256
+        if 'vlen' in flags:
+            vlen = flags['vlen']
+        vtype = 'x' if vlen == 128 else 'y'
+
+        # Create basic form. Most instructions can have the types inferred from
+        # the form (2/3 op, immediate)
+        if 'arg_types' in flags:
+            types = list(flags.pop('arg_types'))
+            if is_sse and form & FLAG_3OP:
+                assert types[0] == types[1]
+                types = types[1:]
+            arg_types = [t or vtype for t in types]
+        else:
+            arg_types = [vtype, vtype]
+            if not is_sse and form & FLAG_3OP:
+                arg_types.append(vtype)
+        if form & FLAG_IMM:
+            arg_types.append('i')
+
+        basic_form = [ARG_TYPE_TABLE[t] for t in arg_types]
+
+        # Create alternate forms (reg, reg; reg, mem; etc.)
+        forms = []
+
+        # Only add the basic form if not an immediate-only instruction
+        if not flags.get('imm_only'):
+            forms.append(basic_form)
+
+        # Create an immediate form if there's a sub-opcode
+        if 'sub_opcode' in flags:
+            assert not form & FLAG_IMM
+            imm_form = basic_form.copy()
+            imm_form[-1] = (Immediate, 8)
+            forms.append(imm_form)
+
+        # Add address form
+        if not flags.get('reg_only') and not flags.get('imm_only'):
+            if flags.get('reverse'):
+                addr_arg = 0
+            elif form & FLAG_IMM:
+                addr_arg = len(basic_form) - 2
+            else:
+                addr_arg = len(basic_form) - 1
+
+            size = flags.get('addr_size', basic_form[addr_arg][1])
+            addr_form = basic_form.copy()
+            addr_form[addr_arg] = (Address, size)
+            forms.append(addr_form)
+
+            # If there's a reverse_opcode flag, that means the instructions has both
+            # reg, mem and mem, reg forms. Add the mem, reg possibility
+            if flags.get('reverse_opcode'):
+                assert addr_arg != 0
+                rev_addr_form = basic_form.copy()
+                rev_addr_form[0] = (Address, size)
+                forms.append(rev_addr_form)
+
+        table[inst] = [form, spf, opf, opcode, tuple(forms), flags]
 
 # BMI instructions
 bmi_arg2_table = {
@@ -481,6 +624,18 @@ class Instruction(ASMObj):
     def __init__(self, opcode: str, *args):
         self.opcode = normalize_opcode(opcode)
         self.args = [Immediate(arg) if isinstance(arg, int) else arg for arg in args]
+
+    def check_types(self, forms):
+        # Check arguments
+        normalized_types = [Address if isinstance(a, Label) else type(a)
+                for a in self.args]
+
+        for form in forms:
+            assert len(form) == len(self.args)
+            if all(issubclass(a, t) for [a, [t, s]] in zip(normalized_types, form)):
+                return
+        assert False, ('argument types %s do not match any of the valid forms '
+                'of %s: %s' % (self.args, self.opcode, forms))
 
     def to_bytes(self):
         # Compute default w value for REX prefix. This isn't always needed, and it's a
@@ -606,7 +761,7 @@ class Instruction(ASMObj):
             return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
 
         elif self.opcode in sse_table:
-            [form, spf, opf, opcode, flags] = sse_table[self.opcode]
+            [form, spf, opf, opcode, forms, flags] = sse_table[self.opcode]
             # Check instruction flags for w override
             if 'w' in flags:
                 w = flags['w']
@@ -615,23 +770,40 @@ class Instruction(ASMObj):
             spf = SIZE_PREFIX_BYTES[spf]
             opf = OPCODE_PREFIX_BYTES[opf]
 
-            # Parse immediate
-            args = self.args.copy()
-            imm = []
-            if form & FLAG_IMM:
-                imm = args.pop()
-                assert isinstance(imm, Immediate), imm
-                imm = pack8(imm.value)
+            # Check arguments
+            self.check_types(forms)
 
-            assert len(args) == 2, self
-            [dst, src] = args
-            assert isinstance(src, (XMMReg, Address)), self
-            return spf + rex(w, dst, src) + opf + [opcode] + mod_rm_sib(dst, src) + imm
+            # Parse immediate
+            if isinstance(self.args[-1], Immediate):
+                if 'sub_opcode' in flags:
+                    [src, imm] = self.args
+                    [opcode, dst] = flags['sub_opcode']
+                else:
+                    assert form & FLAG_IMM
+                    [dst, src, imm] = self.args
+                imm = pack8(imm.value)
+            else:
+                assert len(self.args) == 2, self
+                [dst, src] = self.args
+                imm = []
+
+            if flags.get('reverse'):
+                [dst, src] = [src, dst]
+            elif 'reverse_opcode' in flags:
+                if isinstance(dst, Address):
+                    [dst, src] = [src, dst]
+                    opcode = flags['reverse_opcode']
+
+            return (spf + rex(w, dst, src) + opf + [opcode] +
+                    mod_rm_sib(dst, src) + imm)
         elif self.opcode in avx_table:
-            [form, spf, opf, opcode, flags] = avx_table[self.opcode]
+            [form, spf, opf, opcode, forms, flags] = avx_table[self.opcode]
             # Check instruction flags for w override
-            if 'w' in flags:
-                w = flags['w']
+            w = flags.get('w', w)
+            vlen = 0 if flags.get('vlen') == 128 else 1
+
+            # Check arguments
+            self.check_types(forms)
 
             # Parse immediate
             args = self.args.copy()
@@ -643,16 +815,30 @@ class Instruction(ASMObj):
 
             # Encode either 2-op or 3-op instruction
             if form & FLAG_3OP:
-                assert len(args) == 3, (self, args)
+                assert len(args) == 3, (self.opcode, args)
                 [dst, src1, src2] = args
-                assert isinstance(src1, (YMMReg, Address)), self
-                assert isinstance(src2, (YMMReg, Address)), self
-                return vex(w, dst, src2, opf, src1, 1, spf) + [opcode] + mod_rm_sib(dst, src2) + imm
+
+                # Encode immediate
+                if isinstance(src2, Immediate):
+                    assert 'sub_opcode' in flags
+                    assert not imm
+                    imm = pack8(src2.value)
+                    [src1, src2] = [dst, src1]
+                    [opcode, dst] = flags['sub_opcode']
             else:
                 assert len(args) == 2, self
                 [dst, src] = args
-                assert isinstance(src, (YMMReg, Address)), self
-                return vex(w, dst, src, opf, 0, 1, spf) + [opcode] + mod_rm_sib(dst, src) + imm
+                if flags.get('reverse'):
+                    [dst, src] = [src, dst]
+                elif 'reverse_opcode' in flags:
+                    if isinstance(dst, Address):
+                        [dst, src] = [src, dst]
+                        opcode = flags['reverse_opcode']
+                # x86 encodings are weird
+                [src1, src2] = [0, src]
+
+            return (vex(w, dst, src2, opf, src1, vlen, spf) + [opcode] +
+                    mod_rm_sib(dst, src2) + imm)
         elif self.opcode in bmi_arg2_table:
             opcode = bmi_arg2_table[self.opcode]
             [dst, src] = self.args
@@ -767,35 +953,14 @@ def build(insts):
 
 # Create a big list of possible instructions with possible operands
 def get_inst_specs():
-    SIZE_TABLE = {
-        # GP regs
-        'q': 64,
-        'd': 32,
-        'w': 16,
-        'b': 8,
-        # V regs
-        'x': 128,
-        'y': 256,
-        'z': 512,
-        # Address, label
-        'Q': 64,
-        'D': 32,
-        'W': 16,
-        'B': 8,
-        'l': None,
-        # Immediates
-        'i': 8,
-        'I': 32,
-    }
-
     inst_list = []
     def add(inst, *args):
         nonlocal inst_list
-        new_args = []
-        for arg in args:
-            new_args.append([t if isinstance(t, ASMObj) else (t, SIZE_TABLE[t])
-                for t in arg])
-        inst_list.append((inst, *new_args))
+        forms = []
+        for form in itertools.product(*args):
+            forms.append([ARG_TYPE_TABLE[t] if isinstance(t, str) else t
+                    for t in form])
+        inst_list.append((inst, forms))
 
     def add_32_64(inst, *args):
         add(inst, *args)
@@ -846,23 +1011,11 @@ def get_inst_specs():
         add(inst, 'q')
         add(inst, 'l')
 
-    # SSE
+    # SSE/AVX
 
-    for [inst, [form, *_]] in sse_table.items():
-        args = ['x', 'x']
-        if form & FLAG_IMM:
-            args.append('i')
-        add(inst, *args)
-
-    # AVX
-
-    for [inst, [form, *_]] in avx_table.items():
-        args = ['y', 'y']
-        if form & FLAG_3OP:
-            args.append('y')
-        if form & FLAG_IMM:
-            args.append('i')
-        add(inst, *args)
+    for table in [sse_table, avx_table]:
+        for [inst, [_, _, _, _, forms, _]] in table.items():
+            inst_list.append((inst, forms))
 
     for inst in bmi_arg2_table.keys():
         add_32_64(inst, 'q', 'qQ')

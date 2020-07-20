@@ -42,7 +42,7 @@ def rand_select(l):
 regs = list(range(16))
 bases = list(range(-1, 16))
 scales = [0, 1, 2, 4, 8]
-indices = list(range(4)) + list(range(5, 16)) # index can't be RSP
+indices = [r for r in range(16) if r != 4] # index can't be RSP
 # Our IR can't properly print unsigned integers without a bunch of work,
 # as they appear in the objdump output. So no negative numbers for now.
 imm_bytes = [0, 1, 7, 37]
@@ -58,18 +58,19 @@ inst_specs = asm.get_inst_specs()
 insts = [asm.GlobalLabel('_start')]
 
 for i in range(8000):
-    inst_spec = rand_select(inst_specs)
+    [inst, forms] = rand_select(inst_specs)
     args = []
-    for arg_spec in inst_spec[1:]:
-        arg = rand_select(arg_spec)
+    form = rand_select(forms)
+    for arg in form:
         if isinstance(arg, asm.ASMObj):
             args.append(arg)
             continue
+        assert isinstance(arg, tuple), arg
         [arg_type, size] = arg
-        if arg_type in {'q', 'd', 'w', 'b'}:
+        if arg_type == asm.GPReg:
             arg = rand_select(regs)
             arg = asm.GPReg(arg, size=size)
-        elif arg_type in {'Q', 'D', 'W', 'B'}:
+        elif arg_type == asm.Address:
             base = rand_select(bases)
             if base == -1:
                 [scale, index] = [0, 0]
@@ -78,21 +79,18 @@ for i in range(8000):
                 index = rand_select(indices) if scale else 0
             disp = rand_select(imms)
             arg = asm.Address(base, scale, index, disp, size=size)
-        elif arg_type == 'I':
-            arg = rand_select(imms)
+        elif arg_type is asm.Immediate:
+            arg = rand_select(range(1 << size))
             arg = asm.Immediate(arg, size=size)
-        elif arg_type == 'i':
-            arg = rand_select(imm_bytes)
-            arg = asm.Immediate(arg, size=size)
-        elif arg_type == 'l':
+        elif arg_type == asm.Label:
             arg = rand_select(labels)
-        elif arg_type in {'x', 'y'}:
+        elif arg_type == asm.VecReg:
             arg = rand_select(regs)
             arg = asm.VecReg(arg, size=size)
         else:
             assert False, arg
         args = args + [arg]
-    insts = insts + [asm.Instruction(inst_spec[0], *args)]
+    insts = insts + [asm.Instruction(inst, *args)]
 
 # Add the end label, plus an extra instruction, so objdump still prints it
 insts = insts + [asm.GlobalLabel('_end'), asm.Instruction('ret')]
