@@ -273,9 +273,20 @@ def mg_intrinsic(arg_types):
         return None
     return decorate
 
+@mg_intrinsic([syntax.Integer, syntax.Integer, syntax.Integer])
+def mgi_range(node, a, b, c):
+    return syntax.List([syntax.Integer(i, info=node)
+            for i in range(a.value, b.value, c.value)], info=node)
+
 @mg_intrinsic([syntax.String])
 def mgi__extern_label(node, label):
     return ExternSymbol('_' + label.value, info=node)
+
+@mg_intrinsic([syntax.List])
+def mgi_static_data(node, l):
+    if not all(isinstance(a, syntax.Integer) for a in l):
+        return None
+    return Literal(create_data(l), info=node)
 
 def create_data(items):
     return lir.literal(asm.Data([i.value for i in items]))
