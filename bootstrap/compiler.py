@@ -273,27 +273,32 @@ def mgi__extern_label(node, label):
     return ExternSymbol('_' + label.value, info=node)
 
 # Instruction wrappers
-inst_specs = {
-    'bsf': 1,
-    'bsr': 1,
-    'lzcnt': 1,
-    'popcnt': 1,
-    'tzcnt': 1,
-    'pext': 2,
-    'pdep': 2,
-}
 
-def add_inst_instrinsic(opcode, n_args):
-    if n_args == 1:
-        fn = lambda node, a: Instruction(opcode, [a], info=node)
-    elif n_args == 2:
-        fn = lambda node, a, b: Instruction(opcode, [a, b], info=node)
-    else:
-        assert False
-    create_intrinsic('_builtin_' + opcode, fn, [None] * n_args)
+def add_inst_instrinsic(opcode, forms):
+    arg_types = []
+    # XXX manual blacklist of instructions that use flags/stack/control flow
+    if opcode in {*asm.jump_table, *asm.setcc_table, *asm.cmov_table,
+            'jmp', 'call', 'ret', 'push', 'pop'}:
+        return
 
-for inst, n_args in inst_specs.items():
-    add_inst_instrinsic(inst, n_args)
+    for form in forms:
+        if not asm.is_destructive_op(opcode):
+            form = form[1:]
+
+        # We don't support fixed arguments here. This is stuff like shifts by the
+        # cl register
+        if any(isinstance(arg, asm.ASMObj) for arg in form):
+            continue
+
+        # Only GPR/vector register/immediate operands, no memory
+        if all(t in {asm.GPReg, asm.VecReg, asm.Immediate} for [t, s] in form):
+            fn = lambda node, *args: Instruction(opcode, list(args), info=node)
+            # XXX do real arg checking
+            create_intrinsic(opcode, fn, [None] * len(form))
+            return
+
+for [opcode, form] in asm.get_inst_specs():
+    add_inst_instrinsic(opcode, form)
 
 ################################################################################
 ## CFG stuff ###################################################################
