@@ -592,7 +592,7 @@ def allocate_registers(fn):
                 # And now return the destination of the instruction to the
                 # free registers, although this only happens when the result
                 # is never used...
-                if inst not in live_set:
+                if inst not in live_set and asm.needs_register(inst.opcode):
                     log('free inst', inst, arg_regs[0])
                     ctx.dealloc_reg(arg_regs[0])
 
