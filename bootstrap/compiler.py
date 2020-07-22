@@ -553,18 +553,25 @@ def simplify_blocks(first_block):
     # each block
     for block in walk_blocks(first_block):
         for stmt in block.stmts:
-            # Simplify arithmetic expressions
-            if (isinstance(stmt, syntax.BinaryOp) and
-                    isinstance(stmt.lhs, syntax.Integer) and
+            # Simplify unary ops
+            if (isinstance(stmt, syntax.UnaryOp) and
                     isinstance(stmt.rhs, syntax.Integer) and
-                    stmt.type not in {'and', 'or'}):
-                [lhs, rhs] = [stmt.lhs.value, stmt.rhs.value]
-                op = syntax.BINARY_OP_TABLE[stmt.type]
-                result = getattr(lhs, op)(rhs)
-                stmt.forward(syntax.Integer(result, info=stmt))
-                # XXX this should not have to be done manually
-                remove_use(Usage(stmt, 'lhs', ArgType.EDGE))
-                remove_use(Usage(stmt, 'rhs', ArgType.EDGE))
+                    stmt.type == '-'):
+                rhs = stmt.rhs.value
+                stmt.forward(syntax.Integer(-rhs, info=stmt))
+                remove_uses(stmt)
+
+            # Simplify binary ops
+            elif isinstance(stmt, syntax.BinaryOp):
+                # Simplify arithmetic expressions
+                if (isinstance(stmt.lhs, syntax.Integer) and
+                        isinstance(stmt.rhs, syntax.Integer) and
+                        stmt.type not in {'and', 'or'}):
+                    [lhs, rhs] = [stmt.lhs.value, stmt.rhs.value]
+                    op = syntax.BINARY_OP_TABLE[stmt.type]
+                    result = getattr(lhs, op)(rhs)
+                    stmt.forward(syntax.Integer(result, info=stmt))
+                    remove_uses(stmt)
 
             elif isinstance(stmt, syntax.Call):
                 # Simplify intrinsic calls
