@@ -35,8 +35,14 @@ class Immediate(ASMObj):
     def __str__(self):
         return str(self.value)
 
-# Dummy abstract base class
-class Register(ASMObj): pass
+# Base class for registers
+class Register(ASMObj):
+    def _key(self):
+        return (type(self), self.index, self.size)
+    def __hash__(self):
+        return hash(self._key())
+    def __eq__(self, other):
+        return self._key() == other._key()
 
 # General-purpose register
 class GPReg(Register):
@@ -62,13 +68,6 @@ class GPReg(Register):
                 return names[self.index + 1] + 'l'
             return names[self.index + 1][0] + 'l'
         return prefix + names[self.index + 1]
-
-    def _key(self):
-        return (type(self), self.index, self.size)
-    def __hash__(self):
-        return hash(self._key())
-    def __eq__(self, other):
-        return self._key() == other._key()
 
 # Vector registers
 class VecReg(Register):
