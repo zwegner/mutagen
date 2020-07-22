@@ -81,6 +81,15 @@ class VecReg(Register):
         prefix = {128: 'x', 256: 'y', 512: 'z'}
         return '{}mm{}'.format(prefix[self.size], self.index)
 
+ADDR_SIZE_TABLE = {
+    8: 'BYTE',
+    16: 'WORD',
+    32: 'DWORD',
+    64: 'QWORD',
+    128: 'XMMWORD',
+    256: 'YMMWORD',
+}
+
 class Address(ASMObj):
     def __init__(self, base: int, scale: int, index: int, disp: int, size: int=None):
         self.base = base
@@ -94,7 +103,7 @@ class Address(ASMObj):
 
     def to_str(self, use_size_prefix: bool):
         if use_size_prefix:
-            size_str = {8: 'BYTE', 16: 'WORD', 32: 'DWORD', 64: 'QWORD'}[self.size]
+            size_str = ADDR_SIZE_TABLE[self.size]
             size_str = size_str + ' PTR '
         else:
             size_str = ''
