@@ -609,12 +609,23 @@ def simplify_blocks(first_block):
                     remove_uses(stmt)
 
             elif isinstance(stmt, syntax.Call):
+                # Simplify fn(*list)
+                # XXX only handle varargs in the last arg cuz I'm lazy
+                if stmt.args:
+                    arg = stmt.args[-1]
+                    if isinstance(arg, syntax.VarArg) and is_atom_list(arg.expr):
+                        remove_use(Usage(stmt, 'args', ArgType.LIST,
+                                index=len(stmt.args)-1))
+                        stmt.args.pop()
+                        for item in arg.expr:
+                            append_to_edge_list(stmt, 'args', item)
+
                 # Simplify intrinsic calls
                 if isinstance(stmt.fn, Intrinsic):
                     stmt.fn.simplify_fn(stmt, stmt.args)
 
-                # Simplify partial functions
-                if isinstance(stmt.fn, syntax.PartialFunction):
+                # Simplify partial function calls
+                elif isinstance(stmt.fn, syntax.PartialFunction):
                     call = syntax.Call(stmt.fn.fn, stmt.fn.args + stmt.args)
                     remove_use(Usage(stmt, 'fn', ArgType.EDGE))
                     stmt.forward(call)
