@@ -177,6 +177,11 @@ def forward(self, new_value):
         add_use(usage, new_value)
 
 @add_to(syntax.Node)
+def remove_uses(self):
+    for child in self.iterate_children():
+        child.remove_uses_by(self)
+
+@add_to(syntax.Node)
 def remove_uses_by(self, user):
     self._uses = {key: usage for [key, usage] in self._uses.items()
             if usage.user is not user}
