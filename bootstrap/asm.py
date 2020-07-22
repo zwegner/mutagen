@@ -35,6 +35,16 @@ class Immediate(ASMObj):
     def __str__(self):
         return str(self.value)
 
+class Data(ASMObj):
+    def __init__(self, data_bytes: list, alignment: int=1):
+        self.data_bytes = data_bytes
+        assert not alignment & alignment - 1
+        self.alignment = alignment
+    def __str__(self):
+        return '<data %s>' % self.data_bytes
+    def get_size(self):
+        return None
+
 # Base class for registers
 class Register(ASMObj):
     def _key(self):
@@ -154,6 +164,10 @@ def mod_rm_sib(reg, rm):
         mod = 0
         base = 5
         disp_bytes = [Relocation(rm, 4)]
+    elif isinstance(rm, Data):
+        mod = 0
+        base = 5
+        disp_bytes = [rm]
     else:
         addr = rm
         base = addr.base
@@ -184,7 +198,7 @@ def mod_rm_sib(reg, rm):
 def ex_transform(r, addr):
     if isinstance(addr, Address):
         [x, b] = [addr.index, addr.base]
-    elif isinstance(addr, Label):
+    elif isinstance(addr, (Label, Data)):
         [x, b] = [0, 5]
     else:
         [x, b] = [0, addr]
@@ -635,7 +649,7 @@ class Instruction(ASMObj):
 
     def check_types(self, forms):
         # Check arguments
-        normalized_types = [Address if isinstance(a, Label) else type(a)
+        normalized_types = [Address if isinstance(a, (Label, Data)) else type(a)
                 for a in self.args]
 
         for form in forms:
@@ -698,7 +712,7 @@ class Instruction(ASMObj):
 
             # op reg, mem is handled by flipping the direction bit and
             # swapping src/dst.
-            if isinstance(src, Address):
+            if isinstance(src, (Address, Data)):
                 opcode = opcode | 0x2
                 [src, dst] = [dst, src]
 
@@ -890,8 +904,7 @@ class Instruction(ASMObj):
                     use_size_prefix = self.opcode != 'lea'
                     args = args + [arg.to_str(use_size_prefix)]
                 else:
-                    assert isinstance(arg, (Immediate, Label)), arg
-                    #arg = arg.value
+                    assert isinstance(arg, (Immediate, Label, Data)), arg
                     if self.opcode in shift_table:
                         arg = arg.value & 63
                     # XXX handle different immediate sizes (to convert to unsigned)
@@ -913,51 +926,71 @@ def is_jump_op(opcode):
     opcode = normalize_opcode(opcode)
     return opcode in jump_ops
 
+# Create raw code and data sections, along with a list of local/global/external labels,
+# suitable for passing directly to elf.create_elf_file
 def build(insts):
-    bytes = []
-    local_labels = global_labels = extern_labels = []
+    code = []
+    data = []
+    data_sym_idx = 0
+
+    local_labels = {}
+    global_labels = {}
+    extern_labels = {}
     relocations = []
     for inst in insts:
         if isinstance(inst, LocalLabel):
-            local_labels = local_labels + [[inst.name, len(bytes)]]
+            local_labels[inst.name] = ['code', len(code)]
         elif isinstance(inst, GlobalLabel):
-            global_labels = global_labels + [[inst.name, len(bytes)]]
+            global_labels[inst.name] = ['code', len(code)]
         else:
             for byte in inst.to_bytes():
                 if isinstance(byte, Relocation):
                     # If the relocation is to an external symbol, pass it on
                     if isinstance(byte.label, ExternLabel):
                         assert byte.size == 4
-                        extern_labels = extern_labels + [[byte.label.name,
-                                len(bytes)]]
+                        extern_labels[byte.label.name] = ['code', len(code)]
                         # HACKish: assume the relocation is at the end of an
                         # instruction. Since the PC will be 4 bytes after the
                         # end of this value when the instruction executes, and
                         # the linker will calculate the offset from the
                         # beginning of the value, put an offset of -4 here that
                         # the linker will add in.
-                        bytes = bytes + pack32(-4)
+                        code = code + pack32(-4)
                     else:
-                        relocations = relocations + [[byte, len(bytes)]]
-                        bytes = bytes + [0] * byte.size
+                        relocations = relocations + [[byte, len(code)]]
+                        code = code + [0] * byte.size
+                elif isinstance(byte, Data):
+                    data_sym = 'data$%s' % data_sym_idx
+                    data_sym_idx += 1
+                    # Handle alignment
+                    padding = -len(data) & (byte.alignment - 1)
+                    data.extend([0] * padding)
+                    assert not len(data) & (byte.alignment - 1)
+                    # Add the data to the data section
+                    global_labels[data_sym] = ['data', len(data)]
+                    data.extend(byte.data_bytes)
+                    # Add a relocation that points to it
+                    extern_labels[data_sym] = ['code', len(code)]
+                    code = code + pack32(-4)
                 else:
-                    bytes = bytes + [byte]
+                    code.append(byte)
 
     # Fill in relocations
     if relocations:
-        label_dict = dict(local_labels + global_labels)
+        label_dict = {**local_labels, **global_labels, **extern_labels}
         new_bytes = []
         last_offset = 0
         for [rel, offset] in relocations:
-            new_bytes = new_bytes + bytes[last_offset:offset]
+            new_bytes = new_bytes + code[last_offset:offset]
             # XXX only 4-byte for now
             assert rel.size == 4
-            disp = label_dict[rel.label.name] - offset - rel.size
+            [section, rel_offset] = label_dict[rel.label.name]
+            disp = rel_offset - offset - rel.size
             new_bytes = new_bytes + pack32(disp)
             last_offset = offset + rel.size
-        bytes = new_bytes + bytes[last_offset:]
+        code = new_bytes + code[last_offset:]
 
-    return [bytes, local_labels, global_labels, extern_labels]
+    return [code, data, local_labels, global_labels, extern_labels]
 
 # Create a big list of possible instructions with possible operands
 def get_inst_specs():
