@@ -543,9 +543,17 @@ def gen_ssa(fn):
 ## Optimization stuff ##########################################################
 ################################################################################
 
+def is_atom(expr):
+    return isinstance(expr, (syntax.Integer, syntax.String, ExternSymbol,
+            # XXX is Literal always an atom?
+            Literal))
+
+def is_atom_list(expr):
+    return isinstance(expr, syntax.List) and all(is_atom(item) for item in expr)
+
 def can_dce(expr):
-    return isinstance(expr, (syntax.BinaryOp, syntax.Integer, syntax.String,
-            ExternSymbol, syntax.PartialFunction, Literal))
+    return is_atom(expr) or is_atom_list(expr) or isinstance(expr, (
+            syntax.BinaryOp, syntax.PartialFunction, syntax.VarArg))
 
 def simplify_blocks(first_block):
     # Basic simplification pass. Right now, since we don't simplify
@@ -571,6 +579,22 @@ def simplify_blocks(first_block):
                     op = syntax.BINARY_OP_TABLE[stmt.type]
                     result = getattr(lhs, op)(rhs)
                     stmt.forward(syntax.Integer(result, info=stmt))
+                    remove_uses(stmt)
+
+                # Simplify list addition
+                elif (isinstance(stmt.lhs, syntax.List) and
+                        isinstance(stmt.rhs, syntax.List) and
+                        stmt.type == '+'):
+                    [lhs, rhs] = [stmt.lhs.items, stmt.rhs.items]
+                    stmt.forward(syntax.List(lhs + rhs, info=stmt))
+                    remove_uses(stmt)
+
+                # Simplify list multiplication
+                elif (isinstance(stmt.lhs, syntax.List) and
+                        isinstance(stmt.rhs, syntax.Integer) and
+                        stmt.type == '*'):
+                    [lhs, rhs] = [stmt.lhs.items, stmt.rhs.value]
+                    stmt.forward(syntax.List(lhs * rhs, info=stmt))
                     remove_uses(stmt)
 
             elif isinstance(stmt, syntax.Call):
