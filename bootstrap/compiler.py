@@ -587,6 +587,7 @@ def simplify_blocks(first_block):
                 if can_dce(stmt) and len(stmt._uses) == 1:
                     assert list(stmt._uses.values())[0].user == block
                     any_removed = True
+                    remove_uses(stmt)
                 else:
                     statements.append(stmt)
 
