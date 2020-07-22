@@ -277,6 +277,9 @@ def mg_intrinsic(arg_types):
 def mgi__extern_label(node, label):
     return ExternSymbol('_' + label.value, info=node)
 
+def create_data(items):
+    return lir.literal(asm.Data([i.value for i in items]))
+
 # Instruction wrappers
 
 def add_inst_instrinsic(opcode, forms):
@@ -304,6 +307,14 @@ def add_inst_instrinsic(opcode, forms):
 
 for [opcode, form] in asm.get_inst_specs():
     add_inst_instrinsic(opcode, form)
+
+# Vector literal instrinsics. XXX range checking
+
+create_intrinsic('vset1_u8', lambda node, arg:
+    Literal(lir.Inst('vpbroadcastb', create_data([arg])), info=node), [syntax.Integer])
+
+create_intrinsic('vset32_u8', lambda node, *args:
+    Literal(lir.Inst('vmovdqu', create_data(args)), info=node), [syntax.Integer] * 32)
 
 ################################################################################
 ## CFG stuff ###################################################################
