@@ -60,7 +60,7 @@ class Inst(Node):
     def __init__(self, opcode, *args):
         self.opcode = opcode
         self.args = args
-    def __str__(self):
+    def __repr__(self):
         return '{}({})'.format(self.opcode, ', '.join(map(repr, self.args)))
 
 # Returns don't directly generate ret instructions, but are instead pseudo-ops

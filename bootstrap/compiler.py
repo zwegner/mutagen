@@ -43,7 +43,8 @@ class Intrinsic(syntax.Node):
 @syntax.node('opcode, *args')
 class Instruction(syntax.Node):
     def repr(self, ctx):
-        return '<instruction %s>(%s)' % (self.opcode, self.args)
+        return '<instruction %s>(%s)' % (self.opcode, ', '.join(a.repr(ctx)
+                for a in self.args))
 
 @syntax.node('value')
 class Literal(syntax.Node):
@@ -237,10 +238,10 @@ def create_intrinsic(name, fn, arg_types):
     # throw errors here, but simply fail the simplification.
     # For a call node, this function is called like this:
     # call.fn.simplify_fn(call, call.args)
-    def simplify(node, args):
+    def simplify_fn(node, args):
         if arg_types is not None:
             if len(args) != len(arg_types):
-                node.error('wrong number of arguments')
+                return False
             for a, t in zip(args, arg_types):
                 if t is not None and not isinstance(a, t):
                     return False
@@ -258,7 +259,7 @@ def create_intrinsic(name, fn, arg_types):
             return True
         return False
 
-    INTRINSICS[name] = Intrinsic(name, simplify, info=BI)
+    INTRINSICS[name] = Intrinsic(name, simplify_fn, info=BI)
 
 def mg_intrinsic(arg_types):
     def decorate(fn):
@@ -601,7 +602,8 @@ def gen_lir_for_node(block, node, block_map, node_map):
             return fn(node_map[node.lhs], node_map[node.rhs])
         elif node.type in CMP_TABLE:
             cc = CMP_TABLE[node.type]
-            return [lir.cmp(node_map[node.lhs], node_map[node.rhs]), lir.Inst('set' + cc)]
+            return [lir.cmp(node_map[node.lhs], node_map[node.rhs]),
+                    lir.Inst('set' + cc)]
     elif isinstance(node, Parameter):
         return lir.parameter(node.index)
     elif isinstance(node, ExternSymbol):

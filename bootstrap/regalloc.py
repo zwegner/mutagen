@@ -27,7 +27,7 @@ class RegSet:
         return item in self.items
     def __len__(self):
         return len(self.items)
-    def __str__(self):
+    def __repr__(self):
         return 'RegSet(%s)' % ', '.join(str(self[i]) for i in range(len(self)))
 
 # All general purpose registers. We can use all registers except RSP and RBP.

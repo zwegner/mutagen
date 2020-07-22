@@ -86,7 +86,7 @@ class VecReg(Register):
         self.size = size
     def get_size(self):
         return self.size
-    def __str__(self):
+    def __repr__(self):
         prefix = {128: 'x', 256: 'y', 512: 'z'}
         return '{}mm{}'.format(prefix[self.size], self.index)
 
