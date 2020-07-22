@@ -45,6 +45,11 @@ class Instruction(syntax.Node):
     def repr(self, ctx):
         return '<instruction %s>(%s)' % (self.opcode, self.args)
 
+@syntax.node('value')
+class Literal(syntax.Node):
+    def repr(self, ctx):
+        return '<literal %s>' % self.value
+
 BLOCK_ID = 0
 @syntax.node('*stmts, *preds, ?test, *succs, #live_ins, #exit_states')
 class BasicBlock(syntax.Node):
@@ -518,7 +523,7 @@ def gen_ssa(fn):
 
 def can_dce(expr):
     return isinstance(expr, (syntax.BinaryOp, syntax.Integer, syntax.String,
-            ExternSymbol, syntax.PartialFunction))
+            ExternSymbol, syntax.PartialFunction, Literal))
 
 def simplify_blocks(first_block):
     # Basic simplification pass. Right now, since we don't simplify
@@ -609,6 +614,9 @@ def gen_lir_for_node(block, node, block_map, node_map):
         return lir.Return(node_map[node.expr])
     elif isinstance(node, Instruction):
         return lir.Inst(node.opcode, *[node_map[arg] for arg in node.args])
+    # Literal is just a wrapper for raw LIR objects
+    elif isinstance(node, Literal):
+        return list(node.value.flatten())
     assert False, str(node)
 
 def block_name(block):

@@ -8,6 +8,12 @@ import syntax
 class Node:
     def __repr__(self):
         return '<{} at {}>'.format(self.opcode, hex(id(self)))
+    def flatten(self):
+        # XXX need to handle phis with dict args?
+        for arg in self.args:
+            if isinstance(arg, Node):
+                yield from arg.flatten()
+        yield self
 
 # Phis are split into read/write phases, as in the TΦ transform from section
 # 2.3.1 of "Register Allocation for Programs in SSA Form", Sebastian Hack 2006.
