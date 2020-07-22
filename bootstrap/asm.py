@@ -83,7 +83,7 @@ class GPReg(Register):
 class VecReg(Register):
     def __init__(self, index: int, size: int=None):
         self.index = index
-        self.size = size
+        self.size = size or 256 # XXX default of 256
     def get_size(self):
         return self.size
     def __repr__(self):
