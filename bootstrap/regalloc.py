@@ -292,7 +292,7 @@ class RegAllocContext:
             # (jmp/call etc), we don't need to lea it
             if isinstance(arg, asm.ExternLabel) and can_handle_labels:
                 return arg
-            if isinstance(arg, asm.GPReg) and not force_move:
+            if isinstance(arg, (int, asm.GPReg)) and not force_move:
                 return arg
 
             reg = self.instantiate_reg(arg, free_regs=free_regs)
