@@ -284,6 +284,8 @@ class RegAllocContext:
             if is_lir_node:
                 if arg in self.reg_assns:
                     arg = self.reg_assns[arg]
+                elif isinstance(arg, lir.Inst) and arg.opcode == 'literal':
+                    [arg] = arg.args
                 else:
                     arg = self.stack_assns[arg]
             # Minor optimization: if the instruction can directly handle labels
