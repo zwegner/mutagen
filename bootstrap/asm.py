@@ -950,6 +950,7 @@ def build(insts):
     local_labels = {}
     global_labels = {}
     extern_labels = {}
+    data_labels = {}
     relocations = []
     for inst in insts:
         if isinstance(inst, LocalLabel):
@@ -974,15 +975,18 @@ def build(insts):
                         relocations = relocations + [[byte, len(code)]]
                         code = code + [0] * byte.size
                 elif isinstance(byte, Data):
-                    data_sym = 'data$%s' % data_sym_idx
-                    data_sym_idx += 1
-                    # Handle alignment
-                    padding = -len(data) & (byte.alignment - 1)
-                    data.extend([0] * padding)
-                    assert not len(data) & (byte.alignment - 1)
-                    # Add the data to the data section
-                    global_labels[data_sym] = ['data', len(data)]
-                    data.extend(byte.data_bytes)
+                    # Only add a given Data object to the data section once
+                    if byte not in data_labels:
+                        data_sym = 'data$%s' % data_sym_idx
+                        data_labels[byte] = data_sym
+                        data_sym_idx += 1
+                        # Handle alignment
+                        padding = -len(data) & (byte.alignment - 1)
+                        data.extend([0] * padding)
+                        assert not len(data) & (byte.alignment - 1)
+                        # Add the data to the data section
+                        global_labels[data_sym] = ['data', len(data)]
+                        data.extend(byte.data_bytes)
                     # Add a relocation that points to it
                     extern_labels[data_sym] = ['code', len(code)]
                     code = code + pack32(-4)
