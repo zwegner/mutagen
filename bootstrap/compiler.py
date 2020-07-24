@@ -243,28 +243,15 @@ def create_intrinsic(name, fn, arg_types):
     # Create a wrapper that does some common argument checking. Since we can't be
     # sure all arguments are simplified enough to be their final types, we can't
     # throw errors here, but simply fail the simplification.
-    # For a call node, this function is called like this:
-    # call.fn.simplify_fn(call, call.args)
-    def simplify_fn(node, args):
+    def simplify_fn(node):
         if arg_types is not None:
-            if len(args) != len(arg_types):
-                return False
-            for a, t in zip(args, arg_types):
+            if len(node.args) != len(arg_types):
+                return None
+            for a, t in zip(node.args, arg_types):
                 if t is not None and not isinstance(a, t):
-                    return False
+                    return None
 
-        new_node = fn(node, *args)
-        if new_node is not None:
-            # If the simplify function returns a new node, update the graph tracking.
-            # This is not very clean, and there should be a better long term way of
-            # keeping the graph up-to-date when creating/deleting nodes, but for now
-            # having this isolated just here is acceptable.
-            add_node_usages(new_node)
-            node.forward(new_node)
-            for arg in args:
-                arg.remove_uses_by(node)
-            return True
-        return False
+        return fn(node, *node.args)
 
     INTRINSICS[name] = Intrinsic(name, simplify_fn, info=BI)
 
@@ -566,69 +553,105 @@ def can_dce(expr):
     return is_atom(expr) or is_atom_list(expr) or isinstance(expr, (
             syntax.BinaryOp, syntax.PartialFunction, syntax.VarArg))
 
+# Decorator for defining a simplifier for a certain node type and given
+# arguments. This is basically a clean-ish way of doing pattern matching, and
+# we store simplfication functions in a dictionary by node type for quick
+# lookup. Each simplification function returns either a node, in which case
+# the old node is replaced with the returned one, or None, which is a failure
+# sentinel when the node can't be simplified.
+SIMPLIFIERS = collections.defaultdict(list)
+def simplifier(node_type, *node_args):
+    def wrap(fn):
+        SIMPLIFIERS[node_type].append((node_args, fn))
+        return None # not directly callable
+    return wrap
+
+@simplifier(syntax.UnaryOp, '-', syntax.Integer)
+def simplify_int_unop(node):
+    return syntax.Integer(-node.rhs.value, info=node)
+
+@simplifier(syntax.BinaryOp, None, syntax.Integer, syntax.Integer)
+def simplify_int_binop(node):
+    # No short circuiting
+    if node.type in {'and', 'or'}:
+        return None
+    [lhs, rhs] = [node.lhs.value, node.rhs.value]
+    op = syntax.BINARY_OP_TABLE[node.type]
+    result = getattr(lhs, op)(rhs)
+    return syntax.Integer(result, info=node)
+
+@simplifier(syntax.BinaryOp, '+', syntax.List, syntax.List)
+def simplify_list_add(node):
+    [lhs, rhs] = [node.lhs.items, node.rhs.items]
+    return syntax.List(lhs + rhs, info=node)
+
+@simplifier(syntax.BinaryOp, '*', syntax.List, syntax.Integer)
+def simplify_list_mul(node):
+    [lhs, rhs] = [node.lhs.items, node.rhs.value]
+    return syntax.List(lhs * rhs, info=node)
+
+@simplifier(syntax.Call, None, None)
+def simplify_varargs(node):
+    if not any(isinstance(arg, syntax.VarArg) and is_atom_list(arg.expr)
+            for arg in node.args):
+        return None
+    new_args = []
+    for arg in node.args:
+        if isinstance(arg, syntax.VarArg) and is_atom_list(arg.expr):
+            new_args.extend(arg.expr.items)
+        else:
+            new_args.append(arg)
+    return syntax.Call(node.fn, new_args)
+
+@simplifier(syntax.Call, Intrinsic, None)
+def simplify_intr_call(node):
+    return node.fn.simplify_fn(node)
+
+@simplifier(syntax.Call, syntax.PartialFunction, None)
+def simplify_partial_call(node):
+    return syntax.Call(node.fn.fn, node.fn.args + node.args)
+
 def simplify_blocks(first_block):
-    # Basic simplification pass. Right now, since we don't simplify
-    # across blocks, this only needs to be run in one forward pass on
-    # each block
-    for block in walk_blocks(first_block):
-        for stmt in block.stmts:
-            # Simplify unary ops
-            if (isinstance(stmt, syntax.UnaryOp) and
-                    isinstance(stmt.rhs, syntax.Integer) and
-                    stmt.type == '-'):
-                rhs = stmt.rhs.value
-                stmt.forward(syntax.Integer(-rhs, info=stmt))
-                remove_uses(stmt)
+    # Basic simplification pass. We repeatedly run the full simplification until
+    # nothing gets simplified, which is a bit wasteful, since simplifications
+    # only rarely trigger downstream simplifications, but oh well
+    any_simplified = True
+    while any_simplified:
+        any_simplified = False
 
-            # Simplify binary ops
-            elif isinstance(stmt, syntax.BinaryOp):
-                # Simplify arithmetic expressions
-                if (isinstance(stmt.lhs, syntax.Integer) and
-                        isinstance(stmt.rhs, syntax.Integer) and
-                        stmt.type not in {'and', 'or'}):
-                    [lhs, rhs] = [stmt.lhs.value, stmt.rhs.value]
-                    op = syntax.BINARY_OP_TABLE[stmt.type]
-                    result = getattr(lhs, op)(rhs)
-                    stmt.forward(syntax.Integer(result, info=stmt))
-                    remove_uses(stmt)
-
-                # Simplify list addition
-                elif (isinstance(stmt.lhs, syntax.List) and
-                        isinstance(stmt.rhs, syntax.List) and
-                        stmt.type == '+'):
-                    [lhs, rhs] = [stmt.lhs.items, stmt.rhs.items]
-                    stmt.forward(syntax.List(lhs + rhs, info=stmt))
-                    remove_uses(stmt)
-
-                # Simplify list multiplication
-                elif (isinstance(stmt.lhs, syntax.List) and
-                        isinstance(stmt.rhs, syntax.Integer) and
-                        stmt.type == '*'):
-                    [lhs, rhs] = [stmt.lhs.items, stmt.rhs.value]
-                    stmt.forward(syntax.List(lhs * rhs, info=stmt))
-                    remove_uses(stmt)
-
-            elif isinstance(stmt, syntax.Call):
-                # Simplify fn(*list)
-                # XXX only handle varargs in the last arg cuz I'm lazy
-                if stmt.args:
-                    arg = stmt.args[-1]
-                    if isinstance(arg, syntax.VarArg) and is_atom_list(arg.expr):
-                        remove_use(Usage(stmt, 'args', ArgType.LIST,
-                                index=len(stmt.args)-1))
-                        stmt.args.pop()
-                        for item in arg.expr:
-                            append_to_edge_list(stmt, 'args', item)
-
-                # Simplify intrinsic calls
-                if isinstance(stmt.fn, Intrinsic):
-                    stmt.fn.simplify_fn(stmt, stmt.args)
-
-                # Simplify partial function calls
-                elif isinstance(stmt.fn, syntax.PartialFunction):
-                    call = syntax.Call(stmt.fn.fn, stmt.fn.args + stmt.args)
-                    remove_use(Usage(stmt, 'fn', ArgType.EDGE))
-                    stmt.forward(call)
+        for block in walk_blocks(first_block):
+            for stmt in block.stmts:
+                # Look up simplification functions for this node
+                node_type = type(stmt)
+                if node_type in SIMPLIFIERS:
+                    # Get the raw node arguments, don't iterate node lists or dicts
+                    # or anything like that... this is dumb pattern matching
+                    args = [getattr(stmt, arg_name)
+                            for [_, arg_name] in node_type.arg_defs]
+                    for [pattern_args, fn] in SIMPLIFIERS[node_type]:
+                        assert len(pattern_args) == len(args)
+                        for [p_arg, arg] in zip(pattern_args, args):
+                            if p_arg is None:
+                                pass
+                            elif isinstance(p_arg, type):
+                                if not isinstance(arg, p_arg):
+                                    break
+                            elif arg != p_arg:
+                                break
+                        # No break: successful match. Run the simplifier
+                        else:
+                            result = fn(stmt)
+                            if result is not None:
+                                # Update graph tracking for any sub-nodes of
+                                # the result.
+                                # XXX This only works if the only new node created
+                                # is the result. If new nested nodes were to be
+                                # created, they'd have to get inserted into the
+                                # block.stmts list, which is messy...
+                                add_node_usages(result)
+                                stmt.forward(result)
+                                remove_uses(stmt)
+                                any_simplified = True
 
     # Run DCE
     any_removed = True
