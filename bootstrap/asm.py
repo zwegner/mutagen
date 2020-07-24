@@ -144,7 +144,9 @@ def fits_32bit(imm: int):
     return -limit <= imm <= limit - 1
 
 def pack8(imm: int):
-    return list(struct.pack('<b', imm))
+    # Kinda gross: allow signed or unsigned bytes
+    assert -128 <= imm < 256
+    return list(struct.pack('<B', imm & 0xFF))
 
 def pack32(imm: int):
     return list(struct.pack('<i', imm))
