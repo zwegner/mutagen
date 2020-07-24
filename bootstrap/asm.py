@@ -2,6 +2,14 @@ import enum
 import itertools
 import struct
 
+# Vector register size used by default (for now, we're targeting AVX2).
+# Eventually this should be configurable/dynamic based on target
+VEC_SIZE_BYTES = 32
+VEC_SIZE_BITS = VEC_SIZE_BYTES * 8
+# ...and vector move instruction to match.
+# Kinda hacky: using Instruction before it's declared
+VEC_MOVE = lambda dst, src: Instruction('vmovdqu', dst, src)
+
 # Dummy abstract base class
 class ASMObj: pass
 
@@ -83,7 +91,7 @@ class GPReg(Register):
 class VecReg(Register):
     def __init__(self, index: int, size: int=None):
         self.index = index
-        self.size = size or 256 # XXX default of 256
+        self.size = size or VEC_SIZE_BITS
     def get_size(self):
         return self.size
     def __repr__(self):

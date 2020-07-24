@@ -269,8 +269,7 @@ class RegAllocContext:
         elif reg_type is asm.GPReg:
             self.insts.append(asm.Instruction('mov', reg, node))
         else:
-            # XXX which vector size to use?
-            self.insts.append(asm.Instruction('vmovdqu', reg, node))
+            self.insts.append(asm.VEC_MOVE(reg, node))
         log('instantiate', self.insts[-1], free_regs)
         return reg
 
@@ -386,12 +385,12 @@ def gen_save_insts(live_regs, extra_stack=0):
     stack_size = len(save_insts) * 8
 
     for [i, reg] in enumerate(regs[asm.VecReg]):
-        addr = asm.Address(RSP.index, 0, 0, 32 * i, size=256)
-        save_insts.append(asm.Instruction('vmovdqu', addr, reg))
-        restore_insts.insert(0, asm.Instruction('vmovdqu', reg, addr))
+        addr = asm.Address(RSP.index, 0, 0, asm.VEC_SIZE_BYTES * i,
+                size=asm.VEC_SIZE_BITS)
+        save_insts.append(asm.VEC_MOVE(addr, reg))
+        restore_insts.insert(0, asm.VEC_MOVE(reg, addr))
 
-    # XXX 32 bytes
-    extra_stack += 32 * len(regs[asm.VecReg])
+    extra_stack += asm.VEC_SIZE_BYTES * len(regs[asm.VecReg])
 
     # Round up to a multiple of 16
     stack_adj = ((stack_size + extra_stack + 15) & ~15) - stack_size
@@ -646,7 +645,7 @@ def allocate_registers(fn):
                             insts.append(asm.Instruction('xchg', src, dst))
                     else:
                         if inst == 'mov':
-                            insts.append(asm.Instruction('vmovdqu', dst, src))
+                            insts.append(asm.VEC_MOVE(dst, src))
                         else:
                             assert 0
 
