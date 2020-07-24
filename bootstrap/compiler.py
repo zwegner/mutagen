@@ -21,7 +21,9 @@ def add_to(cls):
     return deco
 
 def gen_assign(name, expr, info):
-    return syntax.Assignment(syntax.Target([name], info=info), expr, info=info)
+    assign = syntax.Assignment(syntax.Target([name], info=info), expr, info=info)
+    add_node_usages(assign)
+    return assign
 
 # Some extra syntax node types, basically wrappers for LIR type stuff
 
@@ -381,7 +383,6 @@ def gen_blocks(self, current, exit_block):
     # Self expression is an essential aspect of the human experience
     if self.expr:
         assign = gen_assign('$return_value', self.expr, self)
-        add_use(Usage(assign, 'rhs', ArgType.EDGE), self.expr)
         append_to_edge_list(current, 'stmts', assign)
     link_blocks(current, exit_block)
     # XXX what to do here? Execution will never continue past a return, so we
@@ -487,10 +488,9 @@ def gen_ssa_for_stmt(block, statements, stmt):
             # an outer scope
             if node.extra_args:
                 statements.append(label)
-                fn = syntax.PartialFunction(label, [])
-                add_use(Usage(fn, 'fn', ArgType.EDGE), label)
-                for arg in node.extra_args:
-                    append_to_edge_list(fn, 'args', load_name(block, arg, info=node))
+                fn = syntax.PartialFunction(label, [load_name(block, arg, info=node)
+                        for arg in node.extra_args])
+                add_node_usages(fn)
             else:
                 fn = label
 
@@ -508,7 +508,7 @@ def gen_ssa(fn):
     # This is the only return that doesn't get handled by gen_blocks().
     # Other returns set this variable and jump to the exit block.
     ret = syntax.Return(syntax.Identifier('$return_value', info=fn))
-    add_use(Usage(ret, 'expr', ArgType.EDGE), ret.expr)
+    add_node_usages(ret)
     append_to_edge_list(exit_block, 'stmts', ret)
     last = fn.block.gen_blocks(first_block, exit_block)
 
