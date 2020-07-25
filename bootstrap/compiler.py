@@ -590,6 +590,13 @@ def simplify_list_mul(node):
     [lhs, rhs] = [node.lhs.items, node.rhs.value]
     return syntax.List(lhs * rhs, info=node)
 
+@simplifier(syntax.GetItem, syntax.List, syntax.Integer)
+def simplify_getitem(node):
+    index = node.item.value
+    items = node.obj.items
+    assert 0 <= index < len(items)
+    return items[index]
+
 @simplifier(syntax.Call, None, None)
 def simplify_varargs(node):
     if not any(isinstance(arg, syntax.VarArg) and is_atom_list(arg.expr)
@@ -752,7 +759,10 @@ def generate_lir(first_block):
     for block in walk_blocks(first_block):
         lir_block = block_map[block]
         for stmt in block.stmts:
-            assert stmt not in node_map, stmt
+            # HACK to get around duplicated nodes in the statement list
+            # XXX should also check for block boundaries etc...
+            if stmt in node_map:
+                continue
             insts = gen_lir_for_node(block, stmt, block_map, node_map)
             if not isinstance(insts, list):
                 insts = [insts]
