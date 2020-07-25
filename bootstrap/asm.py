@@ -30,9 +30,10 @@ class GlobalLabel(Label): pass
 class ExternLabel(Label): pass
 
 class Relocation(ASMObj):
-    def __init__(self, label, size: int):
+    def __init__(self, label, size: int, offset: int=0):
         self.label = label
         self.size = size
+        self.offset = offset
 
 class Immediate(ASMObj):
     def __init__(self, value: int, size: int=None):
@@ -125,7 +126,10 @@ class Address(ASMObj):
         else:
             size_str = ''
         # XXX this SIB stuff assumes GPR, doesn't handle gather/scatter
-        parts = [GPReg(self.base, size=64)]
+        base = self.base
+        if isinstance(base, int):
+            base = GPReg(self.base, size=64)
+        parts = [base]
         if self.scale:
             parts = parts + ['{}*{}'.format(GPReg(self.index, size=64),
                 self.scale)]
@@ -170,11 +174,17 @@ def mod_rm_sib(reg, rm):
     if isinstance(rm, Register):
         mod = 3
         base = rm.index
-    # Handle relocations with RIP-relative addressing.
-    elif isinstance(rm, (Label, Data)):
+    # Handle relocations with RIP-relative addressing. This assumes anything not
+    # a label or data is an address
+    elif isinstance(rm, (Label, Data)) or isinstance(rm.base, Data):
+        offset = 0
+        if isinstance(rm, Address):
+            assert not rm.scale
+            offset = rm.disp
+            rm = rm.base
         mod = 0
         base = 5
-        disp_bytes = [Relocation(rm, 4)]
+        disp_bytes = [Relocation(rm, 4, offset=offset)]
     else:
         addr = rm
         base = addr.base
@@ -205,6 +215,9 @@ def mod_rm_sib(reg, rm):
 def ex_transform(r, addr):
     if isinstance(addr, Address):
         [x, b] = [addr.index, addr.base]
+        if isinstance(b, Data):
+            assert not x
+            [x, b] = [0, 5]
     elif isinstance(addr, (Label, Data)):
         [x, b] = [0, 5]
     else:
@@ -988,8 +1001,9 @@ def build(insts):
                     # end of this value when the instruction executes, and
                     # the linker will calculate the offset from the
                     # beginning of the value, put an offset of -4 here that
-                    # the linker will add in.
-                    code = code + pack32(-4)
+                    # the linker will add in. We also add the offset
+                    # from this relocation.
+                    code = code + pack32(byte.offset - 4)
                 else:
                     relocations = relocations + [[byte, len(code)]]
                     code = code + [0] * byte.size
