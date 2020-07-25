@@ -449,6 +449,19 @@ def load_name(block, name, info=None):
         value = add_phi(block, name, info=info)
     return value
 
+def destructure_target(block, statements, lhs, rhs):
+    if isinstance(lhs, str):
+        set_edge_key(block, 'exit_states', lhs, rhs)
+    elif isinstance(lhs, list):
+        # XXX need to check target length
+        for [i, lhs_i] in enumerate(lhs):
+            # XXX node tracking
+            rhs_i = syntax.GetItem(rhs, syntax.Integer(i, info=rhs))
+            statements.append(rhs_i)
+            destructure_target(block, statements, lhs_i, rhs_i)
+    else:
+        assert False
+
 def gen_ssa_for_stmt(block, statements, stmt):
     for node in reversed(list(stmt.iterate_graph(blacklist=syntax.Scope))):
         # Handle loads
@@ -458,10 +471,7 @@ def gen_ssa_for_stmt(block, statements, stmt):
         # Handle stores
         elif isinstance(node, syntax.Assignment):
             for target in node.target.targets:
-                # XXX destructuring assignment is more complicated, we would
-                # need to desugar it to involve temporaries and indexing
-                assert isinstance(target, str)
-                set_edge_key(block, 'exit_states', target, node.rhs)
+                destructure_target(block, statements, target, node.rhs)
             remove_use(Usage(node, 'rhs', ArgType.EDGE))
         elif isinstance(node, syntax.Target):
             pass
