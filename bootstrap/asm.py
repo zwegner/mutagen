@@ -170,14 +170,11 @@ def mod_rm_sib(reg, rm):
     if isinstance(rm, Register):
         mod = 3
         base = rm.index
-    elif isinstance(rm, Label):
+    # Handle relocations with RIP-relative addressing.
+    elif isinstance(rm, (Label, Data)):
         mod = 0
         base = 5
         disp_bytes = [Relocation(rm, 4)]
-    elif isinstance(rm, Data):
-        mod = 0
-        base = 5
-        disp_bytes = [rm]
     else:
         addr = rm
         base = addr.base
@@ -940,62 +937,70 @@ def is_jump_op(opcode):
     opcode = normalize_opcode(opcode)
     return opcode in jump_ops
 
-# Create raw code and data sections, along with a list of local/global/external labels,
-# suitable for passing directly to elf.create_elf_file
+# Create raw code and data sections, along with a list of local/global/external
+# labels, suitable for passing directly to elf.create_elf_file.
 def build(insts):
     code = []
     data = []
     data_sym_idx = 0
 
-    local_labels = {}
-    global_labels = {}
-    extern_labels = {}
+    local_labels = []
+    global_labels = []
+    extern_labels = []
     data_labels = {}
     relocations = []
     for inst in insts:
         if isinstance(inst, LocalLabel):
-            local_labels[inst.name] = ['code', len(code)]
+            local_labels.append((inst.name, 'code', len(code)))
         elif isinstance(inst, GlobalLabel):
-            global_labels[inst.name] = ['code', len(code)]
+            global_labels.append((inst.name, 'code', len(code)))
         else:
             for byte in inst.to_bytes():
-                if isinstance(byte, Relocation):
-                    # If the relocation is to an external symbol, pass it on
-                    if isinstance(byte.label, ExternLabel):
-                        assert byte.size == 4
-                        extern_labels[byte.label.name] = ['code', len(code)]
-                        # HACKish: assume the relocation is at the end of an
-                        # instruction. Since the PC will be 4 bytes after the
-                        # end of this value when the instruction executes, and
-                        # the linker will calculate the offset from the
-                        # beginning of the value, put an offset of -4 here that
-                        # the linker will add in.
-                        code = code + pack32(-4)
+                if not isinstance(byte, Relocation):
+                    code.append(byte)
+                    continue
+
+                target = byte.label
+                # If the relocation is to an external symbol, pass it on
+                if isinstance(target, (ExternLabel, Data)):
+                    # Also add bytes to the data section if this is a Data
+                    # object. We only do this once for a given object.
+                    if isinstance(target, Data):
+                        if target not in data_labels:
+                            data_sym = 'data$%s' % data_sym_idx
+                            data_labels[target] = data_sym
+                            data_sym_idx += 1
+                            # Handle alignment
+                            padding = -len(data) & (target.alignment - 1)
+                            data.extend([0] * padding)
+                            assert not len(data) & (target.alignment - 1)
+                            # Add the data to the data section
+                            global_labels.append((data_sym, 'data', len(data)))
+                            data.extend(target.data_bytes)
+                        target = data_labels[target]
                     else:
-                        relocations = relocations + [[byte, len(code)]]
-                        code = code + [0] * byte.size
-                elif isinstance(byte, Data):
-                    # Only add a given Data object to the data section once
-                    if byte not in data_labels:
-                        data_sym = 'data$%s' % data_sym_idx
-                        data_labels[byte] = data_sym
-                        data_sym_idx += 1
-                        # Handle alignment
-                        padding = -len(data) & (byte.alignment - 1)
-                        data.extend([0] * padding)
-                        assert not len(data) & (byte.alignment - 1)
-                        # Add the data to the data section
-                        global_labels[data_sym] = ['data', len(data)]
-                        data.extend(byte.data_bytes)
-                    # Add a relocation that points to it
-                    extern_labels[data_sym] = ['code', len(code)]
+                        target = target.name
+
+                    assert byte.size == 4
+                    extern_labels.append((target, 'code', len(code)))
+                    # HACKish: assume the relocation is at the end of an
+                    # instruction. Since the PC will be 4 bytes after the
+                    # end of this value when the instruction executes, and
+                    # the linker will calculate the offset from the
+                    # beginning of the value, put an offset of -4 here that
+                    # the linker will add in.
                     code = code + pack32(-4)
                 else:
-                    code.append(byte)
+                    relocations = relocations + [[byte, len(code)]]
+                    code = code + [0] * byte.size
 
-    # Fill in relocations
+    # Patch local relocations, now that we've built the code section and know
+    # the offsets of local/global labels
     if relocations:
-        label_dict = {**local_labels, **global_labels, **extern_labels}
+        label_dict = {label: [section, address]
+                for labels in [local_labels, global_labels]
+                for [label, section, address] in labels}
+        assert len(label_dict) == (len(local_labels) + len(global_labels))
         new_bytes = []
         last_offset = 0
         for [rel, offset] in relocations:

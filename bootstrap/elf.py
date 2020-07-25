@@ -7,9 +7,9 @@ def pack(spec, *args):
 
 def create_string_table(strings):
     table = [0]
-    offsets = []
+    offsets = {}
     for s in strings:
-        offsets = offsets + [len(table)]
+        offsets[s] = len(table)
         table = table + list(s.encode('ascii')) + [0]
     return [table, offsets]
 
@@ -24,34 +24,35 @@ def create_elf_file(code, data, local_labels, global_labels, extern_labels):
 
     [shstrtab, shstrtab_offsets] = create_string_table(section_names)
 
-    strings = [*sorted(local_labels), *sorted(global_labels), *sorted(extern_labels)]
+    label_set = {label for labels in [local_labels, global_labels, extern_labels]
+            for [label, _, _] in labels}
+
+    strings = list(sorted(label_set))
     [strtab, strtab_offsets] = create_string_table(strings)
 
     # Create symbol table section--just a list of labels for now
     symtab = [0] * 24 # First symbol is reserved
-    i = 0
     for [flag, labels] in [[0, local_labels], [0x10, global_labels], [0x20, extern_labels]]:
-        for [label, [section, address]] in sorted(labels.items()):
+        for [label, section, address] in labels:
             if flag == 0x20:
                 section = address = 0
             else:
                 section = section_idx[section]
             symtab = symtab + pack('<IBBHQQ',
-                strtab_offsets[i], # Name offset in string table
+                strtab_offsets[label], # Name offset in string table
                 flag, # type/binding (for us, specify local or global)
                 0, # reserved/unused
                 section, # section index of definition
                 address, # value of symbol (offset into code section)
                 0 # size
             )
-            i = i + 1
 
     # Create relocation table
     relocations = {}
     extern_sym_idx = len(local_labels) + len(global_labels) + 1
     for rel_type in ['code', 'data']:
         relocations[rel_type] = []
-        for [label, [section, address]] in sorted(extern_labels.items()):
+        for [label, section, address] in extern_labels:
             if section == rel_type:
                 relocations[rel_type] += pack('<QII', address, 2, extern_sym_idx)
                 extern_sym_idx = extern_sym_idx + 1
@@ -85,8 +86,7 @@ def create_elf_file(code, data, local_labels, global_labels, extern_labels):
     elf_headers = elf_header + reserved_section
     data_offset = len(elf_headers) + 64 * len(sections)
     elf_data = []
-    for [i, [name, data, section_type]] in enumerate(zip(section_names,
-            sections, section_types)):
+    for [name, data, section_type] in zip(section_names, sections, section_types):
         if section_type == 2: # .symtab has special handling
             [link, alignment, size, info] = [strtab_idx, 4, 24, len(local_labels)]
         elif section_type == 9:
@@ -98,7 +98,7 @@ def create_elf_file(code, data, local_labels, global_labels, extern_labels):
             # care about generally...
             [link, alignment, size, info] = [0, 64, 0, 0]
         section_header = pack('<IIQQQQIIQQ',
-            shstrtab_offsets[i], # section name in section name string table
+            shstrtab_offsets[name], # section name in section name string table
             section_type, # section type
             2, # flags
             0, # starting address
