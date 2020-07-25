@@ -799,7 +799,7 @@ class Instruction(ASMObj):
             return rex(w, src, dst) + [0x87] + mod_rm_sib(src, dst)
         elif self.opcode == 'lea':
             [dst, src] = self.args
-            assert isinstance(dst, GPReg) and isinstance(src, (Address, Label))
+            assert isinstance(dst, GPReg) and isinstance(src, (Address, Data, Label))
             return rex(w, dst, src) + [0x8D] + mod_rm_sib(dst, src)
         elif self.opcode == 'test':
             # Test has backwards arguments, weird
