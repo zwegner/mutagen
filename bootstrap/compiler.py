@@ -255,7 +255,11 @@ def create_intrinsic(name, fn, arg_types):
     def simplify_fn(node):
         if arg_types is not None:
             if len(node.args) != len(arg_types):
-                return None
+                if any(isinstance(arg, syntax.VarArg) for arg in node.args):
+                    return None
+                node.error('wrong number of arguments to %s, got %s, expected %s' %
+                        (name, len(node.args), len(arg_types)))
+
             for a, t in zip(node.args, arg_types):
                 if t is not None and not isinstance(a, t):
                     return None
