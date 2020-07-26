@@ -48,6 +48,11 @@ class Instruction(syntax.Node):
         return '<instruction %s>(%s)' % (self.opcode, ', '.join(a.repr(ctx)
                 for a in self.args))
 
+@syntax.node('&base, scale, ?index, disp')
+class Address(syntax.Node):
+    def repr(self, ctx):
+        return '<address %s+%s*%s+%s>' % (self.base, self.scale, self.index, self.disp)
+
 @syntax.node('value')
 class Literal(syntax.Node):
     def repr(self, ctx):
@@ -265,6 +270,10 @@ def mgi_range(node, a, b, c):
 @mg_intrinsic([syntax.String])
 def mgi__extern_label(node, label):
     return ExternSymbol('_' + label.value, info=node)
+
+@mg_intrinsic([syntax.Node])
+def mgi_address(node, expr):
+    return Address(expr, 0, None, 0, info=node)
 
 @mg_intrinsic([syntax.List])
 def mgi_static_data(node, l):
@@ -542,6 +551,7 @@ def gen_ssa(fn):
 
 def is_atom(expr):
     return isinstance(expr, (syntax.Integer, syntax.String, ExternSymbol,
+            Address,
             # XXX is Literal always an atom?
             Literal))
 
@@ -562,7 +572,7 @@ SIMPLIFIERS = collections.defaultdict(list)
 def simplifier(node_type, *node_args):
     def wrap(fn):
         SIMPLIFIERS[node_type].append((node_args, fn))
-        return None # not directly callable
+        return fn
     return wrap
 
 @simplifier(syntax.UnaryOp, '-', syntax.Integer)
@@ -588,6 +598,27 @@ def simplify_list_add(node):
 def simplify_list_mul(node):
     [lhs, rhs] = [node.lhs.items, node.rhs.value]
     return syntax.List(lhs * rhs, info=node)
+
+@simplifier(syntax.BinaryOp, '+', Address, syntax.Integer)
+@simplifier(syntax.BinaryOp, '-', Address, syntax.Integer)
+def simplify_address_disp(node):
+    addr = node.lhs
+    disp = node.rhs.value
+    if node.type == '-':
+        disp = -disp
+    return Address(addr.base, addr.scale, addr.index, addr.disp + disp, info=node)
+
+@simplifier(syntax.BinaryOp, '+', Address, syntax.BinaryOp)
+def simplify_address_index(node):
+    addr = node.lhs
+    if addr.scale:
+        return None
+    index = node.rhs
+    if index.type == '*' and isinstance(index.lhs, syntax.Integer):
+        scale = index.lhs.value
+        index = index.rhs
+        return Address(addr.base, scale, index, addr.disp, info=node)
+    return None
 
 @simplifier(syntax.GetItem, syntax.List, syntax.Integer)
 def simplify_getitem(node):
@@ -715,6 +746,9 @@ def gen_lir_for_node(block, node, block_map, node_map):
         return lir.Return(node_map[node.expr])
     elif isinstance(node, Instruction):
         return lir.Inst(node.opcode, *[node_map[arg] for arg in node.args])
+    elif isinstance(node, Address):
+        index = node_map[node.index] if node.index else None
+        return lir.Address(node_map[node.base], node.scale, index, node.disp)
     # Literal is just a wrapper for raw LIR objects
     elif isinstance(node, Literal):
         return list(node.value.flatten())

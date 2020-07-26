@@ -759,7 +759,7 @@ def ex_transform(r, addr):
     if isinstance(addr, Address):
         [x, b] = [addr.index, addr.base]
         if isinstance(b, Data):
-            assert not x
+            assert not x, 'cannot use index on RIP-relative address'
             [x, b] = [0, 5]
     elif isinstance(addr, (Label, Data)):
         [x, b] = [0, 5]

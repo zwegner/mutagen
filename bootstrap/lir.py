@@ -63,6 +63,11 @@ class Inst(Node):
     def __repr__(self):
         return '{}({})'.format(self.opcode, ', '.join(map(repr, self.args)))
 
+class Address(Inst):
+    def __init__(self, base, scale, index, disp):
+        self.opcode = 'address'
+        self.args = [base, scale, index, disp]
+
 # Returns don't directly generate ret instructions, but are instead pseudo-ops
 # that use the $return_value special variable... kinda icky but it works, since
 # we want to use all the juicy SSA goodness

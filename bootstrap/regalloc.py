@@ -506,6 +506,13 @@ def allocate_registers(fn):
                 reg_assns[inst] = inst.args[0]
                 log('lit', inst, inst.args[0], reg, block.phi_read.args.get(inst))
 
+            elif inst.opcode == 'address':
+                [base, scale, index, disp] = inst.args
+                base = reg_assns[base]
+                base = base.index if isinstance(base, asm.GPReg) else base
+                index = reg_assns[index].index if index else 0
+                reg_assns[inst] = asm.Address(base, scale, index, disp, size=64)
+
             elif inst.opcode == 'call':
                 [called_fn, args] = [inst.args[0], inst.args[1:]]
                 # Load all arguments from the corresponding stack locations
