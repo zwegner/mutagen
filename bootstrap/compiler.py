@@ -410,13 +410,13 @@ def gen_blocks(self, current, exit_block):
     test_block_last = self.expr.gen_blocks(test_block, exit_block)
     set_edge(test_block_last, 'test', self.expr)
 
-    exit_block = basic_block()
+    end_block = basic_block()
     link_blocks(current, test_block)
     link_blocks(test_block_last, first)
-    link_blocks(test_block_last, exit_block)
+    link_blocks(test_block_last, end_block)
     if last:
         link_blocks(last, test_block)
-    return exit_block
+    return end_block
 
 @add_to(syntax.IfElse)
 def gen_blocks(self, current, exit_block):
@@ -430,12 +430,12 @@ def gen_blocks(self, current, exit_block):
     link_blocks(current, if_first)
     link_blocks(current, else_first)
     if if_last or else_last:
-        exit_block = basic_block()
+        end_block = basic_block()
         if if_last:
-            link_blocks(if_last, exit_block)
+            link_blocks(if_last, end_block)
         if else_last:
-            link_blocks(else_last, exit_block)
-        return exit_block
+            link_blocks(else_last, end_block)
+        return end_block
     return None
 
 # Conditional expressions are, up until this point, a wrapper around IfElse
