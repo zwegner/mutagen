@@ -60,7 +60,7 @@ class Literal(syntax.Node):
         return '<literal %s>' % self.value
 
 BLOCK_ID = 0
-@syntax.node('stmts, *preds, ?test, *succs, #live_ins, #exit_states')
+@syntax.node('stmts, preds, ?test, succs, #live_ins, #exit_states')
 class BasicBlock(syntax.Node):
     def setup(self):
         global BLOCK_ID
@@ -178,7 +178,7 @@ def remove_edge(node, name):
     old_node = getattr(node, name)
     if old_node is not None:
         del old_node._users[usage.key()]
-    setattr(node, name, None)
+        setattr(node, name, None)
 
 # Unused right now
 #def append_to_edge_list(node, name, item):
@@ -200,6 +200,13 @@ def remove_dict_key(node, edge_name, key):
     usage = Usage(node, edge_name, ArgType.DICT, index=key)
     del d[key]._users[usage.key()]
     del d[key]
+
+def clear_edge_dict(node, edge_name):
+    d = getattr(node, edge_name)
+    for key in d:
+        usage = Usage(node, edge_name, ArgType.DICT, index=key)
+        del d[key]._users[usage.key()]
+    d.clear()
 
 def add_node_usages(node):
     # For every node that this node uses, add a Usage object to its _users list.
@@ -733,6 +740,60 @@ def simplify_node(node):
                 if result is not None:
                     return result
 
+# Delete a control flow edge. The predecessor is generally reachable at this point,
+# but we might make the successor unreachable, in which case we need to delete it
+# and any outgoing edges it has
+def delete_cfg_edge(pred, edge_nb, deleted):
+    succ = pred.succs.pop(edge_nb)
+    assert succ not in deleted
+    remove_edge(pred, 'test')
+    succ.preds.remove(pred)
+
+    # No incoming edges on the successor block: delete it and recurse
+    if not succ.preds:
+        clear_edge_dict(succ, 'exit_states')
+        # Delete statements in a bottom-up order, making sure they have no users
+        remove_edge(succ, 'test')
+        for stmt in reversed(succ.stmts):
+            assert not stmt._users, (stmt, stmt._users)
+            remove_children(stmt)
+        clear_edge_dict(succ, 'live_ins')
+
+        deleted.add(succ)
+
+        for edge in reversed(range(len(succ.succs))):
+            delete_cfg_edge(succ, edge, deleted)
+
+# Merge two blocks, assuming the control flow edge between them is the only edge
+# for either side
+def merge_blocks(pred, succ):
+    assert pred.succs == [succ]
+    assert succ.preds == [pred]
+    # Add statements from succ to pred
+    pred.stmts.extend(succ.stmts)
+
+    # Patch up phis
+    for [name, phi] in succ.live_ins.items():
+        phi.forward(pred.exit_states[name])
+
+    # Delete all the old exit states. There might be more live outs of the pred than
+    # live ins of the succ, but we don't care (I think)
+    clear_edge_dict(pred, 'exit_states')
+    # ...and replace with the new exit states
+    for [name, value] in succ.exit_states.items():
+        set_edge_key(pred, 'exit_states', name, value)
+
+    # Pred gets the test from succ
+    assert not pred.test
+    if succ.test:
+        set_edge(pred, 'test', succ.test)
+        remove_edge(succ, 'test')
+
+    # Fix up pred/succ links
+    pred.succs = succ.succs
+    for s in pred.succs:
+        s.preds = [pred if p is succ else p for p in s.preds]
+
 def simplify_fn(fn, first_block):
     # Basic simplification pass. We repeatedly run the full simplification until
     # nothing gets simplified, which is a bit wasteful, since simplifications
@@ -741,6 +802,7 @@ def simplify_fn(fn, first_block):
     while any_simplified:
         any_simplified = False
 
+        # First pass: run DCE and graph rewriting
         for block in walk_blocks(first_block):
             # Loop over all statements in the block. The statement list can get
             # dynamically modified so use a manual index.
@@ -770,6 +832,31 @@ def simplify_fn(fn, first_block):
                 else:
                     i += 1
 
+        # Second pass: try to simplify the CFG
+        deleted = set()
+        for block in walk_blocks(first_block):
+            # This should never trigger, since the walk_blocks() generator only 
+            # adds a block's successors to the queue after the block has been
+            # yielded. Whenever we delete a block, it can only be reached through
+            # the current block, either as the only successor (when it's merged)
+            # or as an untaken branch (and downstream blocks from there).
+            assert block not in deleted
+
+            # Resolve any constant branches
+            if isinstance(block.test, (syntax.Boolean, syntax.Integer)):
+                assert len(block.succs) == 2
+                # For some reason I used 0 is true, 1 is false for conditional branches
+                # We want the not-taken branch index, so reverse it
+                not_taken = int(block.test.value != 0)
+                delete_cfg_edge(block, not_taken, deleted)
+                any_simplified = True
+
+            # Merge any blocks that don't have any other predecessors/successors
+            if len(block.succs) == 1 and len(block.succs[0].preds) == 1:
+                succ = block.succs[0]
+                deleted.add(succ)
+                merge_blocks(block, succ)
+                any_simplified = True
 
 ################################################################################
 ## LIR conversion stuff ########################################################
