@@ -294,7 +294,7 @@ def add_inst_instrinsic(spec):
         return
 
     for form in spec.forms:
-        if not spec.is_destructive:
+        if not spec.is_destructive and spec.needs_register:
             form = form[1:]
 
         # We don't support fixed arguments here. This is stuff like shifts by the

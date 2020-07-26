@@ -554,7 +554,7 @@ def allocate_registers(fn):
                 # Make sure instruction arguments are in the proper form for this
                 # instruction (register, label, immediate, etc)
                 arg_types = spec.arg_types
-                if not spec.is_destructive:
+                if not spec.is_destructive and spec.needs_register:
                     arg_types = arg_types[1:]
                 assert len(inst.args) == len(arg_types)
                 arg_regs = [ctx.get_arg_reg(arg, allow_types=types, assign=True)
@@ -563,8 +563,7 @@ def allocate_registers(fn):
                 # Handle destructive ops first, which might need a move into
                 # a new register. Do this before we return any registers to the
                 # free set, since the inserted move comes before the instruction.
-                destructive = (spec.is_destructive and arg_regs and
-                        is_register(arg_regs[0]))
+                destructive = (spec.is_destructive and is_register(arg_regs[0]))
 
                 if destructive:
                     # See if we can clobber the register. If not, copy it
