@@ -532,8 +532,9 @@ for inst in arg1_table.keys():
 
 for inst in arg2_table.keys():
     is_write = (inst not in {'cmp', 'test'})
-    _add_32_64(inst, 'q', 'qQi', needs_register=is_write, is_destructive=is_write)
-    _add_32_64(inst, 'Q', 'q', needs_register=is_write, is_destructive=is_write)
+    destr = is_write and inst != 'mov'
+    _add_32_64(inst, 'q', 'qQi', needs_register=is_write, is_destructive=destr)
+    _add_32_64(inst, 'Q', 'q', needs_register=is_write, is_destructive=destr)
 
 for inst in shift_table.keys():
     _add_32_64(inst, 'qQ', 'i')
@@ -547,16 +548,18 @@ for inst in bs_table.keys():
     _add_32_64(inst, 'q', 'qQ')
 
 for [cond, code] in cmov_table.items():
+    # cmov is considered a destructive op (I guess) as opposed to mov, since
+    # it can read the destination
     _add_32_64(cond, 'q', 'qQ')
 
 _add_32_64('imul', 'q', 'qQ')
 _add_32_64('xchg', 'qQ', 'q')
-_add_32_64('lea', 'q', 'Q')
-_add_32_64('test', 'qQ', 'q')
+_add_32_64('lea', 'q', 'Q', is_destructive=False)
+_add_32_64('test', 'qQ', 'q', is_destructive=False, needs_register=False)
 
 # Push/pop don't have a 32-bit operand encoding in 64-bit mode...
-_add('push', 'qi')
-_add('pop', 'q')
+_add('push', 'qi', is_destructive=False, needs_register=False)
+_add('pop', 'q', is_destructive=False, needs_register=False)
 
 # Make sure all of the condition codes are tested, to test canonicalization
 for [cond, code] in jump_table.items():
@@ -564,7 +567,7 @@ for [cond, code] in jump_table.items():
 _add('jmp', 'ql', is_jump=True, is_destructive=False, needs_register=False)
 
 for [cond, code] in setcc_table.items():
-    _add(cond, 'bB')
+    _add(cond, 'bB', is_destructive=False)
 
 _add('call', 'ql', is_destructive=False, needs_register=False)
 
