@@ -267,6 +267,10 @@ def mgi_range(node, a, b, c):
     return syntax.List([syntax.Integer(i, info=node)
             for i in range(a.value, b.value, c.value)], info=node)
 
+@mg_intrinsic([syntax.List])
+def mgi_len(node, l):
+    return syntax.Integer(len(l.items), info=node)
+
 @mg_intrinsic([syntax.String])
 def mgi__extern_label(node, label):
     return ExternSymbol('_' + label.value, info=node)
