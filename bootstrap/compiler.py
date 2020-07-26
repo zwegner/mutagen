@@ -577,14 +577,18 @@ def is_atom(expr):
     return isinstance(expr, (syntax.Integer, syntax.String, ExternSymbol,
             Address,
             # XXX is Literal always an atom?
-            Literal))
+            Literal,
+            # XXX Uhh this probably isn't always chill
+            Intrinsic))
 
-def is_atom_list(expr):
-    return isinstance(expr, syntax.List) and all(is_atom(item) for item in expr)
+def is_simple(expr):
+    if isinstance(expr, syntax.List):
+        return all(is_simple(item) for item in expr)
+    return is_atom(expr)
 
 def can_dce(expr):
-    return is_atom(expr) or is_atom_list(expr) or isinstance(expr, (
-            syntax.BinaryOp, syntax.PartialFunction, syntax.VarArg))
+    return is_simple(expr) or isinstance(expr, (syntax.BinaryOp,
+            syntax.PartialFunction, syntax.VarArg, syntax.GetItem))
 
 # Decorator for defining a simplifier for a certain node type and given
 # arguments. This is basically a clean-ish way of doing pattern matching, and
@@ -653,12 +657,12 @@ def simplify_getitem(node):
 
 @simplifier(syntax.Call, None, None)
 def simplify_varargs(node):
-    if not any(isinstance(arg, syntax.VarArg) and is_atom_list(arg.expr)
+    if not any(isinstance(arg, syntax.VarArg) and isinstance(arg.expr, syntax.List)
             for arg in node.args):
         return None
     new_args = []
     for arg in node.args:
-        if isinstance(arg, syntax.VarArg) and is_atom_list(arg.expr):
+        if isinstance(arg, syntax.VarArg) and isinstance(arg.expr, syntax.List):
             new_args.extend(arg.expr.items)
         else:
             new_args.append(arg)
@@ -724,6 +728,7 @@ def simplify_blocks(first_block):
                                 block.stmts[i] = result
                                 remove_children(stmt)
                                 any_simplified = True
+                                break
 
     # Run DCE
     any_removed = True
