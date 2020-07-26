@@ -38,7 +38,7 @@ class ExternSymbol(syntax.Node):
     def repr(self, ctx):
         return 'ExternSymbol(%s)' % self.name
 
-@syntax.node('name, simplify_fn')
+@syntax.node('name, intr_simplify_fn')
 class Intrinsic(syntax.Node):
     def repr(self, ctx):
         return '<intrinsic-fn %s>' % self.name
@@ -161,6 +161,8 @@ def forward(self, new_value):
 
         add_use(usage, new_value)
 
+    remove_children(self)
+
 def remove_children(node):
     for child in node.iterate_children():
         child._users = {key: usage for [key, usage] in child._users.items()
@@ -253,7 +255,7 @@ def create_intrinsic(name, fn, arg_types):
     # Create a wrapper that does some common argument checking. Since we can't be
     # sure all arguments are simplified enough to be their final types, we can't
     # throw errors here, but simply fail the simplification.
-    def simplify_fn(node):
+    def intr_simplify_fn(node):
         if arg_types is not None:
             if len(node.args) != len(arg_types):
                 if any(isinstance(arg, syntax.VarArg) for arg in node.args):
@@ -267,7 +269,7 @@ def create_intrinsic(name, fn, arg_types):
 
         return fn(node, *node.args)
 
-    INTRINSICS[name] = Intrinsic(name, simplify_fn, info=BI)
+    INTRINSICS[name] = Intrinsic(name, intr_simplify_fn, info=BI)
     return INTRINSICS[name]
 
 def mg_intrinsic(arg_types):
@@ -687,7 +689,7 @@ def simplify_varargs(node):
 
 @simplifier(syntax.Call, Intrinsic, None)
 def simplify_intr_call(node):
-    return node.fn.simplify_fn(node)
+    return node.fn.intr_simplify_fn(node)
 
 @simplifier(syntax.Call, syntax.PartialFunction, None)
 def simplify_partial_call(node):
@@ -703,7 +705,31 @@ def simplify_assert(node):
     # was simplified out, it should get DCE'd
     return node.expr
 
-def simplify_blocks(first_block):
+def simplify_node(node):
+    # Look up simplification functions for this node
+    node_type = type(node)
+    if node_type in SIMPLIFIERS:
+        # Get the raw node arguments, don't iterate node lists or dicts
+        # or anything like that... this is dumb pattern matching
+        args = [getattr(node, arg_name)
+                for [_, arg_name] in node_type.arg_defs]
+        for [pattern_args, fn] in SIMPLIFIERS[node_type]:
+            assert len(pattern_args) == len(args)
+            for [p_arg, arg] in zip(pattern_args, args):
+                if p_arg is None:
+                    pass
+                elif isinstance(p_arg, (type, tuple)):
+                    if not isinstance(arg, p_arg):
+                        break
+                elif arg != p_arg:
+                    break
+            # No break: successful match. Run the simplifier
+            else:
+                result = fn(node)
+                if result is not None:
+                    return result
+
+def simplify_fn(fn, first_block):
     # Basic simplification pass. We repeatedly run the full simplification until
     # nothing gets simplified, which is a bit wasteful, since simplifications
     # only rarely trigger downstream simplifications, but oh well
@@ -712,55 +738,34 @@ def simplify_blocks(first_block):
         any_simplified = False
 
         for block in walk_blocks(first_block):
-            for [i, stmt] in enumerate(block.stmts):
-                # Look up simplification functions for this node
-                node_type = type(stmt)
-                if node_type in SIMPLIFIERS:
-                    # Get the raw node arguments, don't iterate node lists or dicts
-                    # or anything like that... this is dumb pattern matching
-                    args = [getattr(stmt, arg_name)
-                            for [_, arg_name] in node_type.arg_defs]
-                    for [pattern_args, fn] in SIMPLIFIERS[node_type]:
-                        assert len(pattern_args) == len(args)
-                        for [p_arg, arg] in zip(pattern_args, args):
-                            if p_arg is None:
-                                pass
-                            elif isinstance(p_arg, (type, tuple)):
-                                if not isinstance(arg, p_arg):
-                                    break
-                            elif arg != p_arg:
-                                break
-                        # No break: successful match. Run the simplifier
-                        else:
-                            result = fn(stmt)
-                            if result is not None:
-                                # Update graph tracking for any sub-nodes of
-                                # the result.
-                                # XXX This only works if the only new node created
-                                # is the result. If new nested nodes were to be
-                                # created, they'd have to get inserted into the
-                                # block.stmts list, which is messy...
-                                add_node_usages(result)
-                                stmt.forward(result)
-                                block.stmts[i] = result
-                                remove_children(stmt)
-                                any_simplified = True
-                                break
+            # Loop over all statements in the block. The statement list can get
+            # dynamically modified so use a manual index.
+            i = 0
+            while i < len(block.stmts):
+                node = block.stmts[i]
+                # Try to dead-code-eliminate this node
+                if not node._users and can_dce(node):
+                    any_simplified = True
+                    remove_children(node)
+                    del block.stmts[i]
+                    continue
 
-    # Run DCE
-    any_removed = True
-    while any_removed:
-        any_removed = False
-        for block in walk_blocks(first_block):
-            statements = []
-            for [i, stmt] in enumerate(block.stmts):
-                if can_dce(stmt) and not stmt._users:
-                    any_removed = True
-                    remove_children(stmt)
+                # Run local graph simplifications, as defined in the
+                # @simplifier()s above
+                result = simplify_node(node)
+                if result is not None:
+                    # Update graph tracking for any sub-nodes of the result
+                    new_stmts = []
+                    create_subgraph(result, new_stmts)
+                    node.forward(result)
+                    # Replace the old node with the flattened subgraph of new
+                    # nodes in the statements list. We don't update i here, which
+                    # means we rerun the simplify pass over the new nodes.
+                    block.stmts[i:i+1] = new_stmts
+                    any_simplified = True
                 else:
-                    statements.append(stmt)
+                    i += 1
 
-            block.stmts = statements
 
 ################################################################################
 ## LIR conversion stuff ########################################################
@@ -901,7 +906,7 @@ def compile_fn(fn):
 
     first_block = gen_ssa(fn)
 
-    simplify_blocks(first_block)
+    simplify_fn(fn, first_block)
 
     lir_blocks = generate_lir(first_block)
 
