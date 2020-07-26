@@ -201,7 +201,7 @@ def get_result_type(node: lir.Node):
     if isinstance(node, asm.Register):
         return type(node)
     # XXX
-    if isinstance(node, (asm.Address, asm.Label)):
+    if isinstance(node, (int, asm.Address, asm.Label)):
         return asm.GPReg
     if isinstance(node, lir.Inst):
         if node.opcode == 'literal':
@@ -272,34 +272,26 @@ class RegAllocContext:
         log('instantiate', self.insts[-1], free_regs)
         return reg
 
-    def get_arg_reg(self, arg, free_regs=None, force_move=False, assign=False,
-            can_handle_labels=False):
-        is_lir_node = isinstance(arg, lir.Node)
-        if is_lir_node or force_move:
-            orig_arg = arg
-            # Anything that isn't a LIR node, we assume is a literal that asm.py
-            # can handle
-            if is_lir_node:
-                if arg in self.reg_assns:
-                    arg = self.reg_assns[arg]
-                elif isinstance(arg, lir.Inst) and arg.opcode == 'literal':
-                    [arg] = arg.args
-                else:
-                    arg = self.stack_assns[arg]
-            # Minor optimization: if the instruction can directly handle labels
-            # (jmp/call etc), we don't need to lea it
-            if isinstance(arg, asm.ExternLabel) and can_handle_labels:
-                return arg
-            if isinstance(arg, (int, asm.GPReg)) and not force_move:
-                return arg
+    def get_arg_reg(self, arg, free_regs=None, allow_types=(), assign=False):
+        orig_arg = arg
+        # Anything that isn't a LIR node, we assume is a literal that asm.py
+        # can handle
+        if isinstance(arg, lir.Node):
+            if arg in self.reg_assns:
+                arg = self.reg_assns[arg]
+            elif isinstance(arg, lir.Inst) and arg.opcode == 'literal':
+                [arg] = arg.args
+            else:
+                arg = self.stack_assns[arg]
 
-            reg = self.instantiate_reg(arg, free_regs=free_regs)
-            if assign:
-                self.reg_assns[orig_arg] = reg
+        # Check if the this arg is already in an acceptable state for the user
+        if not isinstance(arg, allow_types):
+            arg = self.instantiate_reg(arg, free_regs=free_regs)
 
-            return reg
-        else:
-            return arg
+        if assign:
+            self.reg_assns[orig_arg] = arg
+
+        return arg
 
     def update_free_regs(self, node, live_set):
         if node not in self.reg_assns:
@@ -499,8 +491,8 @@ def allocate_registers(fn):
             elif inst.opcode == 'return':
                 pass
 
-            # Instantiate parameters/literals into registers. This is usually
-            # a waste but right now needed for correctness
+            # Instantiate parameters into registers. This is usually a waste
+            # but right now needed for correctness
             elif inst.opcode == 'parameter':
                 [index] = inst.args
                 src = PARAM_REGS[index]
@@ -508,12 +500,11 @@ def allocate_registers(fn):
                 reg_assns[inst] = reg
                 log('param', inst, src, block.phi_read.args.get(inst))
 
+            # Literals: just pop 'em in the reg_assns dict. If another instruction
+            # has a problem with that, they can deal with it themselves!
             elif inst.opcode == 'literal':
-                [value] = inst.args
-                if not isinstance(value, int):
-                    reg = ctx.instantiate_reg(value)
-                    reg_assns[inst] = reg
-                    log('lit', inst, value, block.phi_read.args.get(inst))
+                reg_assns[inst] = inst.args[0]
+                log('lit', inst, inst.args[0], reg, block.phi_read.args.get(inst))
 
             elif inst.opcode == 'call':
                 [called_fn, args] = [inst.args[0], inst.args[1:]]
@@ -521,9 +512,10 @@ def allocate_registers(fn):
                 assert len(args) <= len(PARAM_REGS)
                 call_regs = PARAM_REGS.copy()
                 for arg in args:
-                    _ = ctx.get_arg_reg(arg, free_regs=call_regs, force_move=True)
+                    _ = ctx.get_arg_reg(arg, free_regs=call_regs)
 
-                called_fn_arg = ctx.get_arg_reg(called_fn, can_handle_labels=True)
+                called_fn_arg = ctx.get_arg_reg(called_fn,
+                        allow_types=(asm.ExternLabel, asm.GPReg))
 
                 # Generate save/restore instructions for caller-save registers
                 clobbered = [reg for reg in reg_assns.values()
@@ -552,7 +544,14 @@ def allocate_registers(fn):
 
                 reg = None
 
-                arg_regs = [ctx.get_arg_reg(arg, assign=True) for arg in inst.args]
+                # Make sure instruction arguments are in the proper form for this
+                # instruction (register, label, immediate, etc)
+                arg_types = spec.arg_types
+                if not spec.is_destructive:
+                    arg_types = arg_types[1:]
+                assert len(inst.args) == len(arg_types)
+                arg_regs = [ctx.get_arg_reg(arg, allow_types=types, assign=True)
+                        for [arg, types] in zip(inst.args, arg_types)]
 
                 # Handle destructive ops first, which might need a move into
                 # a new register. Do this before we return any registers to the
@@ -602,9 +601,11 @@ def allocate_registers(fn):
 
                 log('main', ctx.insts[-1], free_regs)
 
-        # Remember allocated registers for the phi read
-        regs = {name: reg_assns[inst] for [name, inst] in
-                sorted(block.phi_read.args.items())}
+        # Make sure all live outs are in registers, and store the allocated
+        # registers for the phi read
+        regs = {}
+        for [name, inst] in sorted(block.phi_read.args.items()):
+            regs[name] = ctx.get_arg_reg(inst, allow_types=asm.Register)
         phi_assns[block.phi_read] = regs
 
         ctx.end_block(block)

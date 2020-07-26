@@ -660,6 +660,24 @@ cond_canon = {cond: conds[0] for conds in all_conds for cond in conds}
 canon_table = {prefix + cond: prefix + canon for [cond, canon] in cond_canon.items()
         for prefix in ['j', 'set', 'cmov']}
 
+# Set up instruction argument types, now that all forms have been added
+for spec in INST_SPECS.values():
+    # Keep tuples of allowable types for each argument
+    spec.arg_types = []
+    assert len(set(len(f) for f in spec.forms)) == 1
+    for args in zip(*spec.forms):
+        types = set()
+        for arg in args:
+            if isinstance(arg, ASMObj):
+                arg = type(arg)
+            else:
+                [arg, _] = arg
+            types.add(arg)
+        # Add regular int objects if we accept immediates
+        if Immediate in types:
+            types.add(int)
+        spec.arg_types.append(tuple(types))
+
 ################################################################################
 ## Utility functions ###########################################################
 ################################################################################
