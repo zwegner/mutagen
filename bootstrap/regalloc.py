@@ -204,12 +204,11 @@ def get_result_type(node: lir.Node):
     if isinstance(node, (asm.Address, asm.Label)):
         return asm.GPReg
     if isinstance(node, lir.Inst):
-        for table in [asm.avx_table, asm.sse_table]:
-            if node.opcode in table:
-                [*_, forms, _] = table[node.opcode]
-                # Return the type of the first argument of the first form
-                return forms[0][0][0]
-        return asm.GPReg
+        if node.opcode == 'literal':
+            return get_result_type(node.args[0])
+        spec = asm.INST_SPECS[node.opcode]
+        # Return the type of the first argument of the first form
+        return spec.forms[0][0][0]
     assert False, str(node)
 
 class RegAllocContext:
@@ -549,6 +548,8 @@ def allocate_registers(fn):
 
             # Regular ops
             else:
+                spec = asm.INST_SPECS[inst.opcode]
+
                 reg = None
 
                 arg_regs = [ctx.get_arg_reg(arg, assign=True) for arg in inst.args]
@@ -556,8 +557,8 @@ def allocate_registers(fn):
                 # Handle destructive ops first, which might need a move into
                 # a new register. Do this before we return any registers to the
                 # free set, since the inserted move comes before the instruction.
-                destructive = (asm.is_destructive_op(inst.opcode) and
-                    arg_regs and is_register(arg_regs[0]))
+                destructive = (spec.is_destructive and arg_regs and
+                        is_register(arg_regs[0]))
 
                 if destructive:
                     # See if we can clobber the register. If not, copy it
@@ -583,7 +584,7 @@ def allocate_registers(fn):
 
                 # Non-destructive ops need a register assignment for their
                 # implicit destination
-                if not destructive and asm.needs_register(inst.opcode):
+                if not destructive and spec.needs_register:
                     reg = ctx.alloc_reg(get_result_type(inst))
                     arg_regs = [reg] + arg_regs
                     log('nondestr assign', reg, free_regs)
@@ -593,7 +594,7 @@ def allocate_registers(fn):
                 # And now return the destination of the instruction to the
                 # free registers, although this only happens when the result
                 # is never used...
-                if inst not in live_set and asm.needs_register(inst.opcode):
+                if inst not in live_set and spec.needs_register:
                     log('free inst', inst, arg_regs[0])
                     ctx.dealloc_reg(arg_regs[0])
 
@@ -670,7 +671,7 @@ def allocate_registers(fn):
 
         # Add jump instructions
         for jmp in get_jumps(block, exit_phys_idx, exit_label):
-            assert asm.is_jump_op(jmp.opcode)
+            assert asm.INST_SPECS[jmp.opcode].is_jump
             insts.append(asm.Instruction(jmp.opcode, *jmp.args))
 
     # Generate push/pop instructions for callee-save instructions, and

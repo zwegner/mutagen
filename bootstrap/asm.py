@@ -2,18 +2,17 @@ import enum
 import itertools
 import struct
 
-# Vector register size used by default (for now, we're targeting AVX2).
-# Eventually this should be configurable/dynamic based on target
-VEC_SIZE_BYTES = 32
-VEC_SIZE_BITS = VEC_SIZE_BYTES * 8
-# ...and vector move instruction to match.
-# Kinda hacky: using Instruction before it's declared
-VEC_MOVE = lambda dst, src: Instruction('vmovdqu', dst, src)
+################################################################################
+## Assembler types #############################################################
+################################################################################
 
 # Dummy abstract base class
 class ASMObj: pass
 
-class Label(ASMObj):
+# Base class for all address forms, both normal Addresses as well as Label/Data
+class BaseAddress(ASMObj): pass
+
+class Label(BaseAddress):
     def __init__(self, name):
         self.name = name
     def __str__(self):
@@ -44,7 +43,7 @@ class Immediate(ASMObj):
     def __str__(self):
         return str(self.value)
 
-class Data(ASMObj):
+class Data(BaseAddress):
     def __init__(self, data_bytes: list, alignment: int=1):
         self.data_bytes = data_bytes
         assert not alignment & alignment - 1
@@ -96,19 +95,9 @@ class VecReg(Register):
     def get_size(self):
         return self.size
     def __repr__(self):
-        prefix = {128: 'x', 256: 'y', 512: 'z'}
-        return '{}mm{}'.format(prefix[self.size], self.index)
+        return '{}mm{}'.format(VECTOR_PREFIX[self.size], self.index)
 
-ADDR_SIZE_TABLE = {
-    8: 'BYTE',
-    16: 'WORD',
-    32: 'DWORD',
-    64: 'QWORD',
-    128: 'XMMWORD',
-    256: 'YMMWORD',
-}
-
-class Address(ASMObj):
+class Address(BaseAddress):
     def __init__(self, base: int, scale: int, index: int, disp: int, size: int=None):
         self.base = base
         self.scale = scale
@@ -139,120 +128,97 @@ class Address(ASMObj):
     def __repr__(self):
         return 'Address({}, {}, {}, {})'.format(self.base, self.scale, self.index, self.disp)
 
-def fits_8bit(imm: int):
-    limit = 1 << 7
-    return -limit <= imm <= limit - 1
+################################################################################
+## Assembler constants #########################################################
+################################################################################
 
-def fits_32bit(imm: int):
-    limit = 1 << 31
-    return -limit <= imm <= limit - 1
+# Vector register size used by default (for now, we're targeting AVX2).
+# Eventually this should be configurable/dynamic based on target
+VEC_SIZE_BYTES = 32
+VEC_SIZE_BITS = VEC_SIZE_BYTES * 8
+# ...and vector move instruction to match.
+# Kinda hacky: using Instruction before it's declared
+VEC_MOVE = lambda dst, src: Instruction('vmovdqu', dst, src)
 
-def pack8(imm: int):
-    # Kinda gross: allow signed or unsigned bytes
-    assert -128 <= imm < 256
-    return list(struct.pack('<B', imm & 0xFF))
+ADDR_SIZE_TABLE = {
+    8: 'BYTE',
+    16: 'WORD',
+    32: 'DWORD',
+    64: 'QWORD',
+    128: 'XMMWORD',
+    256: 'YMMWORD',
+}
 
-def pack32(imm: int):
-    return list(struct.pack('<i', imm))
+VECTOR_PREFIX = {
+    128: 'x',
+    256: 'y',
+    512: 'z'
+}
 
-def pack64(imm: int):
-    return list(struct.pack('<q', imm))
+# One-char shortcut table for specifying operand type/size
+ARG_TYPE_TABLE = {
+    # GP regs
+    'b': (GPReg, 8),
+    'w': (GPReg, 16),
+    'd': (GPReg, 32),
+    'q': (GPReg, 64),
+    # V regs
+    'x': (VecReg, 128),
+    'y': (VecReg, 256),
+    'z': (VecReg, 512),
+    # Address, label
+    'B': (BaseAddress, 8),
+    'W': (BaseAddress, 16),
+    'D': (BaseAddress, 32),
+    'Q': (BaseAddress, 64),
+    'X': (BaseAddress, 128),
+    'Y': (BaseAddress, 256),
+    'Z': (BaseAddress, 512),
+    'l': (Label, None),
+    # Immediates
+    'i': (Immediate, 8),
+    'I': (Immediate, 32),
+}
 
-# Basic helper function to factor out a common pattern of choosing a 1/4 byte encoding,
-# along with another value that depends on which is chosen
-def choose_8_or_32_bit(imm, op8, op32):
-    if fits_8bit(imm):
-        return [pack8(imm), op8]
-    assert fits_32bit(imm)
-    return [pack32(imm), op32]
+# Conditions
+all_conds = [
+    ['o'],
+    ['no'],
+    ['b', 'c', 'nae'],
+    ['ae', 'nb', 'nc'],
+    ['e', 'z'],
+    ['ne', 'nz'],
+    ['be', 'na'],
+    ['a', 'nbe'],
+    ['s'],
+    ['ns'],
+    ['p', 'pe'],
+    ['np', 'po'],
+    ['l', 'nge'],
+    ['ge', 'nl'],
+    ['le', 'ng'],
+    ['g', 'nle'],
+]
+cond_table = {cond: i for [i, conds] in enumerate(all_conds) for cond in conds}
 
-def mod_rm_sib(reg, rm):
-    if isinstance(reg, Register):
-        reg = reg.index
-    sib_bytes = []
-    disp_bytes = []
-    if isinstance(rm, Register):
-        mod = 3
-        base = rm.index
-    # Handle relocations with RIP-relative addressing. This assumes anything not
-    # a label or data is an address
-    elif isinstance(rm, (Label, Data)) or isinstance(rm.base, Data):
-        offset = 0
-        if isinstance(rm, Address):
-            assert not rm.scale
-            offset = rm.disp
-            rm = rm.base
-        mod = 0
-        base = 5
-        disp_bytes = [Relocation(rm, 4, offset=offset)]
-    else:
-        addr = rm
-        base = addr.base
-        # RSP/R12 base needs a SIB byte. It uses RSP as an index, and scale is ignored
-        if addr.base & 7 == 4 and not addr.scale:
-            sib_bytes = [4 << 3 | 4]
-        elif addr.scale:
-            assert addr.base != -1
-            assert addr.index != 4
-            base = 4
-            scale = {1: 0, 2: 1, 4: 2, 8: 3}[addr.scale]
-            sib_bytes = [scale << 6 | (addr.index & 7) << 3 | addr.base & 7]
+# Opcode extension prefix--these generate extra opcode bytes with SSE, or get
+# packed into bitfields of the VEX/EVEX prefixes
+OPF = enum.IntEnum('OPF', 'x0F x0Fx38 x0Fx3A', start=1)
+OPCODE_PREFIX_BYTES = {OPF.x0F: [0x0F], OPF.x0Fx38: [0x0F, 0x38],
+        OPF.x0Fx3A: [0x0F, 0x3A]}
 
-        # RIP+offset: this steals the encoding for RBP with no displacement
-        if addr.base == -1:
-            mod = 0
-            base = 5
-            disp_bytes = pack32(addr.disp)
-        # Otherwise, encode the displacement as 1 or 4 bytes if needed: if the disp is nonzero
-        # obviously, but also if RBP is the base, the no-disp encoding is stolen above, so
-        # encode that with a single byte displacement of zero.
-        elif addr.disp or addr.base & 7 == 5:
-            [disp_bytes, mod] = choose_8_or_32_bit(addr.disp, 1, 2)
-        else:
-            mod = 0
-    return [mod << 6 | (reg & 7) << 3 | base & 7] + sib_bytes + disp_bytes
+# Size prefix enum, same deal as opcode prefixes
+SPF = enum.IntEnum('SPF', 'none x66 xF3 xF2', start=0)
+SIZE_PREFIX_BYTES = {SPF.none: [], SPF.x66: [0x66], SPF.xF3: [0xF3],
+        SPF.xF2: [0xF2]}
 
-def ex_transform(r, addr):
-    if isinstance(addr, Address):
-        [x, b] = [addr.index, addr.base]
-        if isinstance(b, Data):
-            assert not x
-            [x, b] = [0, 5]
-    elif isinstance(addr, (Label, Data)):
-        [x, b] = [0, 5]
-    else:
-        [x, b] = [0, addr]
+# Flags for SSE/AVX instruction form
+FLAG_3OP = 1
+FLAG_IMM = 2
 
-    if isinstance(r, Register):
-        r = r.index
-    if isinstance(x, Register):
-        x = x.index
-    if isinstance(b, Register):
-        b = b.index
-
-    return [r, x, b]
-
-def rex(w, r, addr, force=False):
-    [r, x, b] = ex_transform(r, addr)
-    value = w << 3 | (r & 8) >> 1 | (x & 8) >> 2 | (b & 8) >> 3
-    if value or force:
-        return [0x40 | value]
-    return []
-
-def vex(w, r, addr, m, v, l, p):
-    [r, x, b] = ex_transform(r, addr)
-    if isinstance(v, Register):
-        v = v.index
-    assert isinstance(m, OPF)
-    assert isinstance(p, SPF)
-    base = (~v & 15) << 3 | l << 2 | p
-    r &= 8
-    x &= 8
-    b &= 8
-    if w or x or b or m != 1:
-        return [0xC4, (r ^ 8) << 4 | (x ^ 8) << 3 | (b ^ 8) << 2 | m,
-                w << 7 | base]
-    return [0xC5, (r ^ 8) << 4 | base]
+################################################################################
+## Instruction tables ##########################################################
+################################################################################
 
 # Basic x86 ops
 arg0_table = {
@@ -297,43 +263,10 @@ bs_table = {
     'bsr': 0xBD,
 }
 
-# Opcode extension prefix--these generate extra opcode bytes with SSE, or get packed
-# into bitfields of the VEX/EVEX prefixes
-OPF = enum.IntEnum('OPF', 'x0F x0Fx38 x0Fx3A', start=1)
-OPCODE_PREFIX_BYTES = {OPF.x0F: [0x0F], OPF.x0Fx38: [0x0F, 0x38], OPF.x0Fx3A: [0x0F, 0x3A]}
-
-# Size prefix enum, same deal as opcode prefixes
-SPF = enum.IntEnum('SPF', 'none x66 xF3 xF2', start=0)
-SIZE_PREFIX_BYTES = {SPF.none: [], SPF.x66: [0x66], SPF.xF3: [0xF3], SPF.xF2: [0xF2]}
-
-# Flags for instruction form
-FLAG_3OP = 1
-FLAG_IMM = 2
-
-# One-char shortcut table for specifying operand type/size
-ARG_TYPE_TABLE = {
-    # GP regs
-    'b': (GPReg, 8),
-    'w': (GPReg, 16),
-    'd': (GPReg, 32),
-    'q': (GPReg, 64),
-    # V regs
-    'x': (VecReg, 128),
-    'y': (VecReg, 256),
-    'z': (VecReg, 512),
-    # Address, label
-    'B': (Address, 8),
-    'W': (Address, 16),
-    'D': (Address, 32),
-    'Q': (Address, 64),
-    'X': (Address, 128),
-    'Y': (Address, 256),
-    'Z': (Address, 512),
-    'l': (Label, None),
-    # Immediates
-    'i': (Immediate, 8),
-    'I': (Immediate, 32),
-}
+# Condition-using instructions
+jump_table = {'j' + cond: 0x80 | code for [cond, code] in cond_table.items()}
+setcc_table = {'set' + cond: 0x90 | code for [cond, code] in cond_table.items()}
+cmov_table = {'cmov' + cond: 0x40 | code for [cond, code] in cond_table.items()}
 
 # SSE instructions
 sse_table = {
@@ -535,13 +468,124 @@ avx_table = {
     'vpsrlvq':      [1, SPF.x66,  OPF.x0Fx38, 0x45, ('w', 1)],
 }
 
+# BMI instructions
+bmi_arg2_table = {
+    'lzcnt':   0xBD,
+    'popcnt':  0xB8,
+    'tzcnt':   0xBC,
+}
+bmi_arg3_table = {
+    'andn':  [SPF.none, OPF.x0Fx38, 0xF2],
+    'bextr': [SPF.none, OPF.x0Fx38, 0xF7],
+    'bzhi':  [SPF.none, OPF.x0Fx38, 0xF5],
+    'mulx':  [SPF.xF2,  OPF.x0Fx38, 0xF6],
+    'pdep':  [SPF.xF2,  OPF.x0Fx38, 0xF5],
+    'pext':  [SPF.xF3,  OPF.x0Fx38, 0xF5],
+    'sarx':  [SPF.xF3,  OPF.x0Fx38, 0xF7],
+    'shlx':  [SPF.x66,  OPF.x0Fx38, 0xF7],
+    'shrx':  [SPF.xF2,  OPF.x0Fx38, 0xF7],
+}
+bmi_arg3_reversed = {'andn', 'mulx', 'pdep', 'pext'}
+
+################################################################################
+## Spec creation (cleaning up the tables etc.) #################################
+################################################################################
+
+# Spec class for storing metadata about instruction forms
+class InstSpec:
+    def __init__(self, inst, forms, is_destructive=True, is_jump=False,
+            needs_register=True, vec_form=None, spf=None, opf=None,
+            opcode=None, flags=None):
+        self.inst = inst
+        self.forms = forms
+        self.is_destructive = is_destructive
+        self.is_jump = is_jump
+        self.needs_register = needs_register
+        self.vec_form = vec_form
+        self.spf = spf
+        self.opf = opf
+        self.opcode = opcode
+        self.flags = flags
+
+# Create a big table of instruction specs
+INST_SPECS = {}
+
+def _add(inst, *args, **kwargs):
+    global INST_SPECS
+    if inst not in INST_SPECS:
+        INST_SPECS[inst] = InstSpec(inst, [], **kwargs)
+    spec = INST_SPECS[inst]
+    for form in itertools.product(*args):
+        spec.forms.append([ARG_TYPE_TABLE[t] if isinstance(t, str) else t
+                for t in form])
+
+def _add_32_64(inst, *args, **kwargs):
+    _add(inst, *args, **kwargs)
+    _add(inst, *(a.replace('q', 'd').replace('Q', 'D')
+            if isinstance(a, str) else a for a in args), **kwargs)
+
+for inst in arg0_table.keys():
+    _add(inst, is_destructive=False, needs_register=False)
+
+for inst in arg1_table.keys():
+    _add_32_64(inst, 'qQ')
+
+for inst in arg2_table.keys():
+    is_write = (inst not in {'cmp', 'test'})
+    _add_32_64(inst, 'q', 'qQi', needs_register=is_write, is_destructive=is_write)
+    _add_32_64(inst, 'Q', 'q', needs_register=is_write, is_destructive=is_write)
+
+for inst in shift_table.keys():
+    _add_32_64(inst, 'qQ', 'i')
+    # Shifts by CL is special, only one register allowed
+    _add_32_64(inst, 'qQ', [GPReg(1, size=8)])
+
+for inst in bt_table.keys():
+    _add_32_64(inst, 'qQ', 'i')
+
+for inst in bs_table.keys():
+    _add_32_64(inst, 'q', 'qQ')
+
+for [cond, code] in cmov_table.items():
+    _add_32_64(cond, 'q', 'qQ')
+
+_add_32_64('imul', 'q', 'qQ')
+_add_32_64('xchg', 'qQ', 'q')
+_add_32_64('lea', 'q', 'Q')
+_add_32_64('test', 'qQ', 'q')
+
+# Push/pop don't have a 32-bit operand encoding in 64-bit mode...
+_add('push', 'qi')
+_add('pop', 'q')
+
+# Make sure all of the condition codes are tested, to test canonicalization
+for [cond, code] in jump_table.items():
+    _add(cond, 'l', is_jump=True, is_destructive=False, needs_register=False)
+_add('jmp', 'ql', is_jump=True, is_destructive=False, needs_register=False)
+
+for [cond, code] in setcc_table.items():
+    _add(cond, 'bB')
+
+_add('call', 'ql', is_destructive=False, needs_register=False)
+
+# BMI
+
+for inst in bmi_arg2_table.keys():
+    _add_32_64(inst, 'q', 'qQ')
+
+for inst in bmi_arg3_table.keys():
+    [src1, src2] = ['qQ', 'q']
+    if inst in bmi_arg3_reversed:
+        [src2, src1] = [src1, src2]
+    _add_32_64(inst, 'q', src1, src2)
+
 # Add VEX extensions of SSE instructions
 for [opcode, value] in sse_table.items():
     avx_table['v' + opcode] = value
 
 # Process various flags in the above SSE/AVX tables, to get valid instruction forms
 for table in [sse_table, avx_table]:
-    for [inst, [form, spf, opf, opcode, *flag_args]] in table.items():
+    for [inst, [vec_form, spf, opf, opcode, *flag_args]] in table.items():
         flags = dict(flag_args)
 
         # Get extension-specific values
@@ -552,18 +596,18 @@ for table in [sse_table, avx_table]:
         vtype = 'x' if vlen == 128 else 'y'
 
         # Create basic form. Most instructions can have the types inferred from
-        # the form (2/3 op, immediate)
+        # the vec_form (2/3 op, immediate)
         if 'arg_types' in flags:
             types = list(flags.pop('arg_types'))
-            if is_sse and form & FLAG_3OP:
+            if is_sse and vec_form & FLAG_3OP:
                 assert types[0] == types[1]
                 types = types[1:]
             arg_types = [t or vtype for t in types]
         else:
             arg_types = [vtype, vtype]
-            if not is_sse and form & FLAG_3OP:
+            if not is_sse and vec_form & FLAG_3OP:
                 arg_types.append(vtype)
-        if form & FLAG_IMM:
+        if vec_form & FLAG_IMM:
             arg_types.append('i')
 
         basic_form = [ARG_TYPE_TABLE[t] for t in arg_types]
@@ -577,7 +621,7 @@ for table in [sse_table, avx_table]:
 
         # Create an immediate form if there's a sub-opcode
         if 'sub_opcode' in flags:
-            assert not form & FLAG_IMM
+            assert not vec_form & FLAG_IMM
             imm_form = basic_form.copy()
             imm_form[-1] = (Immediate, 8)
             forms.append(imm_form)
@@ -586,14 +630,14 @@ for table in [sse_table, avx_table]:
         if not flags.get('reg_only') and not flags.get('imm_only'):
             if flags.get('reverse'):
                 addr_arg = 0
-            elif form & FLAG_IMM:
+            elif vec_form & FLAG_IMM:
                 addr_arg = len(basic_form) - 2
             else:
                 addr_arg = len(basic_form) - 1
 
             size = flags.get('addr_size', basic_form[addr_arg][1])
             addr_form = basic_form.copy()
-            addr_form[addr_arg] = (Address, size)
+            addr_form[addr_arg] = (BaseAddress, size)
             forms.append(addr_form)
 
             # If there's a reverse_opcode flag, that means the instructions has both
@@ -601,92 +645,154 @@ for table in [sse_table, avx_table]:
             if flags.get('reverse_opcode'):
                 assert addr_arg != 0
                 rev_addr_form = basic_form.copy()
-                rev_addr_form[0] = (Address, size)
+                rev_addr_form[0] = (BaseAddress, size)
                 forms.append(rev_addr_form)
 
-        table[inst] = [form, spf, opf, opcode, tuple(forms), flags]
+        assert inst not in INST_SPECS
+        is_destructive = bool(vec_form & FLAG_3OP)
+        INST_SPECS[inst] = InstSpec(inst, tuple(forms),
+                is_destructive=is_destructive, vec_form=vec_form,
+                spf=spf, opf=opf, opcode=opcode, flags=flags)
 
-# BMI instructions
-bmi_arg2_table = {
-    'lzcnt': 0xBD,
-    'popcnt': 0xB8,
-    'tzcnt': 0xBC,
-}
-bmi_arg3_table = {
-    'andn':  [SPF.none, OPF.x0Fx38, 0xF2],
-    'bextr': [SPF.none, OPF.x0Fx38, 0xF7],
-    'bzhi':  [SPF.none, OPF.x0Fx38, 0xF5],
-    'mulx':  [SPF.xF2,  OPF.x0Fx38, 0xF6],
-    'pdep':  [SPF.xF2,  OPF.x0Fx38, 0xF5],
-    'pext':  [SPF.xF3,  OPF.x0Fx38, 0xF5],
-    'sarx':  [SPF.xF3,  OPF.x0Fx38, 0xF7],
-    'shlx':  [SPF.x66,  OPF.x0Fx38, 0xF7],
-    'shrx':  [SPF.xF2,  OPF.x0Fx38, 0xF7],
-}
-bmi_arg3_reversed = ['andn', 'mulx', 'pdep', 'pext']
-
-all_conds = [
-    ['o'],
-    ['no'],
-    ['b', 'c', 'nae'],
-    ['ae', 'nb', 'nc'],
-    ['e', 'z'],
-    ['ne', 'nz'],
-    ['be', 'na'],
-    ['a', 'nbe'],
-    ['s'],
-    ['ns'],
-    ['p', 'pe'],
-    ['np', 'po'],
-    ['l', 'nge'],
-    ['ge', 'nl'],
-    ['le', 'ng'],
-    ['g', 'nle'],
-]
-cond_table = {cond: i for [i, conds] in enumerate(all_conds) for cond in conds}
-
-jump_table = {'j' + cond: 0x80 | code for [cond, code] in cond_table.items()}
-setcc_table = {'set' + cond: 0x90 | code for [cond, code] in cond_table.items()}
-cmov_table = {'cmov' + cond: 0x40 | code for [cond, code] in cond_table.items()}
-
+# Set up a table to canonicalize instructions that have multiple equivalent
+# mnemonics (right now, just anything with a condition code)
 cond_canon = {cond: conds[0] for conds in all_conds for cond in conds}
 canon_table = {prefix + cond: prefix + canon for [cond, canon] in cond_canon.items()
         for prefix in ['j', 'set', 'cmov']}
 
-destructive_ops = {*arg2_table.keys(), *shift_table.keys(), *setcc_table.keys(),
-        *cmov_table.keys(), 'imul', 'lea', 'pop'} - {'cmp'}
-no_reg_ops = {'cmp', 'test'}
+################################################################################
+## Utility functions ###########################################################
+################################################################################
 
-jump_ops = set(list(jump_table.keys()) + ['jmp'])
+def fits_8bit(imm: int):
+    limit = 1 << 7
+    return -limit <= imm <= limit - 1
 
-def normalize_opcode(opcode):
-    # Canonicalize instruction names that have multiple names
-    if opcode in canon_table:
-        opcode = canon_table[opcode]
+def fits_32bit(imm: int):
+    limit = 1 << 31
+    return -limit <= imm <= limit - 1
 
-    return opcode
+def pack8(imm: int):
+    # Kinda gross: allow signed or unsigned bytes
+    assert -128 <= imm < 256
+    return list(struct.pack('<B', imm & 0xFF))
+
+def pack32(imm: int):
+    return list(struct.pack('<i', imm))
+
+def pack64(imm: int):
+    return list(struct.pack('<q', imm))
+
+# Basic helper function to factor out a common pattern of choosing a 1/4 byte encoding,
+# along with another value that depends on which is chosen
+def choose_8_or_32_bit(imm, op8, op32):
+    if fits_8bit(imm):
+        return [pack8(imm), op8]
+    assert fits_32bit(imm)
+    return [pack32(imm), op32]
+
+def mod_rm_sib(reg, rm):
+    if isinstance(reg, Register):
+        reg = reg.index
+    sib_bytes = []
+    disp_bytes = []
+    if isinstance(rm, Register):
+        mod = 3
+        base = rm.index
+    # Handle relocations with RIP-relative addressing. This assumes anything not
+    # a label or data is an address
+    elif isinstance(rm, (Label, Data)) or isinstance(rm.base, Data):
+        offset = 0
+        if isinstance(rm, Address):
+            assert not rm.scale
+            offset = rm.disp
+            rm = rm.base
+        mod = 0
+        base = 5
+        disp_bytes = [Relocation(rm, 4, offset=offset)]
+    else:
+        addr = rm
+        base = addr.base
+        # RSP/R12 base needs a SIB byte. It uses RSP as an index, and scale is ignored
+        if addr.base & 7 == 4 and not addr.scale:
+            sib_bytes = [4 << 3 | 4]
+        elif addr.scale:
+            assert addr.base != -1
+            assert addr.index != 4
+            base = 4
+            scale = {1: 0, 2: 1, 4: 2, 8: 3}[addr.scale]
+            sib_bytes = [scale << 6 | (addr.index & 7) << 3 | addr.base & 7]
+
+        # RIP+offset: this steals the encoding for RBP with no displacement
+        if addr.base == -1:
+            mod = 0
+            base = 5
+            disp_bytes = pack32(addr.disp)
+        # Otherwise, encode the displacement as 1 or 4 bytes if needed: if the disp is nonzero
+        # obviously, but also if RBP is the base, the no-disp encoding is stolen above, so
+        # encode that with a single byte displacement of zero.
+        elif addr.disp or addr.base & 7 == 5:
+            [disp_bytes, mod] = choose_8_or_32_bit(addr.disp, 1, 2)
+        else:
+            mod = 0
+    return [mod << 6 | (reg & 7) << 3 | base & 7] + sib_bytes + disp_bytes
+
+def ex_transform(r, addr):
+    if isinstance(addr, Address):
+        [x, b] = [addr.index, addr.base]
+        if isinstance(b, Data):
+            assert not x
+            [x, b] = [0, 5]
+    elif isinstance(addr, (Label, Data)):
+        [x, b] = [0, 5]
+    else:
+        [x, b] = [0, addr]
+
+    if isinstance(r, Register):
+        r = r.index
+    if isinstance(x, Register):
+        x = x.index
+    if isinstance(b, Register):
+        b = b.index
+
+    return [r, x, b]
+
+def rex(w, r, addr, force=False):
+    [r, x, b] = ex_transform(r, addr)
+    value = w << 3 | (r & 8) >> 1 | (x & 8) >> 2 | (b & 8) >> 3
+    if value or force:
+        return [0x40 | value]
+    return []
+
+def vex(w, r, addr, m, v, l, p):
+    [r, x, b] = ex_transform(r, addr)
+    if isinstance(v, Register):
+        v = v.index
+    assert isinstance(m, OPF)
+    assert isinstance(p, SPF)
+    base = (~v & 15) << 3 | l << 2 | p
+    r &= 8
+    x &= 8
+    b &= 8
+    if w or x or b or m != 1:
+        return [0xC4, (r ^ 8) << 4 | (x ^ 8) << 3 | (b ^ 8) << 2 | m,
+                w << 7 | base]
+    return [0xC5, (r ^ 8) << 4 | base]
+
+################################################################################
+## Instruction, the main assembler functionality ###############################
+################################################################################
 
 class Instruction(ASMObj):
     def __init__(self, opcode: str, *args):
-        self.opcode = normalize_opcode(opcode)
+        self.opcode = canon_table.get(opcode, opcode)
         self.args = [Immediate(arg) if isinstance(arg, int) else arg for arg in args]
 
-    def check_types(self, forms):
-        # Check arguments
-        normalized_types = [Address if isinstance(a, (Label, Data)) else type(a)
-                for a in self.args]
-
-        for form in forms:
-            assert len(form) == len(self.args)
-            if all(issubclass(a, t) for [a, [t, s]] in zip(normalized_types, form)):
-                return
-        assert False, ('argument types %s do not match any of the valid forms '
-                'of %s: %s' % (self.args, self.opcode, forms))
-
     def to_bytes(self):
-        # Compute default w value for REX prefix. This isn't always needed, and it's a
-        # tad messy, but it's used a bunch of times below, so get it now
-        sizes = {arg.get_size() for arg in self.args if isinstance(arg, ASMObj)} - {None}
+        # Compute default w value for REX prefix. This isn't always needed, and
+        # it's a tad messy, but it's used a bunch of times below, so get it now
+        sizes = {arg.get_size() for arg in self.args
+                if isinstance(arg, ASMObj)} - {None}
         size = None
         if not sizes:
             # XXX default size--this might need more logic later
@@ -697,15 +803,25 @@ class Instruction(ASMObj):
             # Mismatched size arguments--what to do?
             size = self.args[0].get_size()
 
+        # Get spec and check types
+        spec = INST_SPECS[self.opcode]
+        for form in spec.forms:
+            assert len(form) == len(self.args), ('wrong number of arguments to %s, '
+                    'got %s, expected %s' % (self.opcode, len(self.args), len(form)))
+            if all(a == t if isinstance(t, ASMObj) else isinstance(a, t[0])
+                    for [a, t] in zip(self.args, form)):
+                break
+        else:
+            assert False, ('argument types %s do not match any of the valid forms '
+                    'of %s: %s' % (self.args, self.opcode, spec.forms))
+
         w = int(size == 64)
 
         if self.opcode in arg0_table:
-            assert not self.args
             return arg0_table[self.opcode]
         elif self.opcode in arg1_table:
             opcode = arg1_table[self.opcode]
             [src] = self.args
-            assert isinstance(src, GPReg) or isinstance(src, Address)
             return rex(w, 0, src) + [0xF7] + mod_rm_sib(opcode, src)
         elif self.opcode in arg2_table:
             opcode = arg2_table[self.opcode]
@@ -723,7 +839,6 @@ class Instruction(ASMObj):
                         imm_bytes = pack32(src.value)
                     return rex(w, 0, dst) + [0xB8 | dst.index & 7] + imm_bytes
                 else:
-                    assert isinstance(dst, GPReg)
                     [imm_bytes, size_flag] = choose_8_or_32_bit(src.value, 0x2, 0)
                     return rex(w, 0, dst) + [0x81 | size_flag] + mod_rm_sib(
                             opcode, dst) + imm_bytes
@@ -736,11 +851,10 @@ class Instruction(ASMObj):
 
             # op reg, mem is handled by flipping the direction bit and
             # swapping src/dst.
-            if isinstance(src, (Address, Data)):
+            if isinstance(src, BaseAddress):
                 opcode = opcode | 0x2
                 [src, dst] = [dst, src]
 
-            assert isinstance(src, GPReg)
             return rex(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
         elif self.opcode in shift_table:
             sub_opcode = shift_table[self.opcode]
@@ -753,7 +867,6 @@ class Instruction(ASMObj):
                     opcode = 0xC1
                     suffix = pack8(src.value & 63)
             else:
-                assert isinstance(src, GPReg)
                 # Only CL
                 assert src.index == 1
                 opcode = 0xD3
@@ -761,45 +874,34 @@ class Instruction(ASMObj):
         elif self.opcode in bt_table:
             sub_opcode = bt_table[self.opcode]
             [src, bit] = self.args
-            assert isinstance(bit, Immediate)
             imm = pack8(bit.value)
             return rex(w, 0, src) + [0x0F, 0xBA] + mod_rm_sib(sub_opcode, src) + imm
         elif self.opcode in bs_table:
             opcode = bs_table[self.opcode]
             [dst, src] = self.args
-            assert isinstance(src, (GPReg, Address))
             return rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
         elif self.opcode in cmov_table:
             opcode = cmov_table[self.opcode]
             [dst, src] = self.args
-            assert isinstance(dst, GPReg)
-            assert isinstance(src, (GPReg, Address))
             return rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
         elif self.opcode == 'push':
             [src] = self.args
             if isinstance(src, Immediate):
                 [imm_bytes, opcode] = choose_8_or_32_bit(src.value, 0x6A, 0x68)
                 return [opcode] + imm_bytes
-            assert isinstance(src, GPReg)
             return rex(0, 0, src) + [0x50 | (src.index & 7)]
         elif self.opcode == 'pop':
             [dst] = self.args
-            assert isinstance(dst, GPReg)
             return rex(0, 0, dst) + [0x58 | (dst.index & 7)]
         elif self.opcode == 'imul':
             # XXX only 2-operand version for now
             [dst, src] = self.args
-            assert isinstance(src, GPReg) or isinstance(src, Address)
-            assert isinstance(dst, GPReg)
             return rex(w, dst, src) + [0x0F, 0xAF] + mod_rm_sib(dst, src)
         elif self.opcode == 'xchg':
             [dst, src] = self.args
-            assert isinstance(src, GPReg)
-            assert isinstance(dst, GPReg) or isinstance(dst, Address)
             return rex(w, src, dst) + [0x87] + mod_rm_sib(src, dst)
         elif self.opcode == 'lea':
             [dst, src] = self.args
-            assert isinstance(dst, GPReg) and isinstance(src, (Address, Data, Label))
             return rex(w, dst, src) + [0x8D] + mod_rm_sib(dst, src)
         elif self.opcode == 'test':
             # Test has backwards arguments, weird
@@ -807,25 +909,23 @@ class Instruction(ASMObj):
             return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
 
         elif self.opcode in sse_table:
-            [form, spf, opf, opcode, forms, flags] = sse_table[self.opcode]
             # Check instruction flags for w override
-            if 'w' in flags:
-                w = flags['w']
+            if 'w' in spec.flags:
+                w = spec.flags['w']
+
+            opcode = spec.opcode
 
             # Convert size/opcode prefix enums to prefix bytes
-            spf = SIZE_PREFIX_BYTES[spf]
-            opf = OPCODE_PREFIX_BYTES[opf]
-
-            # Check arguments
-            self.check_types(forms)
+            spf = SIZE_PREFIX_BYTES[spec.spf]
+            opf = OPCODE_PREFIX_BYTES[spec.opf]
 
             # Parse immediate
             if isinstance(self.args[-1], Immediate):
-                if 'sub_opcode' in flags:
+                if 'sub_opcode' in spec.flags:
                     [src, imm] = self.args
-                    [opcode, dst] = flags['sub_opcode']
+                    [opcode, dst] = spec.flags['sub_opcode']
                 else:
-                    assert form & FLAG_IMM
+                    assert spec.vec_form & FLAG_IMM
                     [dst, src, imm] = self.args
                 imm = pack8(imm.value)
             else:
@@ -833,57 +933,50 @@ class Instruction(ASMObj):
                 [dst, src] = self.args
                 imm = []
 
-            if flags.get('reverse'):
+            if spec.flags.get('reverse'):
                 [dst, src] = [src, dst]
-            elif 'reverse_opcode' in flags:
+            elif 'reverse_opcode' in spec.flags:
                 if isinstance(dst, Address):
                     [dst, src] = [src, dst]
-                    opcode = flags['reverse_opcode']
+                    opcode = spec.flags['reverse_opcode']
 
             return (spf + rex(w, dst, src) + opf + [opcode] +
                     mod_rm_sib(dst, src) + imm)
         elif self.opcode in avx_table:
-            [form, spf, opf, opcode, forms, flags] = avx_table[self.opcode]
             # Check instruction flags for w override
-            w = flags.get('w', w)
-            vlen = 0 if flags.get('vlen') == 128 else 1
-
-            # Check arguments
-            self.check_types(forms)
+            w = spec.flags.get('w', w)
+            vlen = 0 if spec.flags.get('vlen') == 128 else 1
+            opcode = spec.opcode
 
             # Parse immediate
             args = self.args.copy()
             imm = []
-            if form & FLAG_IMM:
+            if spec.vec_form & FLAG_IMM:
                 imm = args.pop()
-                assert isinstance(imm, Immediate), imm
                 imm = pack8(imm.value)
 
             # Encode either 2-op or 3-op instruction
-            if form & FLAG_3OP:
-                assert len(args) == 3, (self.opcode, args)
+            if spec.vec_form & FLAG_3OP:
                 [dst, src1, src2] = args
-
                 # Encode immediate
                 if isinstance(src2, Immediate):
-                    assert 'sub_opcode' in flags
+                    assert 'sub_opcode' in spec.flags
                     assert not imm
                     imm = pack8(src2.value)
                     [src1, src2] = [dst, src1]
-                    [opcode, dst] = flags['sub_opcode']
+                    [opcode, dst] = spec.flags['sub_opcode']
             else:
-                assert len(args) == 2, self
                 [dst, src] = args
-                if flags.get('reverse'):
+                if spec.flags.get('reverse'):
                     [dst, src] = [src, dst]
-                elif 'reverse_opcode' in flags:
+                elif 'reverse_opcode' in spec.flags:
                     if isinstance(dst, Address):
                         [dst, src] = [src, dst]
-                        opcode = flags['reverse_opcode']
+                        opcode = spec.flags['reverse_opcode']
                 # x86 encodings are weird
                 [src1, src2] = [0, src]
 
-            return (vex(w, dst, src2, opf, src1, vlen, spf) + [opcode] +
+            return (vex(w, dst, src2, spec.opf, src1, vlen, spec.spf) + [opcode] +
                     mod_rm_sib(dst, src2) + imm)
         elif self.opcode in bmi_arg2_table:
             opcode = bmi_arg2_table[self.opcode]
@@ -898,7 +991,6 @@ class Instruction(ASMObj):
         elif self.opcode in jump_table:
             opcode = jump_table[self.opcode]
             [src] = self.args
-            assert isinstance(src, Label)
             # XXX Since we don't know how far or in what direction we're jumping,
             # punt and use disp32. We'll fill the offset in later.
             return [0x0F, opcode, Relocation(src, 4)]
@@ -937,18 +1029,6 @@ class Instruction(ASMObj):
         else:
             argstr = ''
         return self.opcode + argstr
-
-def is_destructive_op(opcode):
-    opcode = normalize_opcode(opcode)
-    return opcode in destructive_ops
-
-def needs_register(opcode):
-    opcode = normalize_opcode(opcode)
-    return opcode not in no_reg_ops
-
-def is_jump_op(opcode):
-    opcode = normalize_opcode(opcode)
-    return opcode in jump_ops
 
 # Create raw code and data sections, along with a list of local/global/external
 # labels, suitable for passing directly to elf.create_elf_file.
@@ -1028,80 +1108,3 @@ def build(insts):
         code = new_bytes + code[last_offset:]
 
     return [code, data, local_labels, global_labels, extern_labels]
-
-# Create a big list of possible instructions with possible operands
-def get_inst_specs():
-    inst_list = []
-    def add(inst, *args):
-        nonlocal inst_list
-        forms = []
-        for form in itertools.product(*args):
-            forms.append([ARG_TYPE_TABLE[t] if isinstance(t, str) else t
-                    for t in form])
-        inst_list.append((inst, forms))
-
-    def add_32_64(inst, *args):
-        add(inst, *args)
-        add(inst, *(a.replace('q', 'd').replace('Q', 'D')
-                if isinstance(a, str) else a for a in args))
-
-    for inst in arg0_table.keys():
-        add(inst)
-
-    for inst in arg1_table.keys():
-        add_32_64(inst, 'qQ')
-
-    for inst in arg2_table.keys():
-        add_32_64(inst, 'q', 'qQi')
-        add_32_64(inst, 'Q', 'q')
-
-    for inst in shift_table.keys():
-        add_32_64(inst, 'qQ', 'i')
-        # Shifts by CL is special, only one register allowed
-        add_32_64(inst, 'qQ', [GPReg(1, size=8)])
-
-    for inst in bt_table.keys():
-        add_32_64(inst, 'qQ', 'i')
-
-    for inst in bs_table.keys():
-        add_32_64(inst, 'q', 'qQ')
-
-    for [cond, code] in cmov_table.items():
-        add_32_64(cond, 'q', 'qQ')
-
-    add_32_64('imul', 'q', 'qQ')
-    add_32_64('xchg', 'qQ', 'q')
-    add_32_64('lea', 'q', 'Q')
-    add_32_64('test', 'qQ', 'q')
-
-    # Push/pop don't have a 32-bit operand encoding in 64-bit mode...
-    add('push', 'qi')
-    add('pop', 'q')
-
-    # Make sure all of the condition codes are tested, to test canonicalization
-    for [cond, code] in jump_table.items():
-        add(cond, 'l')
-
-    for [cond, code] in setcc_table.items():
-        add(cond, 'bB')
-
-    for inst in ['jmp', 'call']:
-        add(inst, 'q')
-        add(inst, 'l')
-
-    # SSE/AVX
-
-    for table in [sse_table, avx_table]:
-        for [inst, [_, _, _, _, forms, _]] in table.items():
-            inst_list.append((inst, forms))
-
-    for inst in bmi_arg2_table.keys():
-        add_32_64(inst, 'q', 'qQ')
-
-    for inst in bmi_arg3_table.keys():
-        [src1, src2] = ['qQ', 'q']
-        if inst in bmi_arg3_reversed:
-            [src2, src1] = [src1, src2]
-        add_32_64(inst, 'q', src1, src2)
-
-    return inst_list

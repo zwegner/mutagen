@@ -49,48 +49,45 @@ imm_bytes = [0, 1, 7, 37]
 imms = imm_bytes + [0xFF, 0x100, 0xFFFFFF]
 
 labels = [asm.LocalLabel(l) for l in ['_start', '_end']]
-
-# Generate a bunch of random instructions. Should make sure this hits every
-# instruction somehow (random.shuffle?). This is also a good case for figuring
-# out some way to thread a stream of random numbers through for every place
-# that needs one.
-inst_specs = asm.get_inst_specs()
 insts = [asm.GlobalLabel('_start')]
 
-for i in range(8000):
-    [inst, forms] = rand_select(inst_specs)
-    args = []
-    form = rand_select(forms)
-    for arg in form:
-        if isinstance(arg, asm.ASMObj):
-            args.append(arg)
-            continue
-        assert isinstance(arg, tuple), arg
-        [arg_type, size] = arg
-        if arg_type == asm.GPReg:
-            arg = rand_select(regs)
-            arg = asm.GPReg(arg, size=size)
-        elif arg_type == asm.Address:
-            base = rand_select(bases)
-            if base == -1:
-                [scale, index] = [0, 0]
-            else:
-                scale = rand_select(scales)
-                index = rand_select(indices) if scale else 0
-            disp = rand_select(imms)
-            arg = asm.Address(base, scale, index, disp, size=size)
-        elif arg_type is asm.Immediate:
-            arg = rand_select(range(1 << size))
-            arg = asm.Immediate(arg, size=size)
-        elif arg_type == asm.Label:
-            arg = rand_select(labels)
-        elif arg_type == asm.VecReg:
-            arg = rand_select(regs)
-            arg = asm.VecReg(arg, size=size)
-        else:
-            assert False, arg
-        args = args + [arg]
-    insts = insts + [asm.Instruction(inst, *args)]
+# Generate a bunch of instructions. We loop over all forms of all instructions,
+# to make sure each form is tested, and we test 5 batches of random arguments
+# for each form
+for spec in asm.INST_SPECS.values():
+    for form in spec.forms:
+        for j in range(5):
+            args = []
+            for arg in form:
+                if isinstance(arg, asm.ASMObj):
+                    args.append(arg)
+                    continue
+                assert isinstance(arg, tuple), arg
+                [arg_type, size] = arg
+                if arg_type == asm.GPReg:
+                    arg = rand_select(regs)
+                    arg = asm.GPReg(arg, size=size)
+                elif arg_type == asm.BaseAddress:
+                    base = rand_select(bases)
+                    if base == -1:
+                        [scale, index] = [0, 0]
+                    else:
+                        scale = rand_select(scales)
+                        index = rand_select(indices) if scale else 0
+                    disp = rand_select(imms)
+                    arg = asm.Address(base, scale, index, disp, size=size)
+                elif arg_type is asm.Immediate:
+                    arg = rand_select(range(1 << size))
+                    arg = asm.Immediate(arg, size=size)
+                elif arg_type == asm.Label:
+                    arg = rand_select(labels)
+                elif arg_type == asm.VecReg:
+                    arg = rand_select(regs)
+                    arg = asm.VecReg(arg, size=size)
+                else:
+                    assert False, arg
+                args = args + [arg]
+            insts.append(asm.Instruction(spec.inst, *args))
 
 # Add the end label, plus an extra instruction, so objdump still prints it
 insts = insts + [asm.GlobalLabel('_end'), asm.Instruction('ret')]

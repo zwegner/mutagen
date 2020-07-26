@@ -277,15 +277,15 @@ def create_data(items):
 
 # Instruction wrappers
 
-def add_inst_instrinsic(opcode, forms):
+def add_inst_instrinsic(spec):
     arg_types = []
     # XXX manual blacklist of instructions that use flags/stack/control flow
-    if opcode in {*asm.jump_table, *asm.setcc_table, *asm.cmov_table,
+    if spec.inst in {*asm.jump_table, *asm.setcc_table, *asm.cmov_table,
             'jmp', 'call', 'ret', 'push', 'pop'}:
         return
 
-    for form in forms:
-        if not asm.is_destructive_op(opcode):
+    for form in spec.forms:
+        if not spec.is_destructive:
             form = form[1:]
 
         # We don't support fixed arguments here. This is stuff like shifts by the
@@ -295,13 +295,13 @@ def add_inst_instrinsic(opcode, forms):
 
         # Only GPR/vector register/immediate operands, no memory
         if all(t in {asm.GPReg, asm.VecReg, asm.Immediate} for [t, s] in form):
-            fn = lambda node, *args: Instruction(opcode, list(args), info=node)
+            fn = lambda node, *args: Instruction(spec.inst, list(args), info=node)
             # XXX do real arg checking
-            create_intrinsic(opcode, fn, [None] * len(form))
+            create_intrinsic(spec.inst, fn, [None] * len(form))
             return
 
-for [opcode, form] in asm.get_inst_specs():
-    add_inst_instrinsic(opcode, form)
+for spec in asm.INST_SPECS.values():
+    add_inst_instrinsic(spec)
 
 # Vector literal instrinsics. XXX range checking
 
