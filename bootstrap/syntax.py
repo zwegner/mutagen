@@ -284,11 +284,12 @@ def node(arg_spec='', compare=False, base_type=None, ops=[]):
         # multiple paths. 'blacklist' is used to break iteration on certain
         # node types. The argument should be a type or tuple of types, for
         # input to isinstance.
-        def iterate_subgraph(self, seen=None, blacklist=()):
+        def iterate_subgraph(self, seen=None, preorder=True, blacklist=()):
             for child in self.iterate_children():
-                yield from child.iterate_graph(seen, blacklist=blacklist)
+                yield from child.iterate_graph(seen, preorder=preorder,
+                        blacklist=blacklist)
 
-        def iterate_graph(self, seen=None, blacklist=()):
+        def iterate_graph(self, seen=None, preorder=True, blacklist=()):
             seen = set() if seen is None else seen
             # XXX Ugh, we want to use the default hashing/equality for Python
             # objects for the 'seen' set, while keeping custom hashing/equality
@@ -302,9 +303,13 @@ def node(arg_spec='', compare=False, base_type=None, ops=[]):
             key = id(self)
             if key not in seen:
                 seen.add(key)
-                yield self
+                if preorder:
+                    yield self
                 if not isinstance(self, blacklist):
-                    yield from self.iterate_subgraph(seen, blacklist=blacklist)
+                    yield from self.iterate_subgraph(seen, preorder=preorder,
+                            blacklist=blacklist)
+                if not preorder:
+                    yield self
 
         # If the compare flag is set, we delegate the comparison to the
         # Python object in the 'value' attribute

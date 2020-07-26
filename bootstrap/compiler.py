@@ -216,8 +216,8 @@ def add_node_usages(node):
 # scopes, but returns a list of the scoped expressions it reached.
 def transform_to_graph(node):
     functions = []
-    # Iterate the graph in reverse depth-first order to get a topological ordering
-    for node in reversed(list(node.iterate_graph(blacklist=syntax.Scope))):
+    # Iterate the graph in topological order
+    for node in node.iterate_graph(preorder=False, blacklist=syntax.Scope):
         add_node_usages(node)
         if isinstance(node, syntax.Scope):
             # Only functions for now, no classes/comprehensions
@@ -473,7 +473,7 @@ def destructure_target(block, statements, lhs, rhs):
         assert False
 
 def gen_ssa_for_stmt(block, statements, stmt):
-    for node in reversed(list(stmt.iterate_graph(blacklist=syntax.Scope))):
+    for node in stmt.iterate_graph(preorder=False, blacklist=syntax.Scope):
         # Handle loads
         if isinstance(node, syntax.Identifier):
             value = load_name(block, node.name, info=node)
