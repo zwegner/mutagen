@@ -267,12 +267,12 @@ def create_intrinsic(name, fn, arg_types):
         return fn(node, *node.args)
 
     INTRINSICS[name] = Intrinsic(name, simplify_fn, info=BI)
+    return INTRINSICS[name]
 
 def mg_intrinsic(arg_types):
     def decorate(fn):
         name = fn.__name__.replace('mgi_', '')
-        create_intrinsic(name, fn, arg_types)
-        return None
+        return create_intrinsic(name, fn, arg_types)
     return decorate
 
 @mg_intrinsic([syntax.Integer, syntax.Integer, syntax.Integer])
@@ -477,7 +477,12 @@ def destructure_target(block, statements, lhs, rhs):
     if isinstance(lhs, str):
         set_edge_key(block, 'exit_states', lhs, rhs)
     elif isinstance(lhs, list):
-        # XXX need to check target length
+        # Add an assert to check target length
+        len_lhs = syntax.Integer(len(lhs), info=rhs)
+        len_rhs = syntax.Call(mgi_len, [rhs], info=rhs)
+        assertion = syntax.Assert(syntax.BinaryOp('==', len_lhs, len_rhs))
+        create_subgraph(assertion, statements)
+
         for [i, lhs_i] in enumerate(lhs):
             rhs_i = syntax.GetItem(rhs, syntax.Integer(i, info=rhs))
             create_subgraph(rhs_i, statements)
@@ -667,6 +672,16 @@ def simplify_intr_call(node):
 def simplify_partial_call(node):
     return syntax.Call(node.fn.fn, node.fn.args + node.args)
 
+@simplifier(syntax.Assert, (syntax.Boolean, syntax.Integer))
+def simplify_assert(node):
+    if not node.expr.value:
+        # XXX this error message sucks, the expression is always "assert 0", since
+        # the assertion got simplified enough to be checked
+        node.error('Assertion failed: %s' % node.str(None))
+    # XXX weird: just return the expression since we need to signify the assert
+    # was simplified out, it should get DCE'd
+    return node.expr
+
 def simplify_blocks(first_block):
     # Basic simplification pass. We repeatedly run the full simplification until
     # nothing gets simplified, which is a bit wasteful, since simplifications
@@ -689,7 +704,7 @@ def simplify_blocks(first_block):
                         for [p_arg, arg] in zip(pattern_args, args):
                             if p_arg is None:
                                 pass
-                            elif isinstance(p_arg, type):
+                            elif isinstance(p_arg, (type, tuple)):
                                 if not isinstance(arg, p_arg):
                                     break
                             elif arg != p_arg:
