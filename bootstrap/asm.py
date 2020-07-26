@@ -128,6 +128,32 @@ class Address(BaseAddress):
     def __repr__(self):
         return 'Address({}, {}, {}, {})'.format(self.base, self.scale, self.index, self.disp)
 
+class Instruction(ASMObj):
+    def __init__(self, mnem: str, *args):
+        self.mnem = canon_table.get(mnem, mnem)
+        self.args = [Immediate(arg) if isinstance(arg, int) else arg for arg in args]
+
+    def __str__(self):
+        if self.args:
+            args = []
+            for arg in self.args:
+                if isinstance(arg, Register):
+                    args = args + [str(arg)]
+                elif isinstance(arg, Address):
+                    # lea doesn't need a size since it's only the address...
+                    use_size_prefix = self.mnem != 'lea'
+                    args = args + [arg.to_str(use_size_prefix)]
+                else:
+                    assert isinstance(arg, (Immediate, Label, Data)), arg
+                    if self.mnem in shift_table:
+                        arg = arg.value & 63
+                    # XXX handle different immediate sizes (to convert to unsigned)
+                    args = args + [str(arg)]
+            argstr = ' ' + ','.join(args)
+        else:
+            argstr = ''
+        return self.mnem + argstr
+
 ################################################################################
 ## Assembler constants #########################################################
 ################################################################################
@@ -137,7 +163,6 @@ class Address(BaseAddress):
 VEC_SIZE_BYTES = 32
 VEC_SIZE_BITS = VEC_SIZE_BYTES * 8
 # ...and vector move instruction to match.
-# Kinda hacky: using Instruction before it's declared
 VEC_MOVE = lambda dst, src: Instruction('vmovdqu', dst, src)
 
 ADDR_SIZE_TABLE = {
@@ -583,8 +608,8 @@ for inst in bmi_arg3_table.keys():
     _add_32_64(inst, 'q', src1, src2)
 
 # Add VEX extensions of SSE instructions
-for [opcode, value] in sse_table.items():
-    avx_table['v' + opcode] = value
+for [mnem, value] in sse_table.items():
+    avx_table['v' + mnem] = value
 
 # Process various flags in the above SSE/AVX tables, to get valid instruction forms
 for table in [sse_table, avx_table]:
@@ -801,255 +826,229 @@ def vex(w, r, addr, m, v, l, p):
     return [0xC5, (r ^ 8) << 4 | base]
 
 ################################################################################
-## Instruction, the main assembler functionality ###############################
+## The main x86 assembler functionality ########################################
 ################################################################################
 
-class Instruction(ASMObj):
-    def __init__(self, opcode: str, *args):
-        self.opcode = canon_table.get(opcode, opcode)
-        self.args = [Immediate(arg) if isinstance(arg, int) else arg for arg in args]
+def assemble_inst(inst):
+    # Compute default w value for REX prefix. This isn't always needed, and
+    # it's a tad messy, but it's used a bunch of times below, so get it now
+    sizes = {arg.get_size() for arg in inst.args
+            if isinstance(arg, ASMObj)} - {None}
+    size = None
+    if not sizes:
+        # XXX default size--this might need more logic later
+        size = 64
+    elif len(sizes) == 1:
+        [size] = sizes
+    else:
+        # Mismatched size arguments--what to do?
+        size = inst.args[0].get_size()
 
-    def to_bytes(self):
-        # Compute default w value for REX prefix. This isn't always needed, and
-        # it's a tad messy, but it's used a bunch of times below, so get it now
-        sizes = {arg.get_size() for arg in self.args
-                if isinstance(arg, ASMObj)} - {None}
-        size = None
-        if not sizes:
-            # XXX default size--this might need more logic later
-            size = 64
-        elif len(sizes) == 1:
-            [size] = sizes
+    # Get spec and check types
+    spec = INST_SPECS[inst.mnem]
+    for form in spec.forms:
+        assert len(form) == len(inst.args), ('wrong number of arguments to %s, '
+                'got %s, expected %s' % (inst.mnem, len(inst.args), len(form)))
+        if all(a == t if isinstance(t, ASMObj) else isinstance(a, t[0])
+                for [a, t] in zip(inst.args, form)):
+            break
+    else:
+        assert False, ('argument types %s do not match any of the valid forms '
+                'of %s: %s' % (inst.args, inst.mnem, spec.forms))
+
+    w = int(size == 64)
+
+    if inst.mnem in arg0_table:
+        return arg0_table[inst.mnem]
+    elif inst.mnem in arg1_table:
+        opcode = arg1_table[inst.mnem]
+        [src] = inst.args
+        return rex(w, 0, src) + [0xF7] + mod_rm_sib(opcode, src)
+    elif inst.mnem in arg2_table:
+        opcode = arg2_table[inst.mnem]
+        [dst, src] = inst.args
+
+        # Immediates have separate opcodes, so handle them specially here.
+        if isinstance(src, Immediate):
+            if inst.mnem == 'mov':
+                if isinstance(dst, Address):
+                    assert fits_32bit(src.value)
+                    return rex(w, 0, dst) + [0xC7] + mod_rm_sib(0, dst) + pack32(src)
+                if w:
+                    imm_bytes = pack64(src.value)
+                else:
+                    imm_bytes = pack32(src.value)
+                return rex(w, 0, dst) + [0xB8 | dst.index & 7] + imm_bytes
+            else:
+                [imm_bytes, size_flag] = choose_8_or_32_bit(src.value, 0x2, 0)
+                return rex(w, 0, dst) + [0x81 | size_flag] + mod_rm_sib(
+                        opcode, dst) + imm_bytes
+
+        # Mov is also a bit different, but can mostly be handled like other ops
+        if inst.mnem == 'mov':
+            opcode = 0x89
         else:
-            # Mismatched size arguments--what to do?
-            size = self.args[0].get_size()
+            opcode = 1 | opcode << 3
 
-        # Get spec and check types
-        spec = INST_SPECS[self.opcode]
-        for form in spec.forms:
-            assert len(form) == len(self.args), ('wrong number of arguments to %s, '
-                    'got %s, expected %s' % (self.opcode, len(self.args), len(form)))
-            if all(a == t if isinstance(t, ASMObj) else isinstance(a, t[0])
-                    for [a, t] in zip(self.args, form)):
-                break
+        # op reg, mem is handled by flipping the direction bit and
+        # swapping src/dst.
+        if isinstance(src, BaseAddress):
+            opcode = opcode | 0x2
+            [src, dst] = [dst, src]
+
+        return rex(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
+    elif inst.mnem in shift_table:
+        sub_opcode = shift_table[inst.mnem]
+        [dst, src] = inst.args
+        suffix = []
+        if isinstance(src, Immediate):
+            if src == 1:
+                opcode = 0xD1
+            else:
+                opcode = 0xC1
+                suffix = pack8(src.value & 63)
         else:
-            assert False, ('argument types %s do not match any of the valid forms '
-                    'of %s: %s' % (self.args, self.opcode, spec.forms))
+            # Only CL
+            assert src.index == 1
+            opcode = 0xD3
+        return rex(w, 0, dst) + [opcode] + mod_rm_sib(sub_opcode, dst) + suffix
+    elif inst.mnem in bt_table:
+        sub_opcode = bt_table[inst.mnem]
+        [src, bit] = inst.args
+        imm = pack8(bit.value)
+        return rex(w, 0, src) + [0x0F, 0xBA] + mod_rm_sib(sub_opcode, src) + imm
+    elif inst.mnem in bs_table:
+        opcode = bs_table[inst.mnem]
+        [dst, src] = inst.args
+        return rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
+    elif inst.mnem in cmov_table:
+        opcode = cmov_table[inst.mnem]
+        [dst, src] = inst.args
+        return rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
+    elif inst.mnem == 'push':
+        [src] = inst.args
+        if isinstance(src, Immediate):
+            [imm_bytes, opcode] = choose_8_or_32_bit(src.value, 0x6A, 0x68)
+            return [opcode] + imm_bytes
+        return rex(0, 0, src) + [0x50 | (src.index & 7)]
+    elif inst.mnem == 'pop':
+        [dst] = inst.args
+        return rex(0, 0, dst) + [0x58 | (dst.index & 7)]
+    elif inst.mnem == 'imul':
+        # XXX only 2-operand version for now
+        [dst, src] = inst.args
+        return rex(w, dst, src) + [0x0F, 0xAF] + mod_rm_sib(dst, src)
+    elif inst.mnem == 'xchg':
+        [dst, src] = inst.args
+        return rex(w, src, dst) + [0x87] + mod_rm_sib(src, dst)
+    elif inst.mnem == 'lea':
+        [dst, src] = inst.args
+        return rex(w, dst, src) + [0x8D] + mod_rm_sib(dst, src)
+    elif inst.mnem == 'test':
+        # Test has backwards arguments, weird
+        [src2, src1] = inst.args
+        return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
 
-        w = int(size == 64)
+    elif inst.mnem in sse_table:
+        # Check instruction flags for w override
+        if 'w' in spec.flags:
+            w = spec.flags['w']
 
-        if self.opcode in arg0_table:
-            return arg0_table[self.opcode]
-        elif self.opcode in arg1_table:
-            opcode = arg1_table[self.opcode]
-            [src] = self.args
-            return rex(w, 0, src) + [0xF7] + mod_rm_sib(opcode, src)
-        elif self.opcode in arg2_table:
-            opcode = arg2_table[self.opcode]
-            [dst, src] = self.args
+        opcode = spec.opcode
 
-            # Immediates have separate opcodes, so handle them specially here.
-            if isinstance(src, Immediate):
-                if self.opcode == 'mov':
-                    if isinstance(dst, Address):
-                        assert fits_32bit(src.value)
-                        return rex(w, 0, dst) + [0xC7] + mod_rm_sib(0, dst) + pack32(src)
-                    if w:
-                        imm_bytes = pack64(src.value)
-                    else:
-                        imm_bytes = pack32(src.value)
-                    return rex(w, 0, dst) + [0xB8 | dst.index & 7] + imm_bytes
-                else:
-                    [imm_bytes, size_flag] = choose_8_or_32_bit(src.value, 0x2, 0)
-                    return rex(w, 0, dst) + [0x81 | size_flag] + mod_rm_sib(
-                            opcode, dst) + imm_bytes
+        # Convert size/opcode prefix enums to prefix bytes
+        spf = SIZE_PREFIX_BYTES[spec.spf]
+        opf = OPCODE_PREFIX_BYTES[spec.opf]
 
-            # Mov is also a bit different, but can mostly be handled like other ops
-            if self.opcode == 'mov':
-                opcode = 0x89
+        # Parse immediate
+        if isinstance(inst.args[-1], Immediate):
+            if 'sub_opcode' in spec.flags:
+                [src, imm] = inst.args
+                [opcode, dst] = spec.flags['sub_opcode']
             else:
-                opcode = 1 | opcode << 3
+                assert spec.vec_form & FLAG_IMM
+                [dst, src, imm] = inst.args
+            imm = pack8(imm.value)
+        else:
+            assert len(inst.args) == 2, inst
+            [dst, src] = inst.args
+            imm = []
 
-            # op reg, mem is handled by flipping the direction bit and
-            # swapping src/dst.
-            if isinstance(src, BaseAddress):
-                opcode = opcode | 0x2
-                [src, dst] = [dst, src]
+        if spec.flags.get('reverse'):
+            [dst, src] = [src, dst]
+        elif 'reverse_opcode' in spec.flags:
+            if isinstance(dst, Address):
+                [dst, src] = [src, dst]
+                opcode = spec.flags['reverse_opcode']
 
-            return rex(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
-        elif self.opcode in shift_table:
-            sub_opcode = shift_table[self.opcode]
-            [dst, src] = self.args
-            suffix = []
-            if isinstance(src, Immediate):
-                if src == 1:
-                    opcode = 0xD1
-                else:
-                    opcode = 0xC1
-                    suffix = pack8(src.value & 63)
-            else:
-                # Only CL
-                assert src.index == 1
-                opcode = 0xD3
-            return rex(w, 0, dst) + [opcode] + mod_rm_sib(sub_opcode, dst) + suffix
-        elif self.opcode in bt_table:
-            sub_opcode = bt_table[self.opcode]
-            [src, bit] = self.args
-            imm = pack8(bit.value)
-            return rex(w, 0, src) + [0x0F, 0xBA] + mod_rm_sib(sub_opcode, src) + imm
-        elif self.opcode in bs_table:
-            opcode = bs_table[self.opcode]
-            [dst, src] = self.args
-            return rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
-        elif self.opcode in cmov_table:
-            opcode = cmov_table[self.opcode]
-            [dst, src] = self.args
-            return rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
-        elif self.opcode == 'push':
-            [src] = self.args
-            if isinstance(src, Immediate):
-                [imm_bytes, opcode] = choose_8_or_32_bit(src.value, 0x6A, 0x68)
-                return [opcode] + imm_bytes
-            return rex(0, 0, src) + [0x50 | (src.index & 7)]
-        elif self.opcode == 'pop':
-            [dst] = self.args
-            return rex(0, 0, dst) + [0x58 | (dst.index & 7)]
-        elif self.opcode == 'imul':
-            # XXX only 2-operand version for now
-            [dst, src] = self.args
-            return rex(w, dst, src) + [0x0F, 0xAF] + mod_rm_sib(dst, src)
-        elif self.opcode == 'xchg':
-            [dst, src] = self.args
-            return rex(w, src, dst) + [0x87] + mod_rm_sib(src, dst)
-        elif self.opcode == 'lea':
-            [dst, src] = self.args
-            return rex(w, dst, src) + [0x8D] + mod_rm_sib(dst, src)
-        elif self.opcode == 'test':
-            # Test has backwards arguments, weird
-            [src2, src1] = self.args
-            return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
+        return (spf + rex(w, dst, src) + opf + [opcode] +
+                mod_rm_sib(dst, src) + imm)
+    elif inst.mnem in avx_table:
+        # Check instruction flags for w override
+        w = spec.flags.get('w', w)
+        vlen = 0 if spec.flags.get('vlen') == 128 else 1
+        opcode = spec.opcode
 
-        elif self.opcode in sse_table:
-            # Check instruction flags for w override
-            if 'w' in spec.flags:
-                w = spec.flags['w']
+        # Parse immediate
+        args = inst.args.copy()
+        imm = []
+        if spec.vec_form & FLAG_IMM:
+            imm = args.pop()
+            imm = pack8(imm.value)
 
-            opcode = spec.opcode
-
-            # Convert size/opcode prefix enums to prefix bytes
-            spf = SIZE_PREFIX_BYTES[spec.spf]
-            opf = OPCODE_PREFIX_BYTES[spec.opf]
-
-            # Parse immediate
-            if isinstance(self.args[-1], Immediate):
-                if 'sub_opcode' in spec.flags:
-                    [src, imm] = self.args
-                    [opcode, dst] = spec.flags['sub_opcode']
-                else:
-                    assert spec.vec_form & FLAG_IMM
-                    [dst, src, imm] = self.args
-                imm = pack8(imm.value)
-            else:
-                assert len(self.args) == 2, self
-                [dst, src] = self.args
-                imm = []
-
+        # Encode either 2-op or 3-op instruction
+        if spec.vec_form & FLAG_3OP:
+            [dst, src1, src2] = args
+            # Encode immediate
+            if isinstance(src2, Immediate):
+                assert 'sub_opcode' in spec.flags
+                assert not imm
+                imm = pack8(src2.value)
+                [src1, src2] = [dst, src1]
+                [opcode, dst] = spec.flags['sub_opcode']
+        else:
+            [dst, src] = args
             if spec.flags.get('reverse'):
                 [dst, src] = [src, dst]
             elif 'reverse_opcode' in spec.flags:
                 if isinstance(dst, Address):
                     [dst, src] = [src, dst]
                     opcode = spec.flags['reverse_opcode']
+            # x86 encodings are weird
+            [src1, src2] = [0, src]
 
-            return (spf + rex(w, dst, src) + opf + [opcode] +
-                    mod_rm_sib(dst, src) + imm)
-        elif self.opcode in avx_table:
-            # Check instruction flags for w override
-            w = spec.flags.get('w', w)
-            vlen = 0 if spec.flags.get('vlen') == 128 else 1
-            opcode = spec.opcode
-
-            # Parse immediate
-            args = self.args.copy()
-            imm = []
-            if spec.vec_form & FLAG_IMM:
-                imm = args.pop()
-                imm = pack8(imm.value)
-
-            # Encode either 2-op or 3-op instruction
-            if spec.vec_form & FLAG_3OP:
-                [dst, src1, src2] = args
-                # Encode immediate
-                if isinstance(src2, Immediate):
-                    assert 'sub_opcode' in spec.flags
-                    assert not imm
-                    imm = pack8(src2.value)
-                    [src1, src2] = [dst, src1]
-                    [opcode, dst] = spec.flags['sub_opcode']
-            else:
-                [dst, src] = args
-                if spec.flags.get('reverse'):
-                    [dst, src] = [src, dst]
-                elif 'reverse_opcode' in spec.flags:
-                    if isinstance(dst, Address):
-                        [dst, src] = [src, dst]
-                        opcode = spec.flags['reverse_opcode']
-                # x86 encodings are weird
-                [src1, src2] = [0, src]
-
-            return (vex(w, dst, src2, spec.opf, src1, vlen, spec.spf) + [opcode] +
-                    mod_rm_sib(dst, src2) + imm)
-        elif self.opcode in bmi_arg2_table:
-            opcode = bmi_arg2_table[self.opcode]
-            [dst, src] = self.args
-            return [0xF3] + rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
-        elif self.opcode in bmi_arg3_table:
-            [spf, opf, opcode] = bmi_arg3_table[self.opcode]
-            [dst, src1, src2] = self.args
-            if self.opcode in bmi_arg3_reversed:
-                [src2, src1] = [src1, src2]
-            return vex(w, dst, src1, opf, src2, 0, spf) + [opcode] + mod_rm_sib(dst, src1)
-        elif self.opcode in jump_table:
-            opcode = jump_table[self.opcode]
-            [src] = self.args
-            # XXX Since we don't know how far or in what direction we're jumping,
-            # punt and use disp32. We'll fill the offset in later.
-            return [0x0F, opcode, Relocation(src, 4)]
-        elif self.opcode in ['jmp', 'call']:
-            [src] = self.args
-            [opcode, sub_opcode] = {'jmp': [0xE9, 4], 'call': [0xE8, 2]}[self.opcode]
-            if isinstance(src, Label):
-                return [opcode, Relocation(src, 4)]
-            else:
-                return rex(0, 0, src) + [0xFF] + mod_rm_sib(sub_opcode, src)
-        elif self.opcode in setcc_table:
-            opcode = setcc_table[self.opcode]
-            [dst] = self.args
-            # Force REX since ah/bh etc. are used instead of sil etc. without it
-            force = isinstance(dst, GPReg) and dst.index & 0xC == 4
-            return rex(0, 0, dst, force=force) + [0x0F, opcode] + mod_rm_sib(0, dst)
-        assert False, self.opcode
-
-    def __str__(self):
-        if self.args:
-            args = []
-            for arg in self.args:
-                if isinstance(arg, Register):
-                    args = args + [str(arg)]
-                elif isinstance(arg, Address):
-                    # lea doesn't need a size since it's only the address...
-                    use_size_prefix = self.opcode != 'lea'
-                    args = args + [arg.to_str(use_size_prefix)]
-                else:
-                    assert isinstance(arg, (Immediate, Label, Data)), arg
-                    if self.opcode in shift_table:
-                        arg = arg.value & 63
-                    # XXX handle different immediate sizes (to convert to unsigned)
-                    args = args + [str(arg)]
-            argstr = ' ' + ','.join(args)
+        return (vex(w, dst, src2, spec.opf, src1, vlen, spec.spf) + [opcode] +
+                mod_rm_sib(dst, src2) + imm)
+    elif inst.mnem in bmi_arg2_table:
+        opcode = bmi_arg2_table[inst.mnem]
+        [dst, src] = inst.args
+        return [0xF3] + rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
+    elif inst.mnem in bmi_arg3_table:
+        [spf, opf, opcode] = bmi_arg3_table[inst.mnem]
+        [dst, src1, src2] = inst.args
+        if inst.mnem in bmi_arg3_reversed:
+            [src2, src1] = [src1, src2]
+        return vex(w, dst, src1, opf, src2, 0, spf) + [opcode] + mod_rm_sib(dst, src1)
+    elif inst.mnem in jump_table:
+        opcode = jump_table[inst.mnem]
+        [src] = inst.args
+        # XXX Since we don't know how far or in what direction we're jumping,
+        # punt and use disp32. We'll fill the offset in later.
+        return [0x0F, opcode, Relocation(src, 4)]
+    elif inst.mnem in ['jmp', 'call']:
+        [src] = inst.args
+        [opcode, sub_opcode] = {'jmp': [0xE9, 4], 'call': [0xE8, 2]}[inst.mnem]
+        if isinstance(src, Label):
+            return [opcode, Relocation(src, 4)]
         else:
-            argstr = ''
-        return self.opcode + argstr
+            return rex(0, 0, src) + [0xFF] + mod_rm_sib(sub_opcode, src)
+    elif inst.mnem in setcc_table:
+        opcode = setcc_table[inst.mnem]
+        [dst] = inst.args
+        # Force REX since ah/bh etc. are used instead of sil etc. without it
+        force = isinstance(dst, GPReg) and dst.index & 0xC == 4
+        return rex(0, 0, dst, force=force) + [0x0F, opcode] + mod_rm_sib(0, dst)
+    assert False, inst.mnem
 
 # Create raw code and data sections, along with a list of local/global/external
 # labels, suitable for passing directly to elf.create_elf_file.
@@ -1069,7 +1068,7 @@ def build(insts):
         elif isinstance(inst, GlobalLabel):
             global_labels.append((inst.name, 'code', len(code)))
         else:
-            for byte in inst.to_bytes():
+            for byte in assemble_inst(inst):
                 if not isinstance(byte, Relocation):
                     code.append(byte)
                     continue
