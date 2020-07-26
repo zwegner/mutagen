@@ -259,7 +259,7 @@ def node(arg_spec='', compare=False, base_type=None, ops=[]):
                 self.setup()
 
             # XXX kinda nasty, put this here for possible use by compiler.py later
-            self._uses = {}
+            self._users = {}
 
         # Iterate through all child nodes of this node
         def iterate_children(self):

@@ -54,7 +54,7 @@ class Literal(syntax.Node):
         return '<literal %s>' % self.value
 
 BLOCK_ID = 0
-@syntax.node('*stmts, *preds, ?test, *succs, #live_ins, #exit_states')
+@syntax.node('stmts, *preds, ?test, *succs, #live_ins, #exit_states')
 class BasicBlock(syntax.Node):
     def setup(self):
         global BLOCK_ID
@@ -137,79 +137,74 @@ class Usage:
         # __hash__ not being overrideable on a dict-by-dict basis
         return (NodeWrapper(self.user), self.type, self.edge_name, self.index)
 
-    def target(self):
-        if self.type in {ArgType.EDGE, ArgType.OPT}:
-            return getattr(self.user, self.edge_name)
-        elif self.type == ArgType.LIST:
-            container = getattr(self.user, self.edge_name)
-            return container[self.index] if self.index < len(container) else None
-        elif self.type == ArgType.DICT:
-            container = getattr(self.user, self.edge_name)
-            return container.get(self.index)
 
 def add_use(usage, node):
-    if usage.index == -1 and usage.type == ArgType.LIST:
-        container = getattr(usage.user, usage.edge_name)
-        usage.index = len(container)
-        container.append(None)
-
-    if usage.type in {ArgType.EDGE, ArgType.OPT}:
-        setattr(usage.user, usage.edge_name, node)
-    elif usage.type in {ArgType.LIST, ArgType.DICT}:
-        container = getattr(usage.user, usage.edge_name)
-        container[usage.index] = node
-
-    if node is not None:
-        node._uses[usage.key()] = usage
-
-def remove_use(usage):
-    old_node = usage.target()
-    if old_node is not None:
-        del old_node._uses[usage.key()]
-
-def replace_use(usage, node):
-    remove_use(usage)
-    add_use(usage, node)
+    node._users[usage.key()] = usage
 
 @add_to(syntax.Node)
 def forward(self, new_value):
-    while self._uses:
-        [_, usage] = self._uses.popitem()
-        assert usage.target() is self
+    while self._users:
+        [_, usage] = self._users.popitem()
+        if usage.type in {ArgType.EDGE, ArgType.OPT}:
+            assert getattr(usage.user, usage.edge_name) is self
+            setattr(usage.user, usage.edge_name, new_value)
+        else:
+            container = getattr(usage.user, usage.edge_name)
+            assert container[usage.index] is self
+            container[usage.index] = new_value
+
         add_use(usage, new_value)
 
-@add_to(syntax.Node)
-def remove_uses(self):
-    for child in self.iterate_children():
-        child.remove_uses_by(self)
-
-@add_to(syntax.Node)
-def remove_uses_by(self, user):
-    self._uses = {key: usage for [key, usage] in self._uses.items()
-            if usage.user is not user}
+def remove_children(node):
+    for child in node.iterate_children():
+        child._users = {key: usage for [key, usage] in child._users.items()
+                if usage.user is not node}
 
 def set_edge(node, name, value):
-    # XXX ArgType.EDGE is not necessarily accurate, for now rely on identical handling
-    # of EDGE/OPT for Usage, cuz I'm lazy
-    replace_use(Usage(node, name, ArgType.EDGE), value)
+    usage = Usage(node, name, ArgType.EDGE)
+    add_use(usage, value)
+    setattr(node, name, value)
 
-def append_to_edge_list(node, name, item):
-    # Don't need to check for an old node here
-    add_use(Usage(node, name, ArgType.LIST, index=-1), item)
+def remove_edge(node, name):
+    usage = Usage(node, name, ArgType.EDGE)
+    old_node = getattr(node, name)
+    if old_node is not None:
+        del old_node._users[usage.key()]
+    setattr(node, name, None)
 
-def set_edge_key(node, name, key, value):
-    replace_use(Usage(node, name, ArgType.DICT, index=key), value)
+# Unused right now
+#def append_to_edge_list(node, name, item):
+#    container = getattr(node, name)
+#    usage = Usage(node, name, ArgType.LIST, index=len(container))
+#    container.append(item)
+#    add_use(usage, item)
+
+def set_edge_key(node, edge_name, key, value):
+    d = getattr(node, edge_name)
+    usage = Usage(node, edge_name, ArgType.DICT, index=key)
+    if key in d:
+        del d[key]._users[usage.key()]
+    d[key] = value
+    add_use(usage, value)
+
+def remove_dict_key(node, edge_name, key):
+    d = getattr(node, edge_name)
+    usage = Usage(node, edge_name, ArgType.DICT, index=key)
+    del d[key]._users[usage.key()]
+    del d[key]
 
 def add_node_usages(node):
-    # For every node that this node uses, add a Usage object to its _uses list.
+    # For every node that this node uses, add a Usage object to its _users list.
     for (arg_type, arg_name) in type(node).arg_defs:
         child = getattr(node, arg_name)
         if arg_type in {ArgType.EDGE, ArgType.OPT}:
             if child is not None:
                 add_use(Usage(node, arg_name, arg_type), child)
-        elif arg_type in {ArgType.LIST, ArgType.DICT}:
-            children = enumerate(child) if arg_type == ArgType.LIST else child.items()
-            for [index, item] in children:
+        elif arg_type == ArgType.LIST:
+            for [index, item] in enumerate(child):
+                add_use(Usage(node, arg_name, arg_type, index=index), item)
+        elif arg_type == ArgType.DICT:
+            for [index, item] in child.items():
                 add_use(Usage(node, arg_name, arg_type, index=index), item)
 
 # Transform a node and its subtree into a neat graph. This doesn't traverse
@@ -362,7 +357,7 @@ def gen_blocks(self, current, exit_block):
         # Hacky way to check for default implementation... Any node that doesn't
         # override gen_blocks() is a "normal" node as far as the CFG is concerned
         if type(stmt).gen_blocks is syntax.Node.gen_blocks:
-            append_to_edge_list(current, 'stmts', stmt)
+            current.stmts.append(stmt)
     return current
 
 @add_to(syntax.Return)
@@ -370,7 +365,7 @@ def gen_blocks(self, current, exit_block):
     # Self expression is an essential aspect of the human experience
     if self.expr:
         assign = gen_assign('$return_value', self.expr, self)
-        append_to_edge_list(current, 'stmts', assign)
+        current.stmts.append(assign)
     link_blocks(current, exit_block)
     # XXX what to do here? Execution will never continue past a return, so we
     # can't have any sane CFG structure here. We return None for now, and try
@@ -455,8 +450,8 @@ def destructure_target(block, statements, lhs, rhs):
     elif isinstance(lhs, list):
         # XXX need to check target length
         for [i, lhs_i] in enumerate(lhs):
-            # XXX node tracking
             rhs_i = syntax.GetItem(rhs, syntax.Integer(i, info=rhs))
+            add_node_usages(rhs_i)
             statements.append(rhs_i)
             destructure_target(block, statements, lhs_i, rhs_i)
     else:
@@ -472,7 +467,7 @@ def gen_ssa_for_stmt(block, statements, stmt):
         elif isinstance(node, syntax.Assignment):
             for target in node.target.targets:
                 destructure_target(block, statements, target, node.rhs)
-            remove_use(Usage(node, 'rhs', ArgType.EDGE))
+            remove_edge(node, 'rhs')
         elif isinstance(node, syntax.Target):
             pass
         elif isinstance(node, syntax.Scope):
@@ -506,7 +501,7 @@ def gen_ssa(fn):
     # Other returns set this variable and jump to the exit block.
     ret = syntax.Return(syntax.Identifier('$return_value', info=fn))
     add_node_usages(ret)
-    append_to_edge_list(exit_block, 'stmts', ret)
+    exit_block.stmts.append(ret)
     last = fn.block.gen_blocks(first_block, exit_block)
 
     # Generate SSA for all normal nodes
@@ -515,15 +510,10 @@ def gen_ssa(fn):
         for [i, stmt] in enumerate(block.stmts):
             add_stmt = gen_ssa_for_stmt(block, statements, stmt)
 
-            # XXX need to prevent deletion here eventually
-            remove_use(Usage(block, 'stmts', ArgType.LIST, index=i))
-
         if block.test:
             gen_ssa_for_stmt(block, statements, block.test)
 
-        block.stmts = []
-        for stmt in statements:
-            append_to_edge_list(block, 'stmts', stmt)
+        block.stmts = statements
 
     # Propagate phis backwards through the CFG
     def propagate_phi(block, name):
@@ -540,9 +530,8 @@ def gen_ssa(fn):
     for block in walk_blocks(first_block):
         live_outs = {name: value for [name, value] in block.exit_states.items()
             if any(name in succ.live_ins for succ in block.succs)}
-        for name in block.exit_states:
-            if name not in live_outs:
-                remove_use(Usage(block, 'exit_states', ArgType.DICT, index=name))
+        for name in set(block.exit_states) - set(live_outs):
+            remove_dict_key(block, 'exit_states', name)
         block.exit_states = live_outs
 
     return first_block
@@ -637,7 +626,7 @@ def simplify_blocks(first_block):
         any_simplified = False
 
         for block in walk_blocks(first_block):
-            for stmt in block.stmts:
+            for [i, stmt] in enumerate(block.stmts):
                 # Look up simplification functions for this node
                 node_type = type(stmt)
                 if node_type in SIMPLIFIERS:
@@ -667,7 +656,8 @@ def simplify_blocks(first_block):
                                 # block.stmts list, which is messy...
                                 add_node_usages(result)
                                 stmt.forward(result)
-                                remove_uses(stmt)
+                                block.stmts[i] = result
+                                remove_children(stmt)
                                 any_simplified = True
 
     # Run DCE
@@ -677,19 +667,13 @@ def simplify_blocks(first_block):
         for block in walk_blocks(first_block):
             statements = []
             for [i, stmt] in enumerate(block.stmts):
-                if can_dce(stmt) and len(stmt._uses) == 1:
-                    assert list(stmt._uses.values())[0].user == block
+                if can_dce(stmt) and not stmt._users:
                     any_removed = True
-                    remove_uses(stmt)
+                    remove_children(stmt)
                 else:
                     statements.append(stmt)
 
-                # XXX need to prevent deletion here eventually
-                remove_use(Usage(block, 'stmts', ArgType.LIST, index=i))
-
-            block.stmts = []
-            for stmt in statements:
-                append_to_edge_list(block, 'stmts', stmt)
+            block.stmts = statements
 
 ################################################################################
 ## LIR conversion stuff ########################################################
