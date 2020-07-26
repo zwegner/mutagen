@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import collections.abc
+import struct
 import sys
 
 import sprdpl.parse as libparse
@@ -296,10 +297,16 @@ def mgi_address(node, expr):
 def mgi_static_data(node, l):
     if not all(isinstance(a, syntax.Integer) for a in l):
         return None
-    return Literal(create_data(l), info=node)
+    return Literal(create_data(l, 'B'), info=node)
 
-def create_data(items):
-    return lir.literal(asm.Data([i.value for i in items]))
+@mg_intrinsic([syntax.String])
+def mgi_static_string(node, s):
+    data = s.value.encode('utf-8')
+    return Literal(lir.literal(asm.Data(data)), info=node)
+
+def create_data(items, dtype):
+    data = struct.pack('<' + dtype * len(items), *[i.value for i in items])
+    return lir.literal(asm.Data(data))
 
 # Instruction wrappers
 
@@ -332,10 +339,20 @@ for spec in asm.INST_SPECS.values():
 # Vector literal instrinsics. XXX range checking
 
 create_intrinsic('vset1_u8', lambda node, arg:
-    Literal(lir.Inst('vpbroadcastb', create_data([arg])), info=node), [syntax.Integer])
+        Literal(lir.Inst('vpbroadcastb', create_data([arg], 'B')), info=node),
+        [syntax.Integer])
 
 create_intrinsic('vset32_u8', lambda node, *args:
-    Literal(lir.Inst('vmovdqu', create_data(args)), info=node), [syntax.Integer] * 32)
+        Literal(lir.Inst('vmovdqu', create_data(args, 'B')), info=node),
+        [syntax.Integer] * 32)
+
+create_intrinsic('vset1_u32', lambda node, arg:
+        Literal(lir.Inst('vpbroadcastd', create_data([arg], 'I')), info=node),
+        [syntax.Integer])
+
+create_intrinsic('vset8_u32', lambda node, *args:
+        Literal(lir.Inst('vmovdqu', create_data(args, 'I')), info=node),
+        [syntax.Integer] * 8)
 
 ################################################################################
 ## CFG stuff ###################################################################
