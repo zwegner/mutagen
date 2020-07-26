@@ -233,6 +233,15 @@ def transform_to_graph(node):
     # Un-reverse the functions before returning
     return functions[::-1]
 
+# Flatten a subgraph below a node into a statements list, and set up node tracking
+def create_subgraph(node, statements):
+    # Iterate the graph in topological order
+    for node in node.iterate_graph(preorder=False, blacklist=syntax.Scope):
+        if node._users:
+            continue
+        statements.append(node)
+        add_node_usages(node)
+
 ################################################################################
 ## Intrinsics ##################################################################
 ################################################################################
@@ -459,6 +468,7 @@ def load_name(block, name, info=None):
         value = add_phi(block, name, info=info)
     return value
 
+# Recursively destructure an assignment, like [a, [b, c]] = [0, [1, 2]]
 def destructure_target(block, statements, lhs, rhs):
     if isinstance(lhs, str):
         set_edge_key(block, 'exit_states', lhs, rhs)
@@ -466,8 +476,7 @@ def destructure_target(block, statements, lhs, rhs):
         # XXX need to check target length
         for [i, lhs_i] in enumerate(lhs):
             rhs_i = syntax.GetItem(rhs, syntax.Integer(i, info=rhs))
-            add_node_usages(rhs_i)
-            statements.append(rhs_i)
+            create_subgraph(rhs_i, statements)
             destructure_target(block, statements, lhs_i, rhs_i)
     else:
         assert False
