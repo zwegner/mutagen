@@ -405,6 +405,7 @@ def gen_blocks(self, current, exit_block):
         # override gen_blocks() is a "normal" node as far as the CFG is concerned
         if type(stmt).gen_blocks is syntax.Node.gen_blocks:
             current.stmts.append(stmt)
+    remove_children(self)
     return current
 
 @add_to(syntax.Return)
@@ -413,6 +414,7 @@ def gen_blocks(self, current, exit_block):
     if self.expr:
         assign = gen_assign('$return_value', self.expr, self)
         current.stmts.append(assign)
+        remove_children(self)
     link_blocks(current, exit_block)
     # XXX what to do here? Execution will never continue past a return, so we
     # can't have any sane CFG structure here. We return None for now, and try
@@ -435,6 +437,7 @@ def gen_blocks(self, current, exit_block):
     link_blocks(test_block_last, end_block)
     if last:
         link_blocks(last, test_block)
+    remove_children(self)
     return end_block
 
 @add_to(syntax.IfElse)
@@ -448,6 +451,7 @@ def gen_blocks(self, current, exit_block):
     else_last = self.else_block.gen_blocks(else_first, exit_block)
     link_blocks(current, if_first)
     link_blocks(current, else_first)
+    remove_children(self)
     if if_last or else_last:
         end_block = basic_block()
         if if_last:
