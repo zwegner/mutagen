@@ -338,8 +338,10 @@ def walk_blocks(block):
         work_list.extend(new)
         seen.update(new)
 
-def print_blocks(block):
-    for block in walk_blocks(block):
+def print_blocks(fn, first_block):
+    print()
+    print(fn.name)
+    for block in walk_blocks(first_block):
         print('Block', block.block_id)
         print('  preds:', ' '.join([str(b.block_id) for b in block.preds]))
         print('  succs:', ' '.join([str(b.block_id) for b in block.succs]))
@@ -347,7 +349,7 @@ def print_blocks(block):
         if block.stmts:
             print('  stmts:')
             for stmt in block.stmts:
-                print('    ', stmt.repr(None))
+                print('    ', hex(id(stmt)), stmt.repr(None))
         if block.test:
             print('  test', block.test.repr(None))
         print('  outs:', ' '.join(sorted(block.exit_states)))

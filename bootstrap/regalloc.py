@@ -705,6 +705,7 @@ def allocate_registers(fn):
     return insts
 
 def print_insts(insts):
+    print()
     for inst in insts:
         if isinstance(inst, asm.Label):
             print('{}:'.format(inst.name))
