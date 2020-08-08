@@ -622,7 +622,9 @@ def gen_ssa(fn):
     # Trim unneeded values from exit_states
     for block in walk_blocks(fn.first_block):
         live_outs = {name: value for [name, value] in block.exit_states.items()
-            if any(name in succ.live_ins for succ in block.succs)}
+                if any(name in succ.live_ins for succ in block.succs) or
+                # HACK: preserve return value in exit block live outs
+                '$return_value' in name }
         for name in set(block.exit_states) - set(live_outs):
             remove_dict_key(block, 'exit_states', name)
         block.exit_states = live_outs
@@ -884,9 +886,10 @@ def simplify_fn(fn):
             # Merge any blocks that don't have any other predecessors/successors
             if len(block.succs) == 1 and len(block.succs[0].preds) == 1:
                 succ = block.succs[0]
-                deleted.add(succ)
-                merge_blocks(block, succ)
-                any_simplified = True
+                if succ is not fn.exit_block:
+                    deleted.add(succ)
+                    merge_blocks(block, succ)
+                    any_simplified = True
 
 ################################################################################
 ## LIR conversion stuff ########################################################
