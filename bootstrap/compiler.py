@@ -756,6 +756,8 @@ def merge_blocks(pred, succ):
     # ...and replace with the new exit states
     for [name, value] in succ.exit_states.items():
         set_edge_key(pred, 'exit_states', name, value)
+    # ...and clear the successor exit states for refcounting purposes
+    clear_edge_dict(succ, 'exit_states')
 
     # Pred gets the test from succ
     assert not pred.test
