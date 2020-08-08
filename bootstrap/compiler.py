@@ -88,45 +88,22 @@ class PhiSelect(syntax.Node):
 ## Graph stuff #################################################################
 ################################################################################
 
-# Here we have a dumb custom dict class to be able to hash nodes based on just
-# their identity and not use the regular __hash__/__eq__ machinery (which works
-# with Mutagen semantics, possibly calling user code, since we need a fast dict
-# implementation in the bootstrap).
+# Dirty code alert! Throughout the compiler (i.e. the code here, not in the
+# bootstrap interpreter), we need basic hashing/equality of nodes, using the
+# default Python object behavior (based on reference equality only). But all
+# the bootstrap interpreter, for better or worse, was written to override
+# __hash__/__eq__ for Mutagen-level equality. Python doesn't allow customization
+# of hashing/equality on a per-dict basis, so we originally solved this problem
+# with wrapper objects around each node. That sucks, though, so instead we use
+# the dynamic nature of Python to do something pretty awful: we just delete
+# the overridden functions! The eq/hash functionality here and in the interpreter
+# are pretty much mutually exclusive (AFAIK...?), and should stay that way, so
+# this is fairly safe. #YOLO
 
-# Basic wrapper for every node to override its __hash__/__eq__. Sucks
-# that we have this O(n) memory overhead...
-class NodeWrapper:
-    def __init__(self, node):
-        assert isinstance(node, syntax.Node), '%s: %s' % (type(node), repr(node))
-        self.node = node
-    def __hash__(self):
-        return id(self.node)
-    def __eq__(self, other):
-        return self.node is other.node
-    def __repr__(self):
-        return 'NW(%s)' % repr(self.node)
-
-# Dictionary that wraps every key with a NodeWrapper
-class NodeDict(collections.abc.MutableMapping):
-    def __init__(self, *args, **kwargs):
-        self._items = {}
-        self.update(dict(*args, **kwargs))
-
-    def __getitem__(self, key):
-        return self._items[NodeWrapper(key)]
-    def __setitem__(self, key, value):
-        self._items[NodeWrapper(key)] = value
-    def __delitem__(self, key):
-        del self._items[NodeWrapper(key)]
-
-    def __iter__(self):
-        for key in self._items:
-            yield key.node
-    def __len__(self):
-        return len(self._items)
-
-    def __repr__(self):
-        return repr(self._items)
+for nt in syntax.ALL_NODE_TYPES:
+    if '__eq__' in nt.__dict__:
+        del nt.__eq__
+        del nt.__hash__
 
 # Machinery for 'smart' nodes in the IR graph, that track uses and can replace
 # a given node in all nodes that use it.
@@ -141,7 +118,7 @@ class Usage:
     def key(self):
         # Use a wrapper for the user here. More annoying stuff to handle
         # __hash__ not being overrideable on a dict-by-dict basis
-        return (NodeWrapper(self.user), self.type, self.edge_name, self.index)
+        return (self.user, self.type, self.edge_name, self.index)
 
 
 def add_use(usage, node):
@@ -910,8 +887,8 @@ def block_name(block):
     return 'block$%s' % block.block_id
 
 def generate_lir(first_block):
-    node_map = NodeDict()
-    block_map = NodeDict()
+    node_map = {}
+    block_map = {}
     new_blocks = []
 
     # Generate LIR blocks, and the write portion of the phis (this is for

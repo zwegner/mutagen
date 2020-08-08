@@ -205,6 +205,8 @@ class Node:
     def eval_call(self, ctx, args, kwargs):
         self.error('__call__ unimplemented for %s' % get_type_name(ctx, self), ctx=ctx)
 
+ALL_NODE_TYPES = []
+
 ArgType = enum.Enum('ArgType', 'REG EDGE OPT LIST DICT')
 
 arg_map = {'&': ArgType.EDGE, '?': ArgType.OPT, '*': ArgType.LIST, '#': ArgType.DICT}
@@ -230,6 +232,8 @@ def node(arg_spec='', compare=False, base_type=None, ops=[]):
     # Decorators must return a function. This adds __init__ and some other methods
     # to a Node subclass
     def attach(node):
+        ALL_NODE_TYPES.append(node)
+
         def __init__(self, *iargs, info=None):
             assert len(iargs) == len(args), 'bad args, expected %s(%s)' % (node.__name__, arg_spec)
 
