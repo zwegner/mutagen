@@ -230,6 +230,60 @@ def create_subgraph(node, statements):
         statements.append(node)
         add_node_usages(node)
 
+# Node/block copy functions. Each function takes a prefix to modify phi names with,
+# so that the names can stay unique when moved into a new namespace
+
+def copy_node(node, node_map, prefix):
+    if isinstance(node, syntax.Function):
+        node_map[node] = node
+        return node
+    if node in node_map:
+        return node_map[node]
+
+    args = []
+    for [arg_type, arg_name] in type(node).arg_defs:
+        child = getattr(node, arg_name)
+        if arg_type == ArgType.REG:
+            assert isinstance(child, (int, str)), child
+            args.append(child)
+        elif arg_type in {ArgType.EDGE, ArgType.OPT}:
+            args.append(node_map[child])
+        elif arg_type == ArgType.LIST:
+            args.append([node_map[i] for i in child])
+        elif arg_type == ArgType.DICT:
+            args.append({k: node_map[v] for [k, v] in child.items()})
+
+    new_node = type(node)(*args, info=node)
+    add_node_usages(new_node)
+    if isinstance(new_node, PhiSelect):
+        new_node.name = prefix + new_node.name
+    node_map[node] = new_node
+    return new_node
+
+def copy_block(block, node_map, prefix):
+    if block in node_map:
+        return node_map[block]
+    new_block = basic_block()
+    node_map[block] = new_block
+
+    for [name, node] in block.live_ins.items():
+        node = copy_node(node, node_map, prefix)
+        set_edge_key(new_block, 'live_ins', prefix + name, node)
+
+    new_block.stmts = [copy_node(stmt, node_map, prefix) for stmt in block.stmts]
+
+    if block.test:
+        set_edge(new_block, 'test', node_map[block.test])
+
+    for [name, node] in block.exit_states.items():
+        node = copy_node(node, node_map, prefix)
+        set_edge_key(new_block, 'exit_states', prefix + name, node)
+
+    new_block.preds = [copy_block(pred, node_map, prefix) for pred in block.preds]
+    new_block.succs = [copy_block(succ, node_map, prefix) for succ in block.succs]
+
+    return new_block
+
 ################################################################################
 ## Intrinsics ##################################################################
 ################################################################################
