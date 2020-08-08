@@ -590,6 +590,13 @@ def gen_ssa_for_stmt(block, statements, stmt):
         else:
             statements.append(node)
 
+# Propagate phis backwards through the CFG
+def propagate_phi(block, name):
+    for pred in block.preds:
+        if name not in pred.exit_states:
+            value = add_phi(pred, name, info=BI)
+            propagate_phi(pred, name)
+
 def gen_ssa(fn):
     assert isinstance(fn, syntax.Function)
     fn.first_block = basic_block(name='enter_block')
@@ -614,13 +621,6 @@ def gen_ssa(fn):
             gen_ssa_for_stmt(block, statements, block.test)
 
         block.stmts = statements
-
-    # Propagate phis backwards through the CFG
-    def propagate_phi(block, name):
-        for pred in block.preds:
-            if name not in pred.exit_states:
-                value = add_phi(pred, name, info=BI)
-                propagate_phi(pred, name)
 
     for block in walk_blocks(fn.first_block):
         for name in block.live_ins:
@@ -833,6 +833,123 @@ def merge_blocks(pred, succ):
     for s in pred.succs:
         s.preds = [pred if p is succ else p for p in s.preds]
 
+# We prefix phi names in inlined functions with a unique prefix so they don't
+# collide in the parent scope, based on this ID
+INLINE_ID = 0
+# We also need to create new temporary variables for phis when values are used across
+# inlined calls. By the time functions start getting inlined, the identifiers are
+# long gone, and furthermore, we might be carrying across values that never were
+# assigned to variables, like the value of a() if b() gets inlined in x = a() + b()
+PHI_TEMP_ID = 0
+
+# Inline a call at statement number <i> of the given block. This chops the block
+# in half, copies the function's blocks, and pastes them in the middle, fixing up
+# phis based on the arguments passed and return value. We also have to handle SSA
+# use edges that cross the call statement, creating a new phi that propagates
+# across all the inlined blocks
+def inline_function(block, i, call):
+    global INLINE_ID
+    fn = call.fn
+    # The function should already have SSA generation/simplification run on it
+    assert hasattr(fn, 'first_block')
+
+    prefix = '$inl_%s$' % INLINE_ID
+    INLINE_ID += 1
+
+    # Copy the inlined function's blocks
+    node_map = {}
+    node_map[None] = None # dumb hack
+    first_block = copy_block(fn.first_block, node_map, prefix)
+    exit_block = node_map[fn.exit_block]
+
+    # Split the current basic block in half
+    end_stmts = block.stmts[i+1:]
+    end_block = basic_block(stmts=end_stmts)
+    del block.stmts[i:]
+    if block.test:
+        set_edge(end_block, 'test', block.test)
+        remove_edge(block, 'test')
+
+    # Patch successors' predecessor lists
+    end_block.succs = block.succs
+    block.succs = []
+    for s in end_block.succs:
+        s.preds = [end_block if p is block else p for p in s.preds]
+
+    link_blocks(block, first_block)
+    link_blocks(exit_block, end_block)
+
+    # Keep track of nodes defined before the split
+    first_half_nodes = set(block.live_ins.values())
+    first_half_nodes.update(block.stmts)
+
+    # Move exit states from the first half to the last
+    for [name, value] in sorted(block.exit_states.items()):
+        if name not in first_half_nodes:
+            set_edge_key(end_block, 'exit_states', name, value)
+            remove_dict_key(block, 'exit_states', name)
+
+    # Patch arguments
+    assert not fn.params.var_params
+    assert not fn.params.kw_params
+    assert not fn.params.kw_var_params
+    params = fn.params.params
+    if hasattr(fn, 'extra_args'):
+        params = fn.extra_args + params
+    assert len(params) == len(call.args)
+    for [name, value] in zip(params, call.args):
+        name = prefix + name
+        set_edge_key(block, 'exit_states', name, value)
+
+    # Patch return value
+    [return_stmt] = exit_block.stmts
+    assert isinstance(return_stmt, syntax.Return)
+    return_id = prefix + '$return_value'
+    assert return_id in exit_block.exit_states
+    return_phi = add_phi(end_block, return_id, info=return_stmt)
+    propagate_phi(end_block, return_id)
+    remove_children(return_stmt)
+    del exit_block.stmts[0]
+    call.forward(return_phi)
+
+    # Helper function to create a new phi and propagate it backwards through
+    # the inlined function's CFG
+    new_phis = {}
+    def make_phi(node):
+        global PHI_TEMP_ID
+        nonlocal new_phis
+        if node not in new_phis:
+            temp = '$phi_temp_%s' % PHI_TEMP_ID
+            PHI_TEMP_ID += 1
+            # First, make sure to add the phi to the exit state of the first
+            # half of the split block
+            set_edge_key(block, 'exit_states', temp, node)
+
+            new_phis[node] = add_phi(end_block, temp, info=node)
+            propagate_phi(end_block, temp)
+        return new_phis[node]
+
+    # See which nodes in the first half of the block (before the call) are used
+    # after the call: we have to create new phi entries for these values. We've
+    # already eliminated identifiers, so we need to create new temporary names
+    for stmt in (end_block.stmts + [end_block.test]):
+        if stmt is None:
+            continue
+        # This is a bit gross as far as abstractions go...
+        for [arg_type, arg_name] in type(stmt).arg_defs:
+            if arg_type in {ArgType.EDGE, ArgType.OPT}:
+                child = getattr(stmt, arg_name)
+                if child is not None and child in first_half_nodes:
+                    set_edge(stmt, arg_name, make_phi(child))
+            elif arg_type == ArgType.LIST:
+                for [index, child] in enumerate(getattr(stmt, arg_name)):
+                    if child in first_half_nodes:
+                        set_edge_index(stmt, arg_name, index, make_phi(child))
+            elif arg_type == ArgType.DICT:
+                for [key, child] in getattr(stmt, arg_name).items():
+                    if child in first_half_nodes:
+                        set_edge_key(stmt, arg_name, key, make_phi(child))
+
 def simplify_fn(fn):
     # Basic simplification pass. We repeatedly run the full simplification until
     # nothing gets simplified, which is a bit wasteful, since simplifications
@@ -868,9 +985,13 @@ def simplify_fn(fn):
                     # means we rerun the simplify pass over the new nodes.
                     block.stmts[i:i+1] = new_stmts
                     any_simplified = True
-                else:
-                    i += 1
+                    continue
 
+                # Try inlining function calls
+                if isinstance(node, syntax.Call) and isinstance(node.fn, syntax.Function):
+                    inline_function(block, i, node)
+
+                i += 1
         # Second pass: try to simplify the CFG
         deleted = set()
         for block in walk_blocks(fn.first_block):
