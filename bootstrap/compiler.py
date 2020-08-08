@@ -60,18 +60,19 @@ class Literal(syntax.Node):
         return '<literal %s>' % self.value
 
 BLOCK_ID = 0
-@syntax.node('stmts, preds, ?test, succs, #live_ins, #exit_states')
+@syntax.node('name, stmts, preds, ?test, succs, #live_ins, #exit_states')
 class BasicBlock(syntax.Node):
     def setup(self):
         global BLOCK_ID
         self.block_id = BLOCK_ID
         BLOCK_ID += 1
+        self.name = '%s$%s' % (self.name or 'block', self.block_id)
 
 # Just a dumb helper because our @node() decorator doesn't support keyword
 # args or defaults
-def basic_block(stmts=None, preds=None, test=None, succs=None,
+def basic_block(name=None, stmts=None, preds=None, test=None, succs=None,
         live_ins=None, exit_states=None):
-    return BasicBlock(stmts or [], preds or [], test, succs or [],
+    return BasicBlock(name, stmts or [], preds or [], test, succs or [],
             live_ins or {}, exit_states or {}, info=BI)
 
 @syntax.node('#args')
@@ -534,8 +535,8 @@ def gen_ssa_for_stmt(block, statements, stmt):
 def gen_ssa(fn):
     # First off, generate a CFG
     assert isinstance(fn, syntax.Function)
-    first_block = basic_block()
-    exit_block = basic_block()
+    fn.first_block = basic_block(name='enter_block')
+    fn.exit_block = basic_block(name='exit_block')
     # Add a return in the exit block of the special variable $return_value.
     # This is the only return that doesn't get handled by gen_blocks().
     # Other returns set this variable and jump to the exit block.
@@ -883,9 +884,6 @@ def gen_lir_for_node(block, node, block_map, node_map):
         return list(node.value.flatten())
     assert False, str(node)
 
-def block_name(block):
-    return 'block$%s' % block.block_id
-
 def generate_lir(first_block):
     node_map = {}
     block_map = {}
@@ -907,7 +905,7 @@ def generate_lir(first_block):
         # LIR nodes are created
         phi_read = lir.PhiR(block.exit_states)
 
-        b = lir.BasicBlock(block_name(block), phi_write, phi_selects,
+        b = lir.BasicBlock(block.name, phi_write, phi_selects,
                 insts, None, phi_read, block.preds, block.succs)
         new_blocks.append(b)
         block_map[block] = b
