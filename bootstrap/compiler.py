@@ -165,6 +165,13 @@ def remove_edge(node, name):
 #    container.append(item)
 #    add_use(usage, item)
 
+def set_edge_index(node, edge_name, index, value):
+    l = getattr(node, edge_name)
+    usage = Usage(node, edge_name, ArgType.LIST, index=index)
+    del l[index]._users[usage.key()]
+    l[index] = value
+    add_use(usage, value)
+
 def set_edge_key(node, edge_name, key, value):
     d = getattr(node, edge_name)
     usage = Usage(node, edge_name, ArgType.DICT, index=key)
