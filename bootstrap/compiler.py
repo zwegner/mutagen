@@ -888,17 +888,34 @@ def generate_lir(fn):
     block_map = {}
     new_blocks = []
 
+    # Create a parameter name->number dictionary for the first block
+    assert not fn.params.var_params
+    assert not fn.params.kw_params
+    assert not fn.params.kw_var_params
+    params = fn.params.params
+    if hasattr(fn, 'extra_args'):
+        params = fn.extra_args + params
+    params = {name: i for [i, name] in enumerate(params)}
+
     # Generate LIR blocks, and the write portion of the phis (this is for
     # variables that are used before they are defined in a block, aka live ins).
     for block in walk_blocks(fn.first_block):
-        phi_write = lir.PhiW(None, block.live_ins)
+        phi_write = lir.PhiW(None, {} if block is fn.first_block else block.live_ins)
         phi_selects = {}
         insts = []
         for [name, live_in] in sorted(block.live_ins.items()):
-            sel = lir.PhiSelect(phi_write, name)
-            phi_selects[name] = sel
-            node_map[live_in] = sel
-            insts.append(sel)
+            # For the first block, create parameter LIR objects to bind to the
+            # parameter names directly in place of PhiSelects
+            if block is fn.first_block:
+                assert name in params, (name, params)
+                value = lir.parameter(params[name])
+            else:
+                assert isinstance(live_in, PhiSelect)
+                value = lir.PhiSelect(phi_write, name)
+                phi_selects[name] = value
+
+            node_map[live_in] = value
+            insts.append(value)
 
         # Create the phi read with MIR nodes, we'll fix it up after all
         # LIR nodes are created
@@ -950,18 +967,6 @@ def generate_lir(fn):
 ################################################################################
 
 def compile_fn(fn):
-    # Create argument bindings
-    assert not fn.params.var_params
-    assert not fn.params.kw_params
-    assert not fn.params.kw_var_params
-    prologue = []
-    params = fn.params.params
-    if hasattr(fn, 'extra_args'):
-        params = fn.extra_args + params
-    for [i, name] in enumerate(params):
-        prologue.append(gen_assign(name, Parameter(i, info=fn), fn))
-    fn.block.stmts = prologue + fn.block.stmts
-
     # Convert to graph representation, collecting nested functions
     extra_functions = transform_to_graph(fn)
 

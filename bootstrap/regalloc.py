@@ -206,6 +206,9 @@ def get_result_type(node: lir.Node):
     if isinstance(node, lir.Inst):
         if node.opcode == 'literal':
             return get_result_type(node.args[0])
+        # XXX
+        elif node.opcode == 'parameter':
+            return asm.GPReg
         spec = asm.INST_SPECS[node.opcode]
         # Return the type of the first argument of the first form
         return spec.forms[0][0][0]
