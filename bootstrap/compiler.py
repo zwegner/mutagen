@@ -359,10 +359,10 @@ def walk_blocks(block):
         work_list.extend(new)
         seen.update(new)
 
-def print_blocks(fn, first_block):
+def print_blocks(fn):
     print()
     print(fn.name)
-    for block in walk_blocks(first_block):
+    for block in walk_blocks(fn.first_block):
         print('Block', block.block_id)
         print('  preds:', ' '.join([str(b.block_id) for b in block.preds]))
         print('  succs:', ' '.join([str(b.block_id) for b in block.succs]))
@@ -533,7 +533,6 @@ def gen_ssa_for_stmt(block, statements, stmt):
             statements.append(node)
 
 def gen_ssa(fn):
-    # First off, generate a CFG
     assert isinstance(fn, syntax.Function)
     fn.first_block = basic_block(name='enter_block')
     fn.exit_block = basic_block(name='exit_block')
@@ -542,11 +541,13 @@ def gen_ssa(fn):
     # Other returns set this variable and jump to the exit block.
     ret = syntax.Return(syntax.Identifier('$return_value', info=fn))
     add_node_usages(ret)
-    exit_block.stmts.append(ret)
-    last = fn.block.gen_blocks(first_block, exit_block)
+    fn.exit_block.stmts.append(ret)
+
+    # Convert the AST into a CFG
+    last = fn.block.gen_blocks(fn.first_block, fn.exit_block)
 
     # Generate SSA for all normal nodes
-    for block in walk_blocks(first_block):
+    for block in walk_blocks(fn.first_block):
         statements = []
         for [i, stmt] in enumerate(block.stmts):
             add_stmt = gen_ssa_for_stmt(block, statements, stmt)
@@ -563,19 +564,17 @@ def gen_ssa(fn):
                 value = add_phi(pred, name, info=BI)
                 propagate_phi(pred, name)
 
-    for block in walk_blocks(first_block):
+    for block in walk_blocks(fn.first_block):
         for name in block.live_ins:
             propagate_phi(block, name)
 
     # Trim unneeded values from exit_states
-    for block in walk_blocks(first_block):
+    for block in walk_blocks(fn.first_block):
         live_outs = {name: value for [name, value] in block.exit_states.items()
             if any(name in succ.live_ins for succ in block.succs)}
         for name in set(block.exit_states) - set(live_outs):
             remove_dict_key(block, 'exit_states', name)
         block.exit_states = live_outs
-
-    return first_block
 
 ################################################################################
 ## Optimization stuff ##########################################################
@@ -772,7 +771,7 @@ def merge_blocks(pred, succ):
     for s in pred.succs:
         s.preds = [pred if p is succ else p for p in s.preds]
 
-def simplify_fn(fn, first_block):
+def simplify_fn(fn):
     # Basic simplification pass. We repeatedly run the full simplification until
     # nothing gets simplified, which is a bit wasteful, since simplifications
     # only rarely trigger downstream simplifications, but oh well
@@ -781,7 +780,7 @@ def simplify_fn(fn, first_block):
         any_simplified = False
 
         # First pass: run DCE and graph rewriting
-        for block in walk_blocks(first_block):
+        for block in walk_blocks(fn.first_block):
             # Loop over all statements in the block. The statement list can get
             # dynamically modified so use a manual index.
             i = 0
@@ -812,7 +811,7 @@ def simplify_fn(fn, first_block):
 
         # Second pass: try to simplify the CFG
         deleted = set()
-        for block in walk_blocks(first_block):
+        for block in walk_blocks(fn.first_block):
             # This should never trigger, since the walk_blocks() generator only 
             # adds a block's successors to the queue after the block has been
             # yielded. Whenever we delete a block, it can only be reached through
@@ -884,14 +883,14 @@ def gen_lir_for_node(block, node, block_map, node_map):
         return list(node.value.flatten())
     assert False, str(node)
 
-def generate_lir(first_block):
+def generate_lir(fn):
     node_map = {}
     block_map = {}
     new_blocks = []
 
     # Generate LIR blocks, and the write portion of the phis (this is for
     # variables that are used before they are defined in a block, aka live ins).
-    for block in walk_blocks(first_block):
+    for block in walk_blocks(fn.first_block):
         phi_write = lir.PhiW(None, block.live_ins)
         phi_selects = {}
         insts = []
@@ -911,7 +910,7 @@ def generate_lir(first_block):
         block_map[block] = b
 
     # Generate LIR for all normal nodes
-    for block in walk_blocks(first_block):
+    for block in walk_blocks(fn.first_block):
         lir_block = block_map[block]
         for stmt in block.stmts:
             # HACK to get around duplicated nodes in the statement list
@@ -970,11 +969,11 @@ def compile_fn(fn):
     for extra_fn in extra_functions:
         yield from compile_fn(extra_fn)
 
-    first_block = gen_ssa(fn)
+    gen_ssa(fn)
 
-    simplify_fn(fn, first_block)
+    simplify_fn(fn)
 
-    lir_blocks = generate_lir(first_block)
+    lir_blocks = generate_lir(fn)
 
     # Add the final LIR function to the main list of functions
     yield lir.Function('_' + fn.name, fn.params.params, lir_blocks)
