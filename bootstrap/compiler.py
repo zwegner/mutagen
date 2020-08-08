@@ -514,18 +514,15 @@ def gen_ssa_for_stmt(block, statements, stmt):
         elif isinstance(node, syntax.Scope):
             # Only functions for now, no classes/comprehensions
             assert isinstance(node.expr, syntax.Function)
-            # XXX need to make sure this name is unique
-            label = ExternSymbol('_' + node.expr.name, info=node)
+            fn = node.expr
 
             # Create a partial application if there are variables used from
             # an outer scope
             if node.extra_args:
-                statements.append(label)
-                fn = syntax.PartialFunction(label, [load_name(block, arg, info=node)
+                statements.append(fn)
+                fn = syntax.PartialFunction(fn, [load_name(block, arg, info=node)
                         for arg in node.extra_args])
                 add_node_usages(fn)
-            else:
-                fn = label
 
             node.forward(fn)
             statements.append(fn)
@@ -871,6 +868,9 @@ def gen_lir_for_node(block, node, block_map, node_map):
         return lir.literal(node.value)
     elif isinstance(node, syntax.Call):
         return lir.call(node_map[node.fn], *[node_map[arg] for arg in node.args])
+    elif isinstance(node, syntax.Function):
+        # XXX need to make sure this name is unique
+        return lir.literal(asm.ExternLabel('_' + node.name))
     elif isinstance(node, syntax.Return):
         return lir.Return(node_map[node.expr])
     elif isinstance(node, Instruction):
