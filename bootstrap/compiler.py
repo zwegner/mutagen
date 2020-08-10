@@ -28,11 +28,6 @@ def gen_assign(name, expr, info):
 
 # Some extra syntax node types, basically wrappers for LIR type stuff
 
-@syntax.node('index')
-class Parameter(syntax.Node):
-    def repr(self, ctx):
-        return 'Param(%s)' % self.index
-
 @syntax.node('name')
 class ExternSymbol(syntax.Node):
     def repr(self, ctx):
@@ -1047,8 +1042,6 @@ def gen_lir_for_node(block, node, block_map, node_map):
             cc = CMP_TABLE[node.type]
             return [lir.cmp(node_map[node.lhs], node_map[node.rhs]),
                     lir.Inst('set' + cc)]
-    elif isinstance(node, Parameter):
-        return lir.parameter(node.index)
     elif isinstance(node, ExternSymbol):
         return lir.literal(asm.ExternLabel(node.name))
     elif isinstance(node, syntax.Integer):
