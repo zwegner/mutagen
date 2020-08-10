@@ -31,6 +31,8 @@ class RegSet:
         if isinstance(item, self.reg_type):
             return item.index in self.items
         return False
+    def __and__(self, other):
+        return RegSet(self.reg_type, (i for i in self if i in other))
     def __len__(self):
         return len(self.items)
     def __repr__(self):
@@ -47,6 +49,7 @@ FREE_REGS = RegSet(asm.GPReg, sorted(ALL_REGISTERS, key=lambda r: r in CALLER_SA
 
 VEC_FREE_REGS = RegSet(asm.VecReg, list(range(16)))
 VEC_CALLER_SAVE = VEC_FREE_REGS
+VEC_CALLEE_SAVE = RegSet(asm.VecReg, [])
 
 [RSP, RBP] = [asm.GPReg(4), asm.GPReg(5)]
 
@@ -243,8 +246,11 @@ class RegAllocContext:
         self.free_regs = None
         self.insts = None
 
-    def alloc_reg(self, reg_type):
-        reg = self.free_regs[reg_type].pop()
+    def alloc_reg(self, reg_type, free_regs=None):
+        if free_regs is None:
+            free_regs = self.free_regs[reg_type]
+        assert free_regs.reg_type is reg_type, (node, free_regs.reg_type, reg_type)
+        reg = free_regs.pop()
         self.clobbered_regs[reg_type].add(reg)
         return reg
 
@@ -258,11 +264,7 @@ class RegAllocContext:
         if isinstance(node, asm.Data):
             return node
         reg_type = get_result_type(node)
-        if free_regs is None:
-            free_regs = self.free_regs[reg_type]
-        assert free_regs.reg_type is reg_type, (free_regs.reg_type, reg_type)
-        reg = free_regs.pop()
-        self.clobbered_regs[reg_type].add(reg)
+        reg = self.alloc_reg(reg_type, free_regs=free_regs)
         # Need special handling for labels--use lea of the RIP-relative
         # address, provided by a relocation later
         if isinstance(node, asm.ExternLabel):
@@ -366,24 +368,20 @@ def move_phi_args(phi_read, phi_write, keys, free_regs):
     return parallel_copy([phi_read[k] for k in keys],
             [phi_write[k] for k in keys], free_regs)
 
-def gen_save_insts(live_regs, extra_stack=0):
-    regs = {asm.GPReg: [], asm.VecReg: []}
-    for reg in live_regs:
-        regs[get_result_type(reg)].append(reg)
-
+def gen_save_insts(gp_regs, vec_regs, extra_stack=0):
     [save_insts, restore_insts] = [[asm.Instruction(op, reg)
-            for reg in regs[asm.GPReg]] for op in ['push', 'pop']]
+            for reg in gp_regs] for op in ['push', 'pop']]
     restore_insts = restore_insts[::-1]
 
     stack_size = len(save_insts) * 8
 
-    for [i, reg] in enumerate(regs[asm.VecReg]):
+    for [i, reg] in enumerate(vec_regs):
         addr = asm.Address(RSP.index, 0, 0, asm.VEC_SIZE_BYTES * i,
                 size=asm.VEC_SIZE_BITS)
         save_insts.append(asm.VEC_MOVE(addr, reg))
         restore_insts.insert(0, asm.VEC_MOVE(reg, addr))
 
-    extra_stack += asm.VEC_SIZE_BYTES * len(regs[asm.VecReg])
+    extra_stack += asm.VEC_SIZE_BYTES * len(vec_regs)
 
     # Round up to a multiple of 16
     stack_adj = ((stack_size + extra_stack + 15) & ~15) - stack_size
@@ -440,12 +438,14 @@ def allocate_registers(fn):
 
         free_regs = {asm.GPReg: FREE_REGS.copy(), asm.VecReg: VEC_FREE_REGS.copy()}
         reg_assns = ctx.block_reg_assns[block]
+        ctx.start_block(block, free_regs)
 
         # Allocate registers for the phi write. We'll make sure elsewhere that
         # the arguments are moved to the right registers
+        regs = {}
         if block.succs:
-            regs = {name: free_regs[phi_types[block][name]].pop()
-                    for [name, arg] in sorted(block.phi_write.args.items())}
+            for [name, arg] in sorted(block.phi_write.args.items()):
+                regs[name] = ctx.alloc_reg(phi_types[block][name])
         # For the exit block, we should only have at most one live value, the
         # return value (which is stored in a special variable). Assign it to
         # the ABI's return register.
@@ -455,8 +455,6 @@ def allocate_registers(fn):
                 assert list(block.phi_write.args.keys()) == ['$return_value']
                 regs['$return_value'] = RETURN_REGS[0]
         phi_assns[block.phi_write] = regs
-
-        ctx.start_block(block, free_regs)
 
         # Now make a run through the instructions. Since we're assuming
         # spill/fill has been taken care of already, this can be done linearly.
@@ -511,9 +509,13 @@ def allocate_registers(fn):
                         allow_types=(asm.ExternLabel, asm.GPReg))
 
                 # Generate save/restore instructions for caller-save registers
-                clobbered = [reg for reg in reg_assns.values()
-                        if reg in VEC_CALLER_SAVE or reg in CALLER_SAVE]
-                [save_insts, restore_insts] = gen_save_insts(clobbered)
+                [gp_regs, vec_regs] = [[], []]
+                for reg in reg_assns.values():
+                    if reg in CALLER_SAVE:
+                        gp_regs.append(reg)
+                    elif reg in VEC_CALLER_SAVE:
+                        vec_regs.append(reg)
+                [save_insts, restore_insts] = gen_save_insts(gp_regs, vec_regs)
 
                 call = asm.Instruction(inst.opcode, called_fn_arg)
                 ctx.insts += [*save_insts, call, *restore_insts]
@@ -669,10 +671,10 @@ def allocate_registers(fn):
 
     # Generate push/pop instructions for callee-save instructions, and
     # adjust the stack for phi
-    clobbered = [reg for reg in reg_assns.values()
-            if reg in VEC_CALLER_SAVE or reg in CALLER_SAVE]
-    [save_insts, restore_insts] = gen_save_insts(
-            clobbered, extra_stack=len(ctx.stack_assns)*8)
+    gp_regs = ctx.clobbered_regs[asm.GPReg] & CALLEE_SAVE
+    vec_regs = ctx.clobbered_regs[asm.VecReg] & VEC_CALLEE_SAVE
+    [save_insts, restore_insts] = gen_save_insts(gp_regs, vec_regs,
+            extra_stack=len(ctx.stack_assns)*8)
 
     # Now that we know the total amount of stack space allocated, add a
     # prologue and epilogue
