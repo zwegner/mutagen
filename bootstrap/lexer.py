@@ -1,7 +1,7 @@
 import itertools
 import sys
 
-import sprdpl.lex as liblex
+from .sprdpl import lex as liblex
 
 str_escapes = {
     'n': '\n',

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import utils
 
-lexer = utils.import_path('../../bootstrap/lexer.py')
+from bootstrap import lexer
 
 for path in ['../../stdlib/__builtins__.mg', '../../stdlib/re.mg', '../../compiler/lexer.mg']:
     with open(path) as f:

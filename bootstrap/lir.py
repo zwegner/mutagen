@@ -1,6 +1,6 @@
 import collections
 
-import syntax
+from . import syntax
 
 # This is a really basic shell of an implementation
 

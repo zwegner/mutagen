@@ -2,7 +2,7 @@ import collections
 import copy
 import sys
 
-from syntax import *
+from .syntax import *
 
 def create_builtin_function(name, fn, arg_types):
     def builtin_call(ctx, args, kwargs):

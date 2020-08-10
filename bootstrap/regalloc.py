@@ -1,7 +1,7 @@
 import collections
 
-import asm
-import lir
+from . import asm
+from . import lir
 
 class RegSet:
     def __init__(self, reg_type, *items):

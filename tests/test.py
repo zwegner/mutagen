@@ -5,7 +5,9 @@ import sys
 import tempfile
 import time
 
-root_dir = os.path.dirname(sys.path[0])
+root_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+os.environ['PYTHONPATH'] = root_dir
+
 mutagen = '%s/bootstrap/mutagen.py' % root_dir
 python = 'python3'
 

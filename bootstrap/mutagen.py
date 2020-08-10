@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 import inspect
+import os
 import sys
 
-import parse
-import syntax
+root_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+sys.path.append(root_dir)
+
+__package__ = 'bootstrap'
+
+from . import parse
+from . import syntax
 
 # Evaluate a single statement in a given context. Mainly a wrapper for error handling code.
 def eval_statement(stmt, ctx):

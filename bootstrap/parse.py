@@ -2,13 +2,13 @@ import collections
 import os
 import sys
 
-import lexer
-import sprdpl.lex as liblex
-import sprdpl.parse as libparse
+from .sprdpl import lex as liblex
+from .sprdpl import parse as libparse
 
-import effect_io
-import mg_builtins
-from syntax import *
+from . import effect_io
+from . import lexer
+from . import mg_builtins
+from .syntax import *
 
 # XXX
 NULL_INFO = liblex.Info('???')

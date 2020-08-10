@@ -3,15 +3,15 @@ import collections.abc
 import struct
 import sys
 
-import sprdpl.parse as libparse
+from .sprdpl import parse as libparse
 
-import asm
-import elf
-import lir
-import parse
-import regalloc
-import syntax
-from syntax import ArgType
+from . import asm
+from . import elf
+from . import lir
+from . import parse
+from . import regalloc
+from . import syntax
+from .syntax import ArgType
 
 # Dumb alias
 BI = syntax.BUILTIN_INFO

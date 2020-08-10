@@ -1,18 +1,7 @@
-# Hacky relative import function from tests/py/utils.py
-def import_path(path):
-    import os
-    import sys
-    base = os.path.dirname(sys.argv[0])
-    path = os.path.abspath(base + '/' + path)
-    path, file = os.path.split(path)
-    file, ext = os.path.splitext(file)
-    sys.path = [path] + sys.path
-    module = __import__(file)
-    sys.path.pop(0)
-    return module
+import sys
 
-asm = import_path('../../bootstrap/asm.py')
-elf = import_path('../../bootstrap/elf.py')
+from bootstrap import asm
+from bootstrap import elf
 
 # RKISS algorithm
 def gen_rand_64():

@@ -1,6 +1,6 @@
 import sys
 
-from syntax import *
+from .syntax import *
 
 @builtin_class('IOHandle', params=[])
 class BuiltinIOHandle(BuiltinClass):
