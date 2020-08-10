@@ -219,6 +219,9 @@ def transform_to_graph(node):
             # fine (only one scope per function). These extra args are added to
             # the beginning of the parameter list when compiling the function.
             assert not hasattr(node.expr, 'extra_args')
+            # HACK: skip intrinsics for this
+            node.extra_args = [arg for arg in node.extra_args
+                    if arg not in INTRINSICS]
             node.expr.extra_args = node.extra_args
 
             # Also, set up attributes for random metadata we might want to store
