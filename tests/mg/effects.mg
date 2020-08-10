@@ -97,3 +97,10 @@ assert values == expected
 
 # Test 5: test unhandled effects
 assert_call_fails(lambda(): (perform Eff1()))
+
+def fail():
+    consume:
+        perform Eff1()
+    effect None as e:
+        pass
+assert_call_fails(fail)

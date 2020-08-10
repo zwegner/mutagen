@@ -13,12 +13,12 @@ python = 'python3'
 
 passes = fails = 0
 
-exclude_set, test_set = [set(arg.replace('-', '') for arg in sys.argv[1:]
-    if arg.startswith('-') ^ exclude) for exclude in range(2)]
+exclude_set, test_set = [[arg.replace('-', '') for arg in sys.argv[1:]
+    if arg.startswith('-') ^ exclude] for exclude in range(2)]
 
 # Mutagen tests: these should just not throw any errors
 mg_tests = ['builtins', 'core', 'effects']
-mg_test_dir = 'tests/mg/'
+mg_test_dir = 'tests/mg'
 
 # Python tests: python/mutagen should produce the same output in each case.
 py_tests = ['core', 'regex', 'lex']
@@ -30,7 +30,9 @@ raw_test_dir = 'tests/raw'
 start = time.time()
 
 def active_tests(tests):
-    return [test for test in tests if (not test_set or test in test_set) and test not in exclude_set]
+    return [test for test in tests
+            if (not test_set or any(pattern in test for pattern in test_set)) and
+            not any(pattern in test for pattern in exclude_set)]
 
 # Run mutagen tests
 for test in active_tests(mg_tests):
@@ -75,7 +77,7 @@ for test in active_tests(raw_tests):
         passes += 1
     except Exception:
         fails += 1
-        print('TEST %s FAILED!' % test)
+        print('RAW TEST %s FAILED!' % test)
 
 end = time.time()
 print('%s/%s tests passed. Time: %.2fs' % (passes, passes + fails, end - start))
