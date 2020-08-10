@@ -6,6 +6,7 @@ import sys
 import sprdpl.parse as libparse
 
 import asm
+import elf
 import lir
 import parse
 import regalloc
@@ -220,6 +221,9 @@ def transform_to_graph(node):
             assert not hasattr(node.expr, 'extra_args')
             node.expr.extra_args = node.extra_args
 
+            # Also, set up attributes for random metadata we might want to store
+            node.expr.attributes = {}
+
     # Un-reverse the functions before returning
     return functions[::-1]
 
@@ -335,6 +339,11 @@ def mgi__extern_label(node, label):
 @mg_intrinsic([syntax.Node])
 def mgi_address(node, expr):
     return Address(expr, 0, None, 0, info=node)
+
+@mg_intrinsic([syntax.Function])
+def mgi_export(node, fn):
+    fn.attributes['export'] = True
+    return fn
 
 @mg_intrinsic([syntax.List])
 def mgi_static_data(node, l):
@@ -1146,6 +1155,13 @@ def generate_lir(fn):
 ## Compilation mgmt stuff ######################################################
 ################################################################################
 
+# Recursively compile a function, that is, transform the parsed AST representation
+# of a function and any nested functions within it to SSA and pass it through
+# our basic optimization passes. This doesn't do the final register allocator or
+# assembler stages, which are performed later after all functions are collected
+# and optimized, since the usage of a function in parent scopes can change how
+# it's compiled (like the @export decorator, without which the function won't
+# actually be converted to assembly)
 def compile_fn(fn):
     # Convert to graph representation, collecting nested functions
     extra_functions = transform_to_graph(fn)
@@ -1158,35 +1174,64 @@ def compile_fn(fn):
 
     simplify_fn(fn)
 
-    lir_blocks = generate_lir(fn)
-
-    # Add the final LIR function to the main list of functions
-    yield lir.Function('_' + fn.name, fn.params.params, lir_blocks)
+    yield fn
 
 def compile_stmts(stmts):
     # Wrap top-level statements in a main function
     block = syntax.Block(stmts, info=BI)
     main_params = syntax.Params(['argc', 'argv'], [], None, [], None, info=BI)
     main_fn = syntax.Function('main', main_params, None, block)
+    main_fn.attributes = {'export': True}
 
     ctx = syntax.Context('__main__', None, None)
     main_fn = parse.preprocess_program(ctx, main_fn, include_io_handlers=False)
 
     return list(compile_fn(main_fn))
 
-def compile_file(path):
+def compile_file(input_path):
     try:
-        stmts = parse.parse_file(path, import_builtins=False)
+        stmts = parse.parse_file(input_path, import_builtins=False)
 
-        fns = compile_stmts(stmts)
+        return compile_stmts(stmts)
     except (libparse.ParseError, syntax.ProgramError) as e:
         e.print()
         sys.exit(1)
 
-    regalloc.export_functions('elfout.o', fns)
+def print_insts(fn):
+    print()
+    for inst in fn.insts:
+        if isinstance(inst, asm.Label):
+            print('{}:'.format(inst.name))
+        else:
+            print('    {}'.format(inst))
+
+# Transform the final mostly-optimized MIR into LIR, which maps pretty much
+# 1-to-1 with instructions, and allocate registers, returning a list of assembly
+# instructions
+def export_fn(fn):
+    lir_blocks = generate_lir(fn)
+
+    lir_fn = lir.Function('_' + fn.name, fn.params.params, lir_blocks,
+            attributes=fn.attributes)
+
+    return regalloc.allocate_registers(lir_fn)
+
+# Build the assembly representation of a list of functions and write the bytes
+# out to an ELF file
+def export_functions_elf(path, fns):
+    all_insts = []
+    for fn in fns:
+        fn.insts = export_fn(fn)
+        all_insts.extend(fn.insts)
+
+    elf_file = elf.create_elf_file(*asm.build(all_insts))
+    with open(path, 'wb') as f:
+        f.write(bytes(elf_file))
 
 def main(args):
-    compile_file(args[1])
+    fns = compile_file(args[1])
+    exported_fns = [fn for fn in fns if fn.attributes.get('export')]
+    export_functions_elf('elfout.o', fns)
 
 if __name__ == '__main__':
     main(sys.argv)

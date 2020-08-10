@@ -77,10 +77,11 @@ class Return(Node):
         self.args = args
 
 class Function:
-    def __init__(self, name, parameters, blocks):
+    def __init__(self, name, parameters, blocks, attributes=None):
         self.name = name
         self.parameters = parameters
         self.blocks = blocks
+        self.attributes = attributes or {}
 
 class BasicBlock:
     def __init__(self, name, phi_write, phi_selects, insts, test, phi_read,

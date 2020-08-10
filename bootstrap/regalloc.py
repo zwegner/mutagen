@@ -1,7 +1,6 @@
 import collections
 
 import asm
-import elf
 import lir
 
 class RegSet:
@@ -706,22 +705,3 @@ def allocate_registers(fn):
     ]
 
     return insts
-
-def print_insts(insts):
-    print()
-    for inst in insts:
-        if isinstance(inst, asm.Label):
-            print('{}:'.format(inst.name))
-        else:
-            print('    {}'.format(inst))
-
-def export_functions(file, fns):
-    all_insts = []
-    for fn in fns:
-        insts = allocate_registers(fn)
-        all_insts = all_insts + insts
-        print_insts(insts)
-
-    elf_file = elf.create_elf_file(*asm.build(all_insts))
-    with open(file, 'wb') as f:
-        f.write(bytes(elf_file))
