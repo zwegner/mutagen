@@ -38,6 +38,8 @@ class ExternSymbol(syntax.Node):
 class Intrinsic(syntax.Node):
     def repr(self, ctx):
         return '<intrinsic-fn %s>' % self.name
+    def __repr__(self):
+        return '<intrinsic-fn %s>' % self.name
 
 @syntax.node('opcode, *args')
 class Instruction(syntax.Node):
@@ -63,6 +65,8 @@ class BasicBlock(syntax.Node):
         self.block_id = BLOCK_ID
         BLOCK_ID += 1
         self.name = '%s$%s' % (self.name or 'block', self.block_id)
+    def __repr__(self):
+        return '<block %s>' % self.name
 
 # Just a dumb helper because our @node() decorator doesn't support keyword
 # args or defaults
@@ -79,6 +83,8 @@ class PhiR(syntax.Node):
 @syntax.node('name')
 class PhiSelect(syntax.Node):
     def repr(self, ctx):
+        return '<PhiSelect %s>' % self.name
+    def __repr__(self):
         return '<PhiSelect %s>' % self.name
 
 ################################################################################
@@ -117,6 +123,8 @@ class Usage:
         # __hash__ not being overrideable on a dict-by-dict basis
         return (self.user, self.type, self.edge_name, self.index)
 
+    def __repr__(self):
+        return str((self.user, self.type, self.edge_name, self.index))
 
 def add_use(usage, node):
     node._users[usage.key()] = usage

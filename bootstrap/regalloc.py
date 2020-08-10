@@ -397,26 +397,10 @@ def gen_save_insts(live_regs, extra_stack=0):
 def allocate_registers(fn):
     split_critical_edges(fn)
 
-    for block in fn.blocks:
-        log('{}:'.format(block.name))
-
-        log('  w', hex(id(block.phi_write)), block.phi_write)
-
-        for i, inst in enumerate(block.insts):
-            log('  i', i, hex(id(inst)), inst)
-
-        log('  r', hex(id(block.phi_read)), block.phi_read)
-
     # Registers assigned to all arguments to each phi read or write
     phi_assns = {}
 
     ctx = RegAllocContext(fn)
-
-    for block in fn.blocks:
-        log('{}:'.format(block.name))
-
-        for i, inst in enumerate(block.insts):
-            log('  i', i, hex(id(inst)), inst)
 
     # Analyze phi types. We need to have the types up front so we can allocate the
     # registers for the writes at the start of each block
@@ -488,7 +472,7 @@ def allocate_registers(fn):
                 log('phi assign', hex(id(inst)), inst, reg, free_regs)
 
             # Returns are sorta pseudo-ops that get eliminated. Basically
-            # they're only there to the SSA machinery sees the $return_value
+            # they're only there so the SSA machinery sees the $return_value
             # special variable as a live in to the exit block.
             elif inst.opcode == 'return':
                 pass
@@ -506,7 +490,7 @@ def allocate_registers(fn):
             # has a problem with that, they can deal with it themselves!
             elif inst.opcode == 'literal':
                 reg_assns[inst] = inst.args[0]
-                log('lit', inst, inst.args[0], reg, block.phi_read.args.get(inst))
+                log('lit', inst, inst.args[0], block.phi_read.args.get(inst))
 
             elif inst.opcode == 'address':
                 [base, scale, index, disp] = inst.args
