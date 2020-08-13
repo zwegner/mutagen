@@ -617,6 +617,20 @@ def propagate_phi(block, name):
             value = add_phi(pred, name, info=BI)
             propagate_phi(pred, name)
 
+# Trim unneeded values from exit_states
+def trim_unused_phis(fn):
+    any_trimmed = False
+    for block in walk_blocks(fn.first_block):
+        live_outs = {name: value for [name, value] in block.exit_states.items()
+                if any(name in succ.live_ins for succ in block.succs) or
+                # HACK: preserve return value in exit block live outs
+                '$return_value' in name}
+        for name in set(block.exit_states) - set(live_outs):
+            any_trimmed = True
+            remove_dict_key(block, 'exit_states', name)
+        block.exit_states = live_outs
+    return any_trimmed
+
 def gen_ssa(fn):
     assert isinstance(fn, syntax.Function)
     fn.first_block = basic_block(name='enter_block')
@@ -646,15 +660,7 @@ def gen_ssa(fn):
         for name in block.live_ins:
             propagate_phi(block, name)
 
-    # Trim unneeded values from exit_states
-    for block in walk_blocks(fn.first_block):
-        live_outs = {name: value for [name, value] in block.exit_states.items()
-                if any(name in succ.live_ins for succ in block.succs) or
-                # HACK: preserve return value in exit block live outs
-                '$return_value' in name }
-        for name in set(block.exit_states) - set(live_outs):
-            remove_dict_key(block, 'exit_states', name)
-        block.exit_states = live_outs
+    trim_unused_phis(fn)
 
 ################################################################################
 ## Optimization stuff ##########################################################
@@ -1038,6 +1044,9 @@ def simplify_fn(fn):
                     deleted.add(succ)
                     merge_blocks(block, succ)
                     any_simplified = True
+
+        if trim_unused_phis(fn):
+            any_simplified = True
 
 ################################################################################
 ## LIR conversion stuff ########################################################
