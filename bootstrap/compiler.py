@@ -673,6 +673,12 @@ def gen_ssa(fn):
 ## Optimization stuff ##########################################################
 ################################################################################
 
+# Keep a list of functions that need extra simplifications performed, in case
+# any data flows down against the normal bottom-up simplification order. Right
+# now, this just happens when a function uses a variable from an outer scope and
+# the function only appears in one scope, so the value can be lowered into it
+FN_WORK_QUEUE = []
+
 def is_atom(expr):
     return isinstance(expr, (syntax.Integer, syntax.String, ExternSymbol,
             Address,
@@ -785,6 +791,43 @@ def simplify_assert(node):
     # XXX weird: just return the expression since we need to signify the assert
     # was simplified out, it should get DCE'd
     return node.expr
+
+# Simplify a partial function if it's the only user of the wrapped function,
+# putting the extra arguments (and their child expressions) directly into the
+# function body.
+@simplifier(syntax.PartialFunction, syntax.Function, None)
+def simplify_partial_fn(node):
+    fn = node.fn
+    assert isinstance(fn, syntax.Function)
+    if len(fn._users) > 1:
+        return None
+    [usage] = fn._users.values()
+    assert usage.user is node
+
+    # Make sure there are no phis in the expression graphs of the extra args.
+    # Maybe someday we'll do this separately for each arg...
+    for arg in node.args:
+        for child in arg.iterate_graph():
+            if isinstance(child, PhiSelect):
+                return None
+
+    # Add a new first block that re-defines values from the partial function call
+    new_block = basic_block()
+    node_map = {}
+    prefix = None
+    assert len(fn.extra_args) == len(node.args)
+    for [name, arg] in zip(fn.extra_args, node.args):
+        arg = copy_node(arg, node_map, prefix, stmts=new_block.stmts)
+        set_edge_key(new_block, 'exit_states', name, arg)
+    link_blocks(new_block, fn.first_block)
+    fn.first_block = new_block
+
+    fn.extra_args = []
+
+    # Make sure we mark this function as needing further simplification
+    FN_WORK_QUEUE.append(fn)
+
+    return fn
 
 def simplify_node(node):
     # Look up simplification functions for this node
@@ -1218,6 +1261,8 @@ def compile_fn(fn):
     yield fn
 
 def compile_stmts(stmts):
+    global FN_WORK_QUEUE
+
     # Wrap top-level statements in a main function
     block = syntax.Block(stmts, info=BI)
     main_params = syntax.Params(['argc', 'argv'], [], None, [], None, info=BI)
@@ -1227,7 +1272,16 @@ def compile_stmts(stmts):
     ctx = syntax.Context('__main__', None, None)
     main_fn = parse.preprocess_program(ctx, main_fn, include_io_handlers=False)
 
-    return list(compile_fn(main_fn))
+    all_fns = list(compile_fn(main_fn))
+
+    # Repeatedly simplify any functions that got modified by their parents
+    while FN_WORK_QUEUE:
+        work_queue = FN_WORK_QUEUE
+        FN_WORK_QUEUE = []
+        for fn in work_queue:
+            simplify_fn(fn)
+
+    return all_fns
 
 def compile_file(input_path):
     try:
