@@ -241,8 +241,7 @@ def transform_to_graph(node):
             # Also, set up attributes for random metadata we might want to store
             node.expr.attributes = {}
 
-    # Un-reverse the functions before returning
-    return functions[::-1]
+    return functions
 
 # Flatten a subgraph below a node into a statements list, and set up node tracking
 def create_subgraph(node, statements):
