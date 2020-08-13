@@ -258,7 +258,7 @@ def create_subgraph(node, statements):
 # Node/block copy functions. Each function takes a prefix to modify phi names with,
 # so that the names can stay unique when moved into a new namespace
 
-def copy_node(node, node_map, prefix):
+def copy_node(node, node_map, prefix, stmts=None):
     if isinstance(node, syntax.Function):
         node_map[node] = node
         return node
@@ -282,6 +282,8 @@ def copy_node(node, node_map, prefix):
     add_node_usages(new_node)
     if isinstance(new_node, PhiSelect):
         new_node.name = prefix + new_node.name
+    if stmts is not None:
+        stmts.append(new_node)
     node_map[node] = new_node
     return new_node
 
@@ -295,7 +297,9 @@ def copy_block(block, node_map, prefix):
         node = copy_node(node, node_map, prefix)
         set_edge_key(new_block, 'live_ins', prefix + name, node)
 
-    new_block.stmts = [copy_node(stmt, node_map, prefix) for stmt in block.stmts]
+    new_block.stmts = []
+    for stmt in block.stmts:
+        copy_node(stmt, node_map, prefix, stmts=new_block.stmts)
 
     if block.test:
         set_edge(new_block, 'test', node_map[block.test])
