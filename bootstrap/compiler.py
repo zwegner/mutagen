@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 import collections.abc
+import os
 import struct
 import sys
+
+root_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+sys.path.append(root_dir)
+
+__package__ = 'bootstrap'
 
 from .sprdpl import parse as libparse
 
