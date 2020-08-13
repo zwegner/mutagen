@@ -1126,4 +1126,4 @@ def build(insts):
             last_offset = offset + rel.size
         code = new_bytes + code[last_offset:]
 
-    return [code, data, local_labels, global_labels, extern_labels]
+    return [code, data, global_labels, extern_labels]

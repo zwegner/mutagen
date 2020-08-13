@@ -13,7 +13,7 @@ def create_string_table(strings):
         table = table + list(s.encode('ascii')) + [0]
     return [table, offsets]
 
-def create_elf_file(code, data, local_labels, global_labels, extern_labels):
+def create_elf_file(code, data, global_labels, extern_labels):
     section_names = ['.text', '.rodata', '.shstrtab', '.strtab', '.symtab',
             '.reltext', '.relrodata']
     section_types = [1, 1, 3, 3, 2, 9, 9]
@@ -24,7 +24,7 @@ def create_elf_file(code, data, local_labels, global_labels, extern_labels):
 
     [shstrtab, shstrtab_offsets] = create_string_table(section_names)
 
-    label_set = {label for labels in [local_labels, global_labels, extern_labels]
+    label_set = {label for labels in [global_labels, extern_labels]
             for [label, _, _] in labels}
 
     strings = list(sorted(label_set))
@@ -32,7 +32,7 @@ def create_elf_file(code, data, local_labels, global_labels, extern_labels):
 
     # Create symbol table section--just a list of labels for now
     symtab = [0] * 24 # First symbol is reserved
-    for [flag, labels] in [[0, local_labels], [0x10, global_labels], [0x20, extern_labels]]:
+    for [flag, labels] in [[0x10, global_labels], [0x20, extern_labels]]:
         for [label, section, address] in labels:
             if flag == 0x20:
                 section = address = 0
@@ -49,7 +49,7 @@ def create_elf_file(code, data, local_labels, global_labels, extern_labels):
 
     # Create relocation table
     relocations = {}
-    extern_sym_idx = len(local_labels) + len(global_labels) + 1
+    extern_sym_idx = len(global_labels) + 1
     for rel_type in ['code', 'data']:
         relocations[rel_type] = []
         for [label, section, address] in extern_labels:
@@ -59,7 +59,7 @@ def create_elf_file(code, data, local_labels, global_labels, extern_labels):
 
     sections = [code, data, shstrtab, strtab, symtab, relocations['code'], relocations['data']]
 
-    elf_header = list('\x7fELF'.encode('ascii')) + [ # magic
+    elf_header = list(b'\x7fELF') + [ # magic
         2, # class (elf64)
         1, # data format (little endian)
         1, # elf version
@@ -88,7 +88,7 @@ def create_elf_file(code, data, local_labels, global_labels, extern_labels):
     elf_data = []
     for [name, data, section_type] in zip(section_names, sections, section_types):
         if section_type == 2: # .symtab has special handling
-            [link, alignment, size, info] = [strtab_idx, 4, 24, len(local_labels)]
+            [link, alignment, size, info] = [strtab_idx, 4, 24, 0]
         elif section_type == 9:
             # Ugh
             rel_idx = code_idx if name == '.reltext' else data_idx
