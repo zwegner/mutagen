@@ -694,7 +694,7 @@ def is_simple(expr):
 
 def can_dce(expr):
     return is_simple(expr) or isinstance(expr, (syntax.BinaryOp,
-            syntax.PartialFunction, syntax.VarArg, syntax.GetItem))
+            syntax.PartialFunction, syntax.Function, syntax.VarArg, syntax.GetItem))
 
 # Decorator for defining a simplifier for a certain node type and given
 # arguments. This is basically a clean-ish way of doing pattern matching, and
