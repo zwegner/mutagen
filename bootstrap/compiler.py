@@ -52,6 +52,9 @@ class Instruction(syntax.Node):
     def repr(self, ctx):
         return '<instruction %s>(%s)' % (self.opcode, ', '.join(a.repr(ctx)
                 for a in self.args))
+    def __repr__(self):
+        return '<instruction %s>(%s)' % (self.opcode, ', '.join(repr(a)
+                for a in self.args))
 
 @syntax.node('&base, scale, ?index, disp')
 class Address(syntax.Node):
@@ -1096,7 +1099,15 @@ def gen_lir_for_node(block, node, block_map, node_map):
     # Literal is just a wrapper for raw LIR objects
     elif isinstance(node, Literal):
         return list(node.value.flatten())
-    assert False, str(node)
+
+    uses = []
+    for usage in node._users.values():
+        base = '%r.%s' % (usage.user, usage.edge_name)
+        if usage.type in {ArgType.LIST, ArgType.DICT}:
+            base += '[%r]' % usage.index
+        uses.append(base)
+    node.error('unsupported node type %s for compilation: %s\nUses:\n  %s' % (
+            type(node).__name__, node.repr(None), '\n  '.join(uses)))
 
 def generate_lir(fn):
     node_map = {}
