@@ -269,7 +269,7 @@ def copy_node(node, node_map, prefix, stmts=None):
     for [arg_type, arg_name] in type(node).arg_defs:
         child = getattr(node, arg_name)
         if arg_type == ArgType.REG:
-            assert isinstance(child, (int, str)), child
+            assert isinstance(child, (int, str, lir.Inst)), child
             args.append(child)
         elif arg_type in {ArgType.EDGE, ArgType.OPT}:
             args.append(node_map[child])
