@@ -838,6 +838,7 @@ def merge_blocks(pred, succ):
     # Patch up phis
     for [name, phi] in succ.live_ins.items():
         phi.forward(pred.exit_states[name])
+    clear_edge_dict(succ, 'live_ins')
 
     # Delete all the old exit states. There might be more live outs of the pred than
     # live ins of the succ, but we don't care (I think)
