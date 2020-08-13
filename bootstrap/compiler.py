@@ -249,7 +249,8 @@ def transform_to_graph(node):
 # Flatten a subgraph below a node into a statements list, and set up node tracking
 def create_subgraph(node, statements):
     # Iterate the graph in topological order
-    for node in node.iterate_graph(preorder=False, blacklist=syntax.Scope):
+    for node in node.iterate_graph(preorder=False,
+            blacklist=(syntax.Scope, syntax.Function)):
         if node._users:
             continue
         statements.append(node)
