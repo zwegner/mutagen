@@ -1083,7 +1083,7 @@ def gen_lir_for_node(block, node, block_map, node_map):
         return lir.literal(node.value)
     elif isinstance(node, syntax.Call):
         return lir.call(node_map[node.fn], *[node_map[arg] for arg in node.args])
-    elif isinstance(node, syntax.Function):
+    elif isinstance(node, syntax.Function) and node.attributes.get('export'):
         # XXX need to make sure this name is unique
         return lir.literal(asm.ExternLabel('_' + node.name))
     elif isinstance(node, syntax.Return):
