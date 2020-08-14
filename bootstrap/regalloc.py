@@ -338,7 +338,7 @@ def parallel_copy(reads, writes, free_regs):
     # of swaps, or allocate a stack slot. This should be configurable, but
     # for now just use swaps since x86 has the cheap-ish xchg instruction.
     while edges:
-        r = min(edges, key=lambda r: r.index)
+        r = min(edges)
         [w] = edges.pop(r)
         if r != w:
             cycle = [r]
