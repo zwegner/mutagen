@@ -4,6 +4,7 @@ import enum
 
 import greenlet
 
+from .sprdpl import lex, parse
 from . import sprdpl
 
 # XXX HACK?

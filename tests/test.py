@@ -24,7 +24,9 @@ mg_test_dir = 'tests/mg'
 py_tests = ['core', 'regex', 'lex']
 py_test_dir = 'tests/py'
 
-raw_tests = ['asm']
+# Raw tests: these are custom Python scripts that run arbitrary code, and
+# should exit cleanly
+raw_tests = ['asm', 'regalloc']
 raw_test_dir = 'tests/raw'
 
 start = time.time()
