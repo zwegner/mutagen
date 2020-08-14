@@ -1285,13 +1285,8 @@ def compile_stmts(stmts):
     return all_fns
 
 def compile_file(input_path):
-    try:
-        stmts = parse.parse_file(input_path, import_builtins=False)
-
-        return compile_stmts(stmts)
-    except (libparse.ParseError, syntax.ProgramError) as e:
-        e.print()
-        sys.exit(1)
+    stmts = parse.parse_file(input_path, import_builtins=False)
+    return compile_stmts(stmts)
 
 def print_insts(fn):
     print()
@@ -1325,9 +1320,13 @@ def export_functions_elf(path, fns):
         f.write(bytes(elf_file))
 
 def main(args):
-    fns = compile_file(args[1])
-    exported_fns = [fn for fn in fns if fn.attributes.get('export')]
-    export_functions_elf('elfout.o', fns)
+    try:
+        fns = compile_file(args[1])
+        exported_fns = [fn for fn in fns if fn.attributes.get('export')]
+        export_functions('elfout.o', fns)
+    except (libparse.ParseError, syntax.ProgramError) as e:
+        e.print()
+        sys.exit(1)
 
 if __name__ == '__main__':
     main(sys.argv)
