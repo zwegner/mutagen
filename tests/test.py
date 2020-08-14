@@ -26,7 +26,7 @@ py_test_dir = 'tests/py'
 
 # Raw tests: these are custom Python scripts that run arbitrary code, and
 # should exit cleanly
-raw_tests = ['asm', 'regalloc']
+raw_tests = ['asm', 'regalloc', 'compiler']
 raw_test_dir = 'tests/raw'
 
 start = time.time()
