@@ -203,7 +203,7 @@ def get_result_type(node: lir.Node):
     if isinstance(node, asm.Register):
         return type(node)
     # XXX
-    if isinstance(node, (int, asm.Address, asm.Label)):
+    if isinstance(node, (int, asm.BaseAddress)):
         return asm.GPReg
     if isinstance(node, lir.Inst):
         if node.opcode == 'literal':
