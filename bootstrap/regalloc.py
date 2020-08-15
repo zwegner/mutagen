@@ -247,6 +247,10 @@ class RegAllocContext:
         self.clobbered_regs = {t: RegSet(t) for t in REG_TYPES}
         # Stack slots for spill/fill etc. Not used right now
         self.stack_assns = {}
+        # Registers assigned to all arguments to each phi read or write
+        self.phi_assns = {}
+        # Types of phis, by name, at the entry of each block
+        self.phi_types = {b: {} for b in fn.blocks}
 
     def start_block(self, block, free_regs):
         self.current_block = block
@@ -419,16 +423,12 @@ def gen_save_insts(gp_regs, vec_regs, extra_stack=0):
 def allocate_registers(fn):
     split_critical_edges(fn)
 
-    # Registers assigned to all arguments to each phi read or write
-    phi_assns = {}
-
     ctx = RegAllocContext(fn)
 
     # Analyze phi types. We need to have the types up front so we can allocate the
     # registers for the writes at the start of each block
-    phi_types = {}
     for block in fn.blocks:
-        phi_types[block] = {}
+        ctx.phi_types[block] = {}
         for name in block.phi_write.args:
             types = set()
             for pred in block.preds:
@@ -437,13 +437,13 @@ def allocate_registers(fn):
                     types.add(get_result_type(arg))
                 # Use a one-block lookbehind to see if we can determine the type
                 # XXX need a proper iterative solution
-                elif pred in phi_types and name in phi_types[pred]:
-                    types.add(phi_types[pred][name])
+                elif pred in ctx.phi_types and name in ctx.phi_types[pred]:
+                    types.add(ctx.phi_types[pred][name])
             assert len(types) == 1, ('could not determine type of %s '
                     'for block %s: %s' % (name, block.name, types))
             [phi_t] = types
             assert phi_t in REG_TYPES
-            phi_types[block][name] = phi_t
+            ctx.phi_types[block][name] = phi_t
 
     # The main register allocation loop
     for block in fn.blocks:
@@ -469,7 +469,7 @@ def allocate_registers(fn):
         regs = {}
         if block.succs:
             for [name, arg] in sorted(block.phi_write.args.items()):
-                regs[name] = ctx.alloc_reg(phi_types[block][name])
+                regs[name] = ctx.alloc_reg(ctx.phi_types[block][name])
         # For the exit block, we should only have at most one live value, the
         # return value (which is stored in a special variable). Assign it to
         # the ABI's return register.
@@ -478,7 +478,7 @@ def allocate_registers(fn):
             if block.phi_write.args:
                 assert list(block.phi_write.args.keys()) == ['$return_value']
                 regs['$return_value'] = RETURN_REGS[0]
-        phi_assns[block.phi_write] = regs
+        ctx.phi_assns[block.phi_write] = regs
 
         # Now make a run through the instructions. Since we're assuming
         # spill/fill has been taken care of already, this can be done linearly.
@@ -489,7 +489,7 @@ def allocate_registers(fn):
             log('   live', live_set)
 
             if isinstance(inst, lir.PhiSelect):
-                reg = phi_assns[inst.phi_write][inst.name]
+                reg = ctx.phi_assns[inst.phi_write][inst.name]
                 reg_assns[inst] = reg
                 log('phi assign', hex(id(inst)), inst, reg, free_regs)
 
@@ -625,7 +625,7 @@ def allocate_registers(fn):
         regs = {}
         for [name, inst] in sorted(block.phi_read.args.items()):
             regs[name] = ctx.get_arg_reg(inst, allow_types=asm.Register)
-        phi_assns[block.phi_read] = regs
+        ctx.phi_assns[block.phi_read] = regs
 
         ctx.end_block(block)
 
@@ -642,11 +642,11 @@ def allocate_registers(fn):
     # predecessor or successor, depending on which is unique (see
     # split_critical_edges() for an explanation how/why we ensure this is true)
     for block in fn.blocks:
-        phi_w = phi_assns[block.phi_write]
+        phi_w = ctx.phi_assns[block.phi_write]
         first = len(block.preds) != 1
 
         for pred in block.preds:
-            phi_r = phi_assns[pred.phi_read]
+            phi_r = ctx.phi_assns[pred.phi_read]
             # Check types
             for key in phi_w:
                 assert type(phi_w[key]) == type(phi_r[key]), (phi_w, phi_r)
@@ -655,7 +655,7 @@ def allocate_registers(fn):
 
             insts = []
             for t in REG_TYPES:
-                keys = [key for key in phi_w if phi_types[block][key] == t]
+                keys = [key for key in phi_w if ctx.phi_types[block][key] == t]
                 ins = move_phi_args(phi_r, phi_w, keys, free_regs[t])
                 for [inst, dst, src] in move_phi_args(phi_r, phi_w, keys, free_regs[t]):
                     if t == asm.GPReg:
