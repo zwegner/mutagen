@@ -612,13 +612,13 @@ _add('call', 'ql', is_destructive=False, needs_register=False)
 # BMI
 
 for inst in bmi_arg2_table.keys():
-    _add_32_64(inst, 'q', 'qQ')
+    _add_32_64(inst, 'q', 'qQ', is_destructive=False)
 
 for inst in bmi_arg3_table.keys():
     [src1, src2] = ['qQ', 'q']
     if inst in bmi_arg3_reversed:
         [src2, src1] = [src1, src2]
-    _add_32_64(inst, 'q', src1, src2)
+    _add_32_64(inst, 'q', src1, src2, is_destructive=False)
 
 # Add VEX extensions of SSE instructions
 for [mnem, value] in sse_table.items():
