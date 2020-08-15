@@ -8,6 +8,10 @@ def basic():
 
 data_0_7 = static_string('01234567')
 
+@test_fn(0x30)
+def test_static_data_8():
+    return movzx(address(data_0_7, 8))
+
 @test_fn(0x3736353433323130)
 def test_static_data_64():
     return mov(address(data_0_7, 64))

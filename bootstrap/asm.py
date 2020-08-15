@@ -574,6 +574,8 @@ for inst in arg2_table.keys():
     _add(inst, 'q', 'i', sizes=sizes, change_imm_size=True, needs_register=is_write,
             is_destructive=destr)
 
+_add('movzx', 'q', 'bB', is_destructive=False)
+
 for inst in shift_table.keys():
     _add_32_64(inst, 'qQ', 'i')
     # Shifts by CL is special, only one register allowed
@@ -986,6 +988,9 @@ def assemble_inst(inst):
         # Test has backwards arguments, weird
         [src2, src1] = inst.args
         return rex(w, src1, src2) + [0x85] + mod_rm_sib(src1, src2)
+    elif inst.mnem == 'movzx':
+        [dst, src] = inst.args
+        return rex(w, dst, src) + [0x0F, 0xB6] + mod_rm_sib(dst, src)
 
     elif inst.mnem in sse_table:
         # Check instruction flags for w override
