@@ -216,6 +216,24 @@ def get_result_type(node: lir.Node):
         return spec.forms[0][0][0]
     assert False, str(node)
 
+# MORE HACK
+def get_result_size(node):
+    if isinstance(node, asm.ASMObj):
+        return node.get_size()
+    # XXX
+    if isinstance(node, int):
+        return 64
+    if isinstance(node, lir.Inst):
+        if node.opcode == 'literal':
+            return get_result_size(node.args[0])
+        # XXX
+        elif node.opcode == 'parameter':
+            return 64
+        spec = asm.INST_SPECS[node.opcode]
+        # XXX return the type of the first argument of the first form
+        return spec.forms[0][0][1]
+    assert False, str(node)
+
 class RegAllocContext:
     def __init__(self, fn):
         self.fn = fn
@@ -246,11 +264,16 @@ class RegAllocContext:
         self.free_regs = None
         self.insts = None
 
-    def alloc_reg(self, reg_type, free_regs=None):
+    def alloc_reg(self, reg_type, size=None, free_regs=None):
         if free_regs is None:
             free_regs = self.free_regs[reg_type]
         assert free_regs.reg_type is reg_type, (node, free_regs.reg_type, reg_type)
         reg = free_regs.pop()
+        # HACK: assume RegSet returns a fresh Register object to us that we can
+        # modify in place to change the size
+        if size is not None:
+            reg.size = size
+
         self.clobbered_regs[reg_type].add(reg)
         return reg
 
@@ -264,7 +287,8 @@ class RegAllocContext:
         if isinstance(node, asm.Data):
             return node
         reg_type = get_result_type(node)
-        reg = self.alloc_reg(reg_type, free_regs=free_regs)
+        reg_size = get_result_size(node)
+        reg = self.alloc_reg(reg_type, size=reg_size, free_regs=free_regs)
         # Need special handling for labels--use lea of the RIP-relative
         # address, provided by a relocation later
         if isinstance(node, asm.ExternLabel):
@@ -578,7 +602,8 @@ def allocate_registers(fn):
                 # Non-destructive ops need a register assignment for their
                 # implicit destination
                 if not destructive and spec.needs_register:
-                    reg = ctx.alloc_reg(get_result_type(inst))
+                    reg = ctx.alloc_reg(get_result_type(inst),
+                            size=get_result_size(inst))
                     arg_regs = [reg] + arg_regs
                     log('nondestr assign', reg, free_regs)
 
