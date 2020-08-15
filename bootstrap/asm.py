@@ -537,19 +537,27 @@ class InstSpec:
 # Create a big table of instruction specs
 INST_SPECS = {}
 
-def _add(inst, *args, **kwargs):
+def _add(inst, *args, sizes=[None], change_imm_size=False, **kwargs):
     global INST_SPECS
     if inst not in INST_SPECS:
         INST_SPECS[inst] = InstSpec(inst, [], **kwargs)
     spec = INST_SPECS[inst]
     for form in itertools.product(*args):
-        spec.forms.append([ARG_TYPE_TABLE[t] if isinstance(t, str) else t
-                for t in form])
+        for size in sizes:
+            form_args = []
+            for t in form:
+                if isinstance(t, str):
+                    t = ARG_TYPE_TABLE[t]
+                    if size is not None and (change_imm_size or t[0] is not Immediate):
+                        if size == 64 and t[0] is Immediate and inst != 'mov':
+                            t = (t[0], 32)
+                        else:
+                            t = (t[0], size)
+                form_args.append(t)
+            spec.forms.append(form_args)
 
 def _add_32_64(inst, *args, **kwargs):
-    _add(inst, *args, **kwargs)
-    _add(inst, *(a.replace('q', 'd').replace('Q', 'D')
-            if isinstance(a, str) else a for a in args), **kwargs)
+    _add(inst, *args, sizes=[64, 32], **kwargs)
 
 for inst in arg0_table.keys():
     _add(inst, is_destructive=False, needs_register=False)
@@ -560,8 +568,11 @@ for inst in arg1_table.keys():
 for inst in arg2_table.keys():
     is_write = (inst not in {'cmp', 'test'})
     destr = is_write and inst != 'mov'
-    _add_32_64(inst, 'q', 'qQi', needs_register=is_write, is_destructive=destr)
-    _add_32_64(inst, 'Q', 'q', needs_register=is_write, is_destructive=destr)
+    sizes = [64, 32, 16, 8]
+    _add(inst, 'q', 'qQ', sizes=sizes, needs_register=is_write, is_destructive=destr)
+    _add(inst, 'Q', 'q', sizes=sizes, needs_register=is_write, is_destructive=destr)
+    _add(inst, 'q', 'i', sizes=sizes, change_imm_size=True, needs_register=is_write,
+            is_destructive=destr)
 
 for inst in shift_table.keys():
     _add_32_64(inst, 'qQ', 'i')
@@ -712,32 +723,26 @@ for spec in INST_SPECS.values():
 ## Utility functions ###########################################################
 ################################################################################
 
-def fits_8bit(imm: int):
-    limit = 1 << 7
+def fits_bits(imm: int, size: int):
+    limit = 1 << size - 1
     return -limit <= imm <= limit - 1
 
-def fits_32bit(imm: int):
-    limit = 1 << 31
-    return -limit <= imm <= limit - 1
+def pack_bits(imm: int, size: int):
+    assert not size & 7
+    assert fits_bits(imm, size)
+    return [(imm >> shift) & 0xFF for shift in range(0, size, 8)]
 
 def pack8(imm: int):
     # Kinda gross: allow signed or unsigned bytes
     assert -128 <= imm < 256
-    return list(struct.pack('<B', imm & 0xFF))
-
-def pack32(imm: int):
-    return list(struct.pack('<i', imm))
-
-def pack64(imm: int):
-    return list(struct.pack('<q', imm))
+    return [imm & 0xFF]
 
 # Basic helper function to factor out a common pattern of choosing a 1/4 byte encoding,
 # along with another value that depends on which is chosen
 def choose_8_or_32_bit(imm, op8, op32):
-    if fits_8bit(imm):
+    if fits_bits(imm, 8):
         return [pack8(imm), op8]
-    assert fits_32bit(imm)
-    return [pack32(imm), op32]
+    return [pack_bits(imm, 32), op32]
 
 def mod_rm_sib(reg, rm):
     if isinstance(reg, Register):
@@ -775,7 +780,7 @@ def mod_rm_sib(reg, rm):
         if addr.base == -1:
             mod = 0
             base = 5
-            disp_bytes = pack32(addr.disp)
+            disp_bytes = pack_bits(addr.disp, 32)
         # Otherwise, encode the displacement as 1 or 4 bytes if needed: if the disp is nonzero
         # obviously, but also if RBP is the base, the no-disp encoding is stolen above, so
         # encode that with a single byte displacement of zero.
@@ -851,12 +856,13 @@ def assemble_inst(inst):
     for form in spec.forms:
         assert len(form) == len(inst.args), ('wrong number of arguments to %s, '
                 'got %s, expected %s' % (inst.mnem, len(inst.args), len(form)))
-        if all(a == t if isinstance(t, ASMObj) else isinstance(a, t[0])
+        if all(isinstance(a, t[0]) and a.get_size() in {None, t[1]}
+                if isinstance(t, tuple) else a == t
                 for [a, t] in zip(inst.args, form)):
             break
     else:
-        assert False, ('argument types %s do not match any of the valid forms '
-                'of %s: %s' % (inst.args, inst.mnem, spec.forms))
+        assert False, ('argument types to %s %s do not match any of the valid forms '
+                'of %s: %s' % (inst, inst.args, inst.mnem, spec.forms))
 
     w = int(size == 64)
 
@@ -870,35 +876,65 @@ def assemble_inst(inst):
         opcode = arg2_table[inst.mnem]
         [dst, src] = inst.args
 
-        # Immediates have separate opcodes, so handle them specially here.
+        use_mod_rm = True
+        imm_bytes = []
+        prefix = []
+        force_rex = 0
+
+        # Handle immediates
         if isinstance(src, Immediate):
+            # mov is special
             if inst.mnem == 'mov':
+                sub_opcode = 0
                 if isinstance(dst, Address):
-                    assert fits_32bit(src.value)
-                    return rex(w, 0, dst) + [0xC7] + mod_rm_sib(0, dst) + pack32(src)
-                if w:
-                    imm_bytes = pack64(src.value)
+                    opcode = 0xC6
                 else:
-                    imm_bytes = pack32(src.value)
-                return rex(w, 0, dst) + [0xB8 | dst.index & 7] + imm_bytes
+                    use_mod_rm = False
+                    opcode = 0xB0 | dst.index & 7
+                imm_bytes = pack_bits(src.value, src.size or size)
             else:
-                [imm_bytes, size_flag] = choose_8_or_32_bit(src.value, 0x2, 0)
-                return rex(w, 0, dst) + [0x81 | size_flag] + mod_rm_sib(
-                        opcode, dst) + imm_bytes
+                sub_opcode = opcode
+                opcode = 0x80
 
-        # Mov is also a bit different, but can mostly be handled like other ops
-        if inst.mnem == 'mov':
-            opcode = 0x89
+                # Special 8-bit sign extension form
+                if src.size != 8 and fits_bits(src.value, 8):
+                    opcode |= 0x2
+                    imm_bytes = pack_bits(src.value, 8)
+                else:
+                    imm_bytes = pack_bits(src.value, src.size or 32)
+
+            src = 0
+        # Non-immediates
         else:
-            opcode = 1 | opcode << 3
+            # Mov is different here too, but can mostly be handled like other ops
+            if inst.mnem == 'mov':
+                opcode = 0x88
+            else:
+                opcode <<= 3
 
-        # op reg, mem is handled by flipping the direction bit and
-        # swapping src/dst.
-        if isinstance(src, BaseAddress):
-            opcode = opcode | 0x2
-            [src, dst] = [dst, src]
+            # op reg, mem is handled by flipping the direction bit and
+            # swapping src/dst.
+            if isinstance(src, BaseAddress):
+                opcode |= 0x2
+                [src, dst] = [dst, src]
 
-        return rex(w, src, dst) + [opcode] + mod_rm_sib(src, dst)
+            sub_opcode = src
+
+        # Handle 8/16/32/64-bit operand sizes
+        if dst.size == 8:
+            force_rex = 1
+        elif dst.size in {16, 32, 64}:
+            opcode |= 0x1 if use_mod_rm else 0x8
+            if dst.size == 16:
+                prefix = [0x66]
+        else:
+            assert False, 'bad size: %s' % dst.size
+
+        mod_rm = mod_rm_sib(sub_opcode, dst) if use_mod_rm else []
+
+        return (prefix + rex(w, src, dst, force=force_rex) + [opcode] +
+                mod_rm + imm_bytes)
+
     elif inst.mnem in shift_table:
         sub_opcode = shift_table[inst.mnem]
         [dst, src] = inst.args
@@ -1105,10 +1141,10 @@ def build(insts):
                     # beginning of the value, put an offset of -4 here that
                     # the linker will add in. We also add the offset
                     # from this relocation.
-                    code = code + pack32(byte.offset - 4)
+                    code += pack_bits(byte.offset - 4, 32)
                 else:
-                    relocations = relocations + [[byte, len(code)]]
-                    code = code + [0] * byte.size
+                    relocations += [[byte, len(code)]]
+                    code += [0] * byte.size
 
     # Patch local relocations, now that we've built the code section and know
     # the offsets of local/global labels
@@ -1120,12 +1156,12 @@ def build(insts):
         new_bytes = []
         last_offset = 0
         for [rel, offset] in relocations:
-            new_bytes = new_bytes + code[last_offset:offset]
+            new_bytes += code[last_offset:offset]
             # XXX only 4-byte for now
             assert rel.size == 4
             [section, rel_offset] = label_dict[rel.label.name]
             disp = rel_offset - offset - rel.size
-            new_bytes = new_bytes + pack32(disp)
+            new_bytes += pack_bits(disp, 32)
             last_offset = offset + rel.size
         code = new_bytes + code[last_offset:]
 

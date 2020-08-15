@@ -20,7 +20,7 @@ def gen_rand_64():
         c = d + e
         d = e + a
         rand_state = [int64(a), int64(b), int64(c), int64(d)]
-        yield int64(d)
+        yield rand_state[3]
 
 # Basic coroutine type thingy, to somewhat match the Mutagen effect-based version
 RAND = iter(gen_rand_64())
@@ -28,14 +28,19 @@ def rand_select(l):
     i = next(RAND)
     return l[i % len(l)]
 
+# Return a signed n-bit value
+def rand_bits(size):
+    hi = 1 << size - 1
+    # XXX no signed support yet, needs to be handled differently per instruction
+    #lo = -hi
+    lo = 0
+    i = next(RAND)
+    return lo + i % (hi - lo)
+
 regs = list(range(16))
 bases = list(range(-1, 16))
 scales = [0, 1, 2, 4, 8]
 indices = [r for r in range(16) if r != 4] # index can't be RSP
-# Our IR can't properly print unsigned integers without a bunch of work,
-# as they appear in the objdump output. So no negative numbers for now.
-imm_bytes = [0, 1, 7, 37]
-imms = imm_bytes + [0xFF, 0x100, 0xFFFFFF]
 
 labels = [asm.LocalLabel(l) for l in ['_start', '_end']]
 insts = [asm.GlobalLabel('_start')]
@@ -63,10 +68,11 @@ for spec in asm.INST_SPECS.values():
                     else:
                         scale = rand_select(scales)
                         index = rand_select(indices) if scale else 0
-                    disp = rand_select(imms)
+                    disp_size = rand_select([8, 32])
+                    disp = rand_bits(disp_size)
                     arg = asm.Address(base, scale, index, disp, size=size)
                 elif arg_type is asm.Immediate:
-                    arg = rand_select(range(1 << size))
+                    arg = rand_bits(size)
                     arg = asm.Immediate(arg, size=size)
                 elif arg_type == asm.Label:
                     arg = rand_select(labels)
