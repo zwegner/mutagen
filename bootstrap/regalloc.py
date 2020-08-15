@@ -519,7 +519,7 @@ def allocate_registers(fn):
                 base = reg_assns[base]
                 base = base.index if isinstance(base, asm.GPReg) else base
                 index = reg_assns[index].index if index else 0
-                reg_assns[inst] = asm.Address(base, scale, index, disp, size=64)
+                reg_assns[inst] = asm.Address(base, scale, index, disp, size=inst.size)
 
             elif inst.opcode == 'call':
                 [called_fn, args] = [inst.args[0], inst.args[1:]]

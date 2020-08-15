@@ -56,7 +56,7 @@ class Instruction(syntax.Node):
         return '<instruction %s>(%s)' % (self.opcode, ', '.join(repr(a)
                 for a in self.args))
 
-@syntax.node('&base, scale, ?index, disp')
+@syntax.node('&base, scale, ?index, disp, size')
 class Address(syntax.Node):
     def repr(self, ctx):
         return '<address %s+%s*%s+%s>' % (self.base, self.scale, self.index, self.disp)
@@ -360,9 +360,9 @@ def mgi_len(node, l):
 def mgi__extern_label(node, label):
     return ExternSymbol('_' + label.value, info=node)
 
-@mg_intrinsic([syntax.Node])
-def mgi_address(node, expr):
-    return Address(expr, 0, None, 0, info=node)
+@mg_intrinsic([syntax.Node, syntax.Integer])
+def mgi_address(node, expr, size):
+    return Address(expr, 0, None, 0, size.value, info=node)
 
 @mg_intrinsic([syntax.Function])
 def mgi_export(node, fn):
@@ -1143,7 +1143,7 @@ def gen_lir_for_node(block, node, block_map, node_map):
         return lir.Inst(node.opcode, *[node_map[arg] for arg in node.args])
     elif isinstance(node, Address):
         index = node_map[node.index] if node.index else None
-        return lir.Address(node_map[node.base], node.scale, index, node.disp)
+        return lir.Address(node_map[node.base], node.scale, index, node.disp, node.size)
     # Literal is just a wrapper for raw LIR objects
     elif isinstance(node, Literal):
         return list(node.value.flatten())

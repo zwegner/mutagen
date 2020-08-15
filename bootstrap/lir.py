@@ -64,9 +64,10 @@ class Inst(Node):
         return '{}({})'.format(self.opcode, ', '.join(map(repr, self.args)))
 
 class Address(Inst):
-    def __init__(self, base, scale, index, disp):
+    def __init__(self, base, scale, index, disp, size):
         self.opcode = 'address'
         self.args = [base, scale, index, disp]
+        self.size = size
 
 # Returns don't directly generate ret instructions, but are instead pseudo-ops
 # that use the $return_value special variable... kinda icky but it works, since
