@@ -420,13 +420,192 @@ def gen_save_insts(gp_regs, vec_regs, extra_stack=0):
 
     return [save_insts, restore_insts]
 
-def allocate_registers(fn):
-    split_critical_edges(fn)
+def alloc_block_regs(ctx, block):
+    last_uses = get_last_uses(block, block.phi_read.args)
+    live_set_iter = list(get_live_sets(block, last_uses))
 
-    ctx = RegAllocContext(fn)
+    log('\n{}:'.format(block.name))
+    log('  ins:', block.phi_selects)
+    log('  outs:', block.phi_read.args)
+    log('  last:', last_uses)
 
-    # Analyze phi types. We need to have the types up front so we can allocate the
-    # registers for the writes at the start of each block
+    for i, [inst, live_set] in enumerate(zip(block.insts, live_set_iter)):
+        pressure = sum(not isinstance(l, lir.PhiSelect) and
+                            l.opcode not in {'parameter'} for l in live_set)
+        assert pressure <= len(FREE_REGS), 'Not enough registers'
+
+    free_regs = {asm.GPReg: FREE_REGS.copy(), asm.VecReg: VEC_FREE_REGS.copy()}
+    reg_assns = ctx.block_reg_assns[block]
+    ctx.start_block(block, free_regs)
+
+    # Allocate registers for the phi write. We'll make sure elsewhere that
+    # the arguments are moved to the right registers
+    regs = {}
+    if block.succs:
+        for [name, arg] in sorted(block.phi_write.args.items()):
+            regs[name] = ctx.alloc_reg(ctx.phi_types[block][name])
+    # For the exit block, we should only have at most one live value, the
+    # return value (which is stored in a special variable). Assign it to
+    # the ABI's return register.
+    else:
+        regs = {}
+        if block.phi_write.args:
+            assert list(block.phi_write.args.keys()) == ['$return_value']
+            regs['$return_value'] = RETURN_REGS[0]
+    ctx.phi_assns[block.phi_write] = regs
+
+    # Now make a run through the instructions. Since we're assuming
+    # spill/fill has been taken care of already, this can be done linearly.
+    for [inst, live_set] in zip(block.insts, live_set_iter):
+        log('handling', inst)
+        log('   free gpr', ctx.free_regs[asm.GPReg])
+        log('   free vec', ctx.free_regs[asm.VecReg])
+        log('   live', live_set)
+
+        if isinstance(inst, lir.PhiSelect):
+            reg = ctx.phi_assns[inst.phi_write][inst.name]
+            reg_assns[inst] = reg
+            log('phi assign', hex(id(inst)), inst, reg, free_regs)
+
+        # Returns are sorta pseudo-ops that get eliminated. Basically
+        # they're only there so the SSA machinery sees the $return_value
+        # special variable as a live in to the exit block.
+        elif inst.opcode == 'return':
+            pass
+
+        # Instantiate parameters into registers. This is usually a waste
+        # but right now needed for correctness
+        elif inst.opcode == 'parameter':
+            [index] = inst.args
+            src = PARAM_REGS[index]
+            reg = ctx.instantiate_reg(src)
+            reg_assns[inst] = reg
+            log('param', inst, src, block.phi_read.args.get(inst))
+
+        # Literals: just pop 'em in the reg_assns dict. If another instruction
+        # has a problem with that, they can deal with it themselves!
+        elif inst.opcode == 'literal':
+            reg_assns[inst] = inst.args[0]
+            log('lit', inst, inst.args[0], block.phi_read.args.get(inst))
+
+        elif inst.opcode == 'address':
+            [base, scale, index, disp] = inst.args
+            base = reg_assns[base]
+            base = base.index if isinstance(base, asm.GPReg) else base
+            index = reg_assns[index].index if index else 0
+            reg_assns[inst] = asm.Address(base, scale, index, disp, size=inst.size)
+
+        elif inst.opcode == 'call':
+            [called_fn, args] = [inst.args[0], inst.args[1:]]
+            # Load all arguments from the corresponding stack locations
+            assert len(args) <= len(PARAM_REGS)
+            call_regs = PARAM_REGS.copy()
+            for arg in args:
+                _ = ctx.get_arg_reg(arg, free_regs=call_regs)
+
+            called_fn_arg = ctx.get_arg_reg(called_fn,
+                    allow_types=(asm.ExternLabel, asm.GPReg))
+
+            # Generate save/restore instructions for caller-save registers
+            [gp_regs, vec_regs] = [[], []]
+            for reg in reg_assns.values():
+                if reg in CALLER_SAVE:
+                    gp_regs.append(reg)
+                elif reg in VEC_CALLER_SAVE:
+                    vec_regs.append(reg)
+            [save_insts, restore_insts] = gen_save_insts(gp_regs, vec_regs)
+
+            call = asm.Instruction(inst.opcode, called_fn_arg)
+            ctx.insts += [*save_insts, call, *restore_insts]
+
+            log(call, free_regs)
+
+            # Return any now-unused sources to the free set.
+            for arg in args:
+                ctx.update_free_regs(arg, live_set)
+            ctx.update_free_regs(called_fn, live_set)
+
+            # Use the ABI-specified register for pulling out the return
+            # value from the call. Move it to a fresh register so we can
+            # keep it alive
+            reg = ctx.instantiate_reg(RETURN_REGS[0])
+            reg_assns[inst] = reg
+
+        # Regular ops
+        else:
+            spec = asm.INST_SPECS[inst.opcode]
+
+            reg = None
+
+            # Make sure instruction arguments are in the proper form for this
+            # instruction (register, label, immediate, etc)
+            arg_types = spec.arg_types
+            if not spec.is_destructive and spec.needs_register:
+                arg_types = arg_types[1:]
+            assert len(inst.args) == len(arg_types)
+            arg_regs = [ctx.get_arg_reg(arg, allow_types=types, assign=True)
+                    for [arg, types] in zip(inst.args, arg_types)]
+
+            # Handle destructive ops first, which might need a move into
+            # a new register. Do this before we return any registers to the
+            # free set, since the inserted move comes before the instruction.
+            destructive = (spec.is_destructive and is_register(arg_regs[0]))
+
+            if destructive:
+                # See if we can clobber the register. If not, copy it
+                # into another register and change the assignment so
+                # later ops can see it.
+                # XXX This can be done in two ways, but moreover this
+                # should probably be done during scheduling with spill/fill.
+                # This also needs to interact with coalescing, when we have that.
+                if inst.args[0] in live_set:
+                    reg = ctx.instantiate_reg(arg_regs[0])
+                    log('destr copy', ctx.insts[-1], free_regs)
+                    arg_regs[0] = reg
+                else:
+                    reg = arg_regs[0]
+                    log('clobber', inst.args[0], reg)
+                    if inst.args[0] in reg_assns:
+                        del reg_assns[inst.args[0]]
+                        log('cl free instance')
+
+            # Return any now-unused sources to the free set.
+            for arg in inst.args:
+                ctx.update_free_regs(arg, live_set)
+
+            # Non-destructive ops need a register assignment for their
+            # implicit destination
+            if not destructive and spec.needs_register:
+                reg = ctx.alloc_reg(get_result_type(inst),
+                        size=get_result_size(inst))
+                arg_regs = [reg] + arg_regs
+                log('nondestr assign', reg, free_regs)
+
+            reg_assns[inst] = reg
+
+            # And now return the destination of the instruction to the
+            # free registers, although this only happens when the result
+            # is never used...
+            if inst not in live_set and spec.needs_register:
+                log('free inst', inst, arg_regs[0])
+                ctx.dealloc_reg(arg_regs[0])
+
+            ctx.insts.append(asm.Instruction(inst.opcode, *arg_regs))
+
+            log('main', ctx.insts[-1], free_regs)
+
+    # Make sure all live outs are in registers, and store the allocated
+    # registers for the phi read
+    regs = {}
+    for [name, inst] in sorted(block.phi_read.args.items()):
+        regs[name] = ctx.get_arg_reg(inst, allow_types=asm.Register)
+    ctx.phi_assns[block.phi_read] = regs
+
+    ctx.end_block(block)
+
+# Analyze phi types. We need to have the types up front so we can allocate the
+# registers for the writes at the start of each block
+def analyze_types(ctx, fn):
     for block in fn.blocks:
         ctx.phi_types[block] = {}
         for name in block.phi_write.args:
@@ -445,189 +624,17 @@ def allocate_registers(fn):
             assert phi_t in REG_TYPES
             ctx.phi_types[block][name] = phi_t
 
-    # The main register allocation loop
+def allocate_registers(fn):
+    split_critical_edges(fn)
+
+    ctx = RegAllocContext(fn)
+
+    analyze_types(ctx, fn)
+
+    # Allocate registers within each basic block. The final instructions
+    # for each block are stored in the ctx.block_insts dict.
     for block in fn.blocks:
-        last_uses = get_last_uses(block, block.phi_read.args)
-        live_set_iter = list(get_live_sets(block, last_uses))
-
-        log('\n{}:'.format(block.name))
-        log('  ins:', block.phi_selects)
-        log('  outs:', block.phi_read.args)
-        log('  last:', last_uses)
-
-        for i, [inst, live_set] in enumerate(zip(block.insts, live_set_iter)):
-            pressure = sum(not isinstance(l, lir.PhiSelect) and
-                                l.opcode not in {'parameter'} for l in live_set)
-            assert pressure <= len(FREE_REGS), 'Not enough registers'
-
-        free_regs = {asm.GPReg: FREE_REGS.copy(), asm.VecReg: VEC_FREE_REGS.copy()}
-        reg_assns = ctx.block_reg_assns[block]
-        ctx.start_block(block, free_regs)
-
-        # Allocate registers for the phi write. We'll make sure elsewhere that
-        # the arguments are moved to the right registers
-        regs = {}
-        if block.succs:
-            for [name, arg] in sorted(block.phi_write.args.items()):
-                regs[name] = ctx.alloc_reg(ctx.phi_types[block][name])
-        # For the exit block, we should only have at most one live value, the
-        # return value (which is stored in a special variable). Assign it to
-        # the ABI's return register.
-        else:
-            regs = {}
-            if block.phi_write.args:
-                assert list(block.phi_write.args.keys()) == ['$return_value']
-                regs['$return_value'] = RETURN_REGS[0]
-        ctx.phi_assns[block.phi_write] = regs
-
-        # Now make a run through the instructions. Since we're assuming
-        # spill/fill has been taken care of already, this can be done linearly.
-        for [inst, live_set] in zip(block.insts, live_set_iter):
-            log('handling', inst)
-            log('   free gpr', ctx.free_regs[asm.GPReg])
-            log('   free vec', ctx.free_regs[asm.VecReg])
-            log('   live', live_set)
-
-            if isinstance(inst, lir.PhiSelect):
-                reg = ctx.phi_assns[inst.phi_write][inst.name]
-                reg_assns[inst] = reg
-                log('phi assign', hex(id(inst)), inst, reg, free_regs)
-
-            # Returns are sorta pseudo-ops that get eliminated. Basically
-            # they're only there so the SSA machinery sees the $return_value
-            # special variable as a live in to the exit block.
-            elif inst.opcode == 'return':
-                pass
-
-            # Instantiate parameters into registers. This is usually a waste
-            # but right now needed for correctness
-            elif inst.opcode == 'parameter':
-                [index] = inst.args
-                src = PARAM_REGS[index]
-                reg = ctx.instantiate_reg(src)
-                reg_assns[inst] = reg
-                log('param', inst, src, block.phi_read.args.get(inst))
-
-            # Literals: just pop 'em in the reg_assns dict. If another instruction
-            # has a problem with that, they can deal with it themselves!
-            elif inst.opcode == 'literal':
-                reg_assns[inst] = inst.args[0]
-                log('lit', inst, inst.args[0], block.phi_read.args.get(inst))
-
-            elif inst.opcode == 'address':
-                [base, scale, index, disp] = inst.args
-                base = reg_assns[base]
-                base = base.index if isinstance(base, asm.GPReg) else base
-                index = reg_assns[index].index if index else 0
-                reg_assns[inst] = asm.Address(base, scale, index, disp, size=inst.size)
-
-            elif inst.opcode == 'call':
-                [called_fn, args] = [inst.args[0], inst.args[1:]]
-                # Load all arguments from the corresponding stack locations
-                assert len(args) <= len(PARAM_REGS)
-                call_regs = PARAM_REGS.copy()
-                for arg in args:
-                    _ = ctx.get_arg_reg(arg, free_regs=call_regs)
-
-                called_fn_arg = ctx.get_arg_reg(called_fn,
-                        allow_types=(asm.ExternLabel, asm.GPReg))
-
-                # Generate save/restore instructions for caller-save registers
-                [gp_regs, vec_regs] = [[], []]
-                for reg in reg_assns.values():
-                    if reg in CALLER_SAVE:
-                        gp_regs.append(reg)
-                    elif reg in VEC_CALLER_SAVE:
-                        vec_regs.append(reg)
-                [save_insts, restore_insts] = gen_save_insts(gp_regs, vec_regs)
-
-                call = asm.Instruction(inst.opcode, called_fn_arg)
-                ctx.insts += [*save_insts, call, *restore_insts]
-
-                log(call, free_regs)
-
-                # Return any now-unused sources to the free set.
-                for arg in args:
-                    ctx.update_free_regs(arg, live_set)
-                ctx.update_free_regs(called_fn, live_set)
-
-                # Use the ABI-specified register for pulling out the return
-                # value from the call. Move it to a fresh register so we can
-                # keep it alive
-                reg = ctx.instantiate_reg(RETURN_REGS[0])
-                reg_assns[inst] = reg
-
-            # Regular ops
-            else:
-                spec = asm.INST_SPECS[inst.opcode]
-
-                reg = None
-
-                # Make sure instruction arguments are in the proper form for this
-                # instruction (register, label, immediate, etc)
-                arg_types = spec.arg_types
-                if not spec.is_destructive and spec.needs_register:
-                    arg_types = arg_types[1:]
-                assert len(inst.args) == len(arg_types)
-                arg_regs = [ctx.get_arg_reg(arg, allow_types=types, assign=True)
-                        for [arg, types] in zip(inst.args, arg_types)]
-
-                # Handle destructive ops first, which might need a move into
-                # a new register. Do this before we return any registers to the
-                # free set, since the inserted move comes before the instruction.
-                destructive = (spec.is_destructive and is_register(arg_regs[0]))
-
-                if destructive:
-                    # See if we can clobber the register. If not, copy it
-                    # into another register and change the assignment so
-                    # later ops can see it.
-                    # XXX This can be done in two ways, but moreover this
-                    # should probably be done during scheduling with spill/fill.
-                    # This also needs to interact with coalescing, when we have that.
-                    if inst.args[0] in live_set:
-                        reg = ctx.instantiate_reg(arg_regs[0])
-                        log('destr copy', ctx.insts[-1], free_regs)
-                        arg_regs[0] = reg
-                    else:
-                        reg = arg_regs[0]
-                        log('clobber', inst.args[0], reg)
-                        if inst.args[0] in reg_assns:
-                            del reg_assns[inst.args[0]]
-                            log('cl free instance')
-
-                # Return any now-unused sources to the free set.
-                for arg in inst.args:
-                    ctx.update_free_regs(arg, live_set)
-
-                # Non-destructive ops need a register assignment for their
-                # implicit destination
-                if not destructive and spec.needs_register:
-                    reg = ctx.alloc_reg(get_result_type(inst),
-                            size=get_result_size(inst))
-                    arg_regs = [reg] + arg_regs
-                    log('nondestr assign', reg, free_regs)
-
-                reg_assns[inst] = reg
-
-                # And now return the destination of the instruction to the
-                # free registers, although this only happens when the result
-                # is never used...
-                if inst not in live_set and spec.needs_register:
-                    log('free inst', inst, arg_regs[0])
-                    ctx.dealloc_reg(arg_regs[0])
-
-                ctx.insts.append(asm.Instruction(inst.opcode, *arg_regs))
-
-                log('main', ctx.insts[-1], free_regs)
-
-        # Make sure all live outs are in registers, and store the allocated
-        # registers for the phi read
-        regs = {}
-        for [name, inst] in sorted(block.phi_read.args.items()):
-            regs[name] = ctx.get_arg_reg(inst, allow_types=asm.Register)
-        ctx.phi_assns[block.phi_read] = regs
-
-        ctx.end_block(block)
+        alloc_block_regs(ctx, block)
 
     for block in fn.blocks:
         log('assns for', block.name, ctx.block_reg_assns[block])
