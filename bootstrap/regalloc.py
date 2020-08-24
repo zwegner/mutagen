@@ -399,9 +399,27 @@ def parallel_copy(reads, writes, free_regs):
 
     return insts
 
-def move_phi_args(phi_read, phi_write, keys, free_regs):
+# Call parallel_copy() and translate the machine-agnostic result into actual
+# instructions based on register type
+def impl_parallel_copy(reg_type, reads, writes, free_regs):
+    insts = []
+    for [inst, dst, src] in parallel_copy(reads, writes, free_regs):
+        if reg_type == asm.GPReg:
+            if inst == 'mov':
+                insts.append(asm.Instruction('mov', dst, src))
+            else:
+                assert inst == 'swap'
+                insts.append(asm.Instruction('xchg', src, dst))
+        else:
+            if inst == 'mov':
+                insts.append(asm.VEC_MOVE(dst, src))
+            else:
+                assert 0
+    return insts
+
+def move_phi_args(reg_type, phi_read, phi_write, keys, free_regs):
     keys = list(sorted(keys))
-    return parallel_copy([phi_read[k] for k in keys],
+    return impl_parallel_copy(reg_type, [phi_read[k] for k in keys],
             [phi_write[k] for k in keys], free_regs)
 
 def gen_save_insts(gp_regs, vec_regs, extra_stack=0):
@@ -676,19 +694,7 @@ def allocate_registers(fn):
             insts = []
             for t in REG_TYPES:
                 keys = [key for key in phi_w if ctx.phi_types[block][key] == t]
-                ins = move_phi_args(phi_r, phi_w, keys, free_regs[t])
-                for [inst, dst, src] in move_phi_args(phi_r, phi_w, keys, free_regs[t]):
-                    if t == asm.GPReg:
-                        if inst == 'mov':
-                            insts.append(asm.Instruction('mov', dst, src))
-                        else:
-                            assert inst == 'swap'
-                            insts.append(asm.Instruction('xchg', src, dst))
-                    else:
-                        if inst == 'mov':
-                            insts.append(asm.VEC_MOVE(dst, src))
-                        else:
-                            assert 0
+                insts += move_phi_args(t, phi_r, phi_w, keys, free_regs[t])
 
             if first:
                 ctx.block_insts[pred].extend(insts)
