@@ -527,6 +527,19 @@ def alloc_block_regs(ctx, block):
             reg_assns[inst] = asm.FlagsReg()
 
         elif inst.opcode == 'call':
+            # Generate save/restore instructions for caller-save registers.
+            # We add the save instructions to the block first, before moving
+            # arguments into place, in case any of the parameter registers
+            # are live
+            [gp_regs, vec_regs] = [[], []]
+            for reg in reg_assns.values():
+                if reg in CALLER_SAVE:
+                    gp_regs.append(reg)
+                elif reg in VEC_CALLER_SAVE:
+                    vec_regs.append(reg)
+            [save_insts, restore_insts] = gen_save_insts(gp_regs, vec_regs)
+            ctx.insts += save_insts
+
             [called_fn, args] = [inst.args[0], inst.args[1:]]
             # Load all arguments from the corresponding stack locations
             assert len(args) <= len(PARAM_REGS)
@@ -537,30 +550,24 @@ def alloc_block_regs(ctx, block):
             called_fn_arg = ctx.get_arg_reg(called_fn,
                     allow_types=(asm.ExternLabel, asm.GPReg))
 
-            # Generate save/restore instructions for caller-save registers
-            [gp_regs, vec_regs] = [[], []]
-            for reg in reg_assns.values():
-                if reg in CALLER_SAVE:
-                    gp_regs.append(reg)
-                elif reg in VEC_CALLER_SAVE:
-                    vec_regs.append(reg)
-            [save_insts, restore_insts] = gen_save_insts(gp_regs, vec_regs)
-
             call = asm.Instruction(inst.opcode, called_fn_arg)
-            ctx.insts += [*save_insts, call, *restore_insts]
+            ctx.insts.append(call)
 
             log(call, free_regs)
-
-            # Return any now-unused sources to the free set.
-            for arg in args:
-                ctx.update_free_regs(arg, live_set)
-            ctx.update_free_regs(called_fn, live_set)
 
             # Use the ABI-specified register for pulling out the return
             # value from the call. Move it to a fresh register so we can
             # keep it alive
             reg = ctx.instantiate_reg(RETURN_REGS[0])
             reg_assns[inst] = reg
+
+            # Return any now-unused sources to the free set.
+            for arg in args:
+                ctx.update_free_regs(arg, live_set)
+            ctx.update_free_regs(called_fn, live_set)
+
+            # Restore any previously-live registers
+            ctx.insts += restore_insts
 
         # Regular ops
         else:
