@@ -85,13 +85,13 @@ class Function:
         self.attributes = attributes or {}
 
 class BasicBlock:
-    def __init__(self, name, phi_write, phi_selects, insts, test, phi_read,
+    def __init__(self, name, phi_write, phi_selects, insts, condition, phi_read,
             preds, succs):
         self.name = name
         self.phi_write = phi_write
         self.phi_selects = phi_selects
         self.insts = insts
-        self.test = test
+        self.condition = condition
         self.phi_read = phi_read
         self.preds = preds
         self.succs = succs
@@ -100,8 +100,7 @@ def literal(a): return Inst('literal', a)
 
 # Instruction wrappers
 def test(a, b): return Inst('test', a, b)
-def jz(a, f): return Inst('jz', a, f)
-def jnz(a, f): return Inst('jnz', a, f)
+def jcc(cc, a, f): return Inst('j' + cc, a, f)
 def jmp(a): return Inst('jmp', a)
 def ret(a): return Inst('ret', a)
 
@@ -118,4 +117,8 @@ def call(fn, *args): return Inst('call', fn, *args)
 
 def parameter(index): return Inst('parameter', index)
 
-def get_flags(op): return Inst('getflags', op)
+class GetCC(Inst):
+    def __init__(self, op, cc: str):
+        self.opcode = 'getcc'
+        self.args = [op]
+        self.cc = cc

@@ -240,6 +240,10 @@ all_conds = [
 ]
 cond_table = {cond: i for [i, conds] in enumerate(all_conds) for cond in conds}
 
+def invert_cond(cond):
+    # To invert a 4-bit condition code on x86, flip the low bit
+    return all_conds[cond_table[cond] ^ 1][0]
+
 # Opcode extension prefix--these generate extra opcode bytes with SSE, or get
 # packed into bitfields of the VEX/EVEX prefixes
 OPF = enum.IntEnum('OPF', 'x0F x0Fx38 x0Fx3A', start=1)

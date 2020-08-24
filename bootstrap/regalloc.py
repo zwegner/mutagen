@@ -131,19 +131,25 @@ def finalize_cfg(fn):
 # based on the physical block layout
 def get_jumps(block, exit_phys_idx, exit_label):
     next_phys = block.phys_idx + 1
-    # XXX dumb, actually handle flags
-    flags = asm.FlagsReg()
     # Add a conditional jump if needed
-    if block.test:
+    if block.condition:
         assert len(block.succs) == 2
-        assert block.test is block.insts[-1]
+        assert block.condition is block.insts[-1]
+
+        assert isinstance(block.condition, lir.GetCC)
+        cc = block.condition.cc
+
+        # XXX dumb, actually handle flags dependency
+        flags = asm.FlagsReg()
+
         if block.succs[0].phys_idx == next_phys:
-            yield lir.jz(block_label(block.succs[1]), flags)
+            ncc = asm.invert_cond(cc)
+            yield lir.jcc(ncc, block_label(block.succs[1]), flags)
         elif block.succs[1].phys_idx == next_phys:
-            yield lir.jnz(block_label(block.succs[0]), flags)
+            yield lir.jcc(cc, block_label(block.succs[0]), flags)
         else:
             # If neither successor is the next physical block, we need two jumps
-            yield lir.jnz(block_label(block.succs[0]), flags)
+            yield lir.jcc(cc, block_label(block.succs[0]), flags)
             yield lir.jmp(block_label(block.succs[1]))
     elif len(block.succs) == 1:
         # Add a jump if we're not going to the next physical block
@@ -498,7 +504,7 @@ def alloc_block_regs(ctx, block):
             reg_assns[inst] = asm.Address(base, scale, index, disp, size=inst.size)
 
         # Flags
-        elif inst.opcode == 'getflags':
+        elif inst.opcode == 'getcc':
             # XXX check sanity
             reg_assns[inst] = asm.FlagsReg()
 

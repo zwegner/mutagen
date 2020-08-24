@@ -1126,9 +1126,8 @@ def gen_lir_for_node(block, node, block_map, node_map):
             return fn(node_map[node.lhs], node_map[node.rhs])
         elif node.type in CMP_TABLE:
             cmp = lir.cmp(node_map[node.lhs], node_map[node.rhs])
-            flags = lir.get_flags(cmp)
-            cc = lir.Inst('set' + CMP_TABLE[node.type], flags)
-            return [cmp, flags, cc, lir.Inst('movzx', cc)]
+            flags = lir.GetCC(cmp, CMP_TABLE[node.type])
+            return [cmp, flags]
     elif isinstance(node, ExternSymbol):
         return lir.literal(asm.ExternLabel(node.name))
     elif isinstance(node, syntax.Integer):
@@ -1215,11 +1214,17 @@ def generate_lir(fn):
             lir_block.insts.extend(insts)
             node_map[stmt] = insts[-1]
 
-        test = None
         if block.test:
             n = node_map[block.test]
-            lir_block.test = lir.test(n, n)
-            lir_block.insts.append(lir_block.test)
+            # Weird: check if the test was already a flags/condition code combo.
+            # In that case, we can branch directly off that condition code.
+            if isinstance(n, lir.GetCC):
+                lir_block.condition = n
+            # Otherwise, add a test instruction
+            else:
+                test = lir.test(n, n)
+                lir_block.condition = lir.GetCC(test, 'nz')
+                lir_block.insts += [test, lir_block.condition]
 
     # Fix up CFG: look up LIR blocks for preds/succs, now that they've all
     # been instantiated
