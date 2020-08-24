@@ -99,6 +99,12 @@ class VecReg(Register):
     def __repr__(self):
         return '{}mm{}'.format(VECTOR_PREFIX[self.size], self.index)
 
+# Flags register (usually implicit)
+# XXX probably want to somehow handle partial flags writes and other oddities
+class FlagsReg(ASMObj):
+    def get_size(self):
+        return None
+
 class Address(BaseAddress):
     def __init__(self, base: int, scale: int, index: int, disp: int, size: int=None):
         self.base = base
@@ -139,7 +145,11 @@ class Instruction(ASMObj):
         if self.args:
             args = []
             for arg in self.args:
-                if isinstance(arg, Register):
+                # Flags register is implicit in x86 assembly, so don't actually
+                # emit any string for the pseudo-arg
+                if isinstance(arg, FlagsReg):
+                    pass
+                elif isinstance(arg, Register):
                     args = args + [str(arg)]
                 elif isinstance(arg, Address):
                     # lea doesn't need a size since it's only the address...
@@ -205,6 +215,8 @@ ARG_TYPE_TABLE = {
     # Immediates
     'i': (Immediate, 8),
     'I': (Immediate, 32),
+    # Flags
+    'F': (FlagsReg, None),
 }
 
 # Conditions
@@ -522,7 +534,7 @@ bmi_arg3_reversed = {'andn', 'mulx', 'pdep', 'pext'}
 class InstSpec:
     def __init__(self, inst, forms, is_destructive=True, is_jump=False,
             needs_register=True, vec_form=None, spf=None, opf=None,
-            opcode=None, flags=None):
+            opcode=None, flags=None, writes_flags=False):
         self.inst = inst
         self.forms = forms
         self.is_destructive = is_destructive
@@ -533,6 +545,7 @@ class InstSpec:
         self.opf = opf
         self.opcode = opcode
         self.flags = flags
+        self.writes_flags = writes_flags
 
 # Create a big table of instruction specs
 INST_SPECS = {}
@@ -563,51 +576,54 @@ for inst in arg0_table.keys():
     _add(inst, is_destructive=False, needs_register=False)
 
 for inst in arg1_table.keys():
-    _add_32_64(inst, 'qQ')
+    writes_flags = (inst != 'not')
+    _add_32_64(inst, 'qQ', writes_flags=writes_flags)
 
 for inst in arg2_table.keys():
-    is_write = (inst not in {'cmp', 'test'})
-    destr = is_write and inst != 'mov'
+    is_write = (inst != 'cmp')
+    destr = (inst not in {'cmp', 'mov'})
+    writes_flags = (inst != 'mov')
     sizes = [64, 32, 16, 8]
-    _add(inst, 'q', 'qQ', sizes=sizes, needs_register=is_write, is_destructive=destr)
-    _add(inst, 'Q', 'q', sizes=sizes, needs_register=is_write, is_destructive=destr)
-    _add(inst, 'q', 'i', sizes=sizes, change_imm_size=True, needs_register=is_write,
-            is_destructive=destr)
+    for [dst, src] in [['q', 'qQ'], ['Q', 'q'], ['q', 'i']]:
+        _add(inst, dst, src, sizes=sizes, change_imm_size=True,
+                needs_register=is_write, is_destructive=destr,
+                writes_flags=writes_flags)
 
 _add('movzx', 'q', 'bB', is_destructive=False)
 
 for inst in shift_table.keys():
-    _add_32_64(inst, 'qQ', 'i')
+    _add_32_64(inst, 'qQ', 'i', writes_flags=True)
     # Shifts by CL is special, only one register allowed
-    _add_32_64(inst, 'qQ', [GPReg(1, size=8)])
+    _add_32_64(inst, 'qQ', [GPReg(1, size=8)], writes_flags=True)
 
 for inst in bt_table.keys():
-    _add_32_64(inst, 'qQ', 'i')
+    _add_32_64(inst, 'qQ', 'i', writes_flags=True)
 
 for inst in bs_table.keys():
-    _add_32_64(inst, 'q', 'qQ')
+    _add_32_64(inst, 'q', 'qQ', writes_flags=True)
 
 for [cond, code] in cmov_table.items():
     # cmov is considered a destructive op (I guess) as opposed to mov, since
     # it can read the destination
-    _add_32_64(cond, 'q', 'qQ')
+    _add_32_64(cond, 'q', 'qQ', 'F')
 
-_add_32_64('imul', 'q', 'qQ')
+_add_32_64('imul', 'q', 'qQ', writes_flags=True)
 _add_32_64('xchg', 'qQ', 'q')
 _add_32_64('lea', 'q', 'Q', is_destructive=False)
-_add_32_64('test', 'qQ', 'q', is_destructive=False, needs_register=False)
+_add_32_64('test', 'qQ', 'q', is_destructive=False, needs_register=False,
+        writes_flags=True)
 
 # Push/pop don't have a 32-bit operand encoding in 64-bit mode...
 _add('push', 'qi', is_destructive=False, needs_register=False)
-_add('pop', 'q', is_destructive=False, needs_register=False)
+_add('pop', 'q', is_destructive=False)
 
 # Make sure all of the condition codes are tested, to test canonicalization
 for [cond, code] in jump_table.items():
-    _add(cond, 'l', is_jump=True, is_destructive=False, needs_register=False)
+    _add(cond, 'l', 'F', is_jump=True, is_destructive=False, needs_register=False)
 _add('jmp', 'ql', is_jump=True, is_destructive=False, needs_register=False)
 
 for [cond, code] in setcc_table.items():
-    _add(cond, 'bB', is_destructive=False)
+    _add(cond, 'bB', 'F', is_destructive=False)
 
 _add('call', 'ql', is_destructive=False, needs_register=False)
 
@@ -866,6 +882,11 @@ def assemble_inst(inst):
         assert False, ('argument types to %s %s do not match any of the valid forms '
                 'of %s: %s' % (inst, inst.args, inst.mnem, spec.forms))
 
+    # Helper function to verify the flags arguments match up
+    # XXX actually implement this
+    def check_flags(flags):
+        pass
+
     w = int(size == 64)
 
     if inst.mnem in arg0_table:
@@ -963,7 +984,8 @@ def assemble_inst(inst):
         return rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
     elif inst.mnem in cmov_table:
         opcode = cmov_table[inst.mnem]
-        [dst, src] = inst.args
+        [dst, src, flags] = inst.args
+        check_flags(flags)
         return rex(w, dst, src) + [0x0F, opcode] + mod_rm_sib(dst, src)
     elif inst.mnem == 'push':
         [src] = inst.args
@@ -1074,7 +1096,8 @@ def assemble_inst(inst):
         return vex(w, dst, src1, opf, src2, 0, spf) + [opcode] + mod_rm_sib(dst, src1)
     elif inst.mnem in jump_table:
         opcode = jump_table[inst.mnem]
-        [src] = inst.args
+        [src, flags] = inst.args
+        check_flags(flags)
         # XXX Since we don't know how far or in what direction we're jumping,
         # punt and use disp32. We'll fill the offset in later.
         return [0x0F, opcode, Relocation(src, 4)]
@@ -1087,7 +1110,8 @@ def assemble_inst(inst):
             return rex(0, 0, src) + [0xFF] + mod_rm_sib(sub_opcode, src)
     elif inst.mnem in setcc_table:
         opcode = setcc_table[inst.mnem]
-        [dst] = inst.args
+        [dst, flags] = inst.args
+        check_flags(flags)
         # Force REX since ah/bh etc. are used instead of sil etc. without it
         force = isinstance(dst, GPReg) and dst.index & 0xC == 4
         return rex(0, 0, dst, force=force) + [0x0F, opcode] + mod_rm_sib(0, dst)

@@ -79,6 +79,8 @@ for spec in asm.INST_SPECS.values():
                 elif arg_type == asm.VecReg:
                     arg = rand_select(regs)
                     arg = asm.VecReg(arg, size=size)
+                elif arg_type == asm.FlagsReg:
+                    arg = asm.FlagsReg()
                 else:
                     assert False, arg
                 args = args + [arg]

@@ -1125,9 +1125,10 @@ def gen_lir_for_node(block, node, block_map, node_map):
             fn = BINOP_TABLE[node.type]
             return fn(node_map[node.lhs], node_map[node.rhs])
         elif node.type in CMP_TABLE:
-            cc = CMP_TABLE[node.type]
-            return [lir.cmp(node_map[node.lhs], node_map[node.rhs]),
-                    lir.Inst('set' + cc)]
+            cmp = lir.cmp(node_map[node.lhs], node_map[node.rhs])
+            flags = lir.get_flags(cmp)
+            cc = lir.Inst('set' + CMP_TABLE[node.type], flags)
+            return [cmp, flags, cc, lir.Inst('movzx', cc)]
     elif isinstance(node, ExternSymbol):
         return lir.literal(asm.ExternLabel(node.name))
     elif isinstance(node, syntax.Integer):

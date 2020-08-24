@@ -100,8 +100,8 @@ def literal(a): return Inst('literal', a)
 
 # Instruction wrappers
 def test(a, b): return Inst('test', a, b)
-def jz(a): return Inst('jz', a)
-def jnz(a): return Inst('jnz', a)
+def jz(a, f): return Inst('jz', a, f)
+def jnz(a, f): return Inst('jnz', a, f)
 def jmp(a): return Inst('jmp', a)
 def ret(a): return Inst('ret', a)
 
@@ -118,4 +118,4 @@ def call(fn, *args): return Inst('call', fn, *args)
 
 def parameter(index): return Inst('parameter', index)
 
-def phi_ref(name: str): return Inst('phi_ref', name)
+def get_flags(op): return Inst('getflags', op)
